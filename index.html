@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tuinontwerp">
+  <meta name="theme-color" content="#2f5d3a">
+  <title>Tuinontwerp</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button class="tb" id="btn-docs" title="Tekeningen"><i data-icon="folder"></i></button>
+    <input id="doc-name" type="text" spellcheck="false" aria-label="Naam tekening">
+    <div class="spacer"></div>
+    <button class="tb" id="btn-undo" title="Ongedaan maken (⌘Z)"><i data-icon="undo"></i></button>
+    <button class="tb" id="btn-redo" title="Opnieuw (⇧⌘Z)"><i data-icon="redo"></i></button>
+    <span class="sep"></span>
+    <button class="tb" id="btn-map" title="Kaart op schaal"><i data-icon="map"></i><span class="lbl">Kaart</span></button>
+    <button class="tb" id="btn-import" title="Afbeelding of PDF als ondergrond"><i data-icon="image"></i><span class="lbl">Ondergrond</span></button>
+    <button class="tb" id="btn-export" title="Exporteren naar PDF"><i data-icon="pdf"></i><span class="lbl">PDF</span></button>
+    <span class="sep"></span>
+    <button class="tb" id="btn-layers" title="Lagen"><i data-icon="layers"></i></button>
+    <button class="tb" id="btn-settings" title="Instellingen"><i data-icon="settings"></i></button>
+  </header>
+
+  <nav id="toolbar" aria-label="Gereedschap">
+    <div class="group">
+      <button class="tool" data-tool="draw" title="Pennen &amp; penselen (P)"><i data-icon="pen"></i></button>
+      <button class="tool" data-tool="eraser" title="Gum (E)"><i data-icon="eraser"></i></button>
+      <button class="tool" data-tool="lasso" title="Magische lasso (L)"><i data-icon="lasso"></i></button>
+    </div>
+    <div class="group">
+      <button class="tool" data-tool="line" title="Lijn"><i data-icon="line"></i></button>
+      <button class="tool" data-tool="rect" title="Rechthoek"><i data-icon="rect"></i></button>
+      <button class="tool" data-tool="circle" title="Cirkel"><i data-icon="circle"></i></button>
+      <button class="tool" data-tool="polygon" title="Veelhoek"><i data-icon="polygon"></i></button>
+      <button class="tool" data-tool="area" title="Vlak / beplantingsvak"><i data-icon="area"></i></button>
+    </div>
+    <div class="group">
+      <button class="tool" data-tool="dim" title="Maatlijn (M)"><i data-icon="dim"></i></button>
+      <button class="tool" data-tool="text" title="Tekst (T)"><i data-icon="text"></i></button>
+      <button class="tool" data-tool="stencil" title="Stencils (S)"><i data-icon="tree"></i></button>
+    </div>
+    <div class="group">
+      <button class="guide-btn" data-guide="ruler" title="Super-liniaal (R)"><i data-icon="ruler"></i></button>
+      <button class="guide-btn" data-guide="tri45" title="Tekendriehoek 45°"><i data-icon="tri45"></i></button>
+      <button class="guide-btn" data-guide="tri30" title="Tekendriehoek 30°/60°"><i data-icon="tri30"></i></button>
+      <button class="guide-btn" data-guide="protractor" title="Gradenboog"><i data-icon="protractor"></i></button>
+    </div>
+    <div class="group">
+      <button class="tool" data-tool="calibrate" title="Schaal instellen (kalibreren)"><i data-icon="calibrate"></i></button>
+      <button class="tool" data-tool="pan" title="Verschuiven (spatie)"><i data-icon="hand"></i></button>
+    </div>
+  </nav>
+
+  <main id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="selection-bar" class="floatbar" hidden>
+      <span class="count"></span>
+      <button data-sel="duplicate" title="Dupliceren"><i data-icon="copy"></i></button>
+      <button data-sel="color" title="Huidige kleur toepassen"><i data-icon="palette"></i></button>
+      <button data-sel="front" title="Naar voren"><i data-icon="front"></i></button>
+      <button data-sel="back" title="Naar achteren"><i data-icon="back"></i></button>
+      <select data-sel="layer" title="Naar laag"></select>
+      <button data-sel="delete" title="Verwijderen"><i data-icon="trash"></i></button>
+      <button data-sel="done" title="Klaar"><i data-icon="check"></i></button>
+    </div>
+    <div id="polygon-bar" class="floatbar" hidden>
+      <span>Tik punten · tik op het eerste punt om te sluiten</span>
+      <button data-poly="close">Sluiten</button>
+      <button data-poly="finish">Klaar</button>
+      <button data-poly="cancel"><i data-icon="close"></i></button>
+    </div>
+    <div id="toast" hidden></div>
+  </main>
+
+  <aside id="layers-panel" hidden>
+    <div class="panel-head">
+      <h2>Lagen</h2>
+      <button class="tb" id="btn-layer-add" title="Nieuwe laag (trekpapier)"><i data-icon="plus"></i></button>
+      <button class="tb" id="btn-layers-close" title="Sluiten"><i data-icon="close"></i></button>
+    </div>
+    <ul id="layer-list"></ul>
+    <p class="hint">Bovenste laag ligt bovenop. "Papier" legt een vel trekpapier onder de laag.</p>
+  </aside>
+
+  <footer id="optionsbar"></footer>
+
+  <div id="statusbar">
+    <label class="scale-select">Tekenschaal
+      <select id="doc-scale"></select>
+    </label>
+    <span id="zoom-info"></span>
+    <div class="spacer"></div>
+    <button class="sb" id="btn-reset-rot" title="Draaiing herstellen" hidden><i data-icon="compass" data-size="18"></i></button>
+    <button class="sb" id="btn-fit" title="Alles in beeld"><i data-icon="fit" data-size="18"></i></button>
+    <span id="save-state"></span>
+  </div>
+</div>
+
+<!-- Tekeningen -->
+<dialog id="dlg-docs">
+  <form method="dialog" class="dlg">
+    <header><h2>Tekeningen</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
+    <div class="row">
+      <button type="button" class="primary" id="btn-new-doc"><i data-icon="plus"></i> Nieuwe tekening</button>
+      <button type="button" id="btn-backup"><i data-icon="download"></i> Bewaar als bestand</button>
+      <label class="button"><i data-icon="folder"></i> Open bestand<input type="file" id="file-open-doc" accept=".json,.tuin,application/json" hidden></label>
+    </div>
+    <ul id="doc-list" class="doc-grid"></ul>
+  </form>
+</dialog>
+
+<!-- Kaart -->
+<dialog id="dlg-map">
+  <form method="dialog" class="dlg">
+    <header><h2>Kaart op schaal</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
+    <label>Adres of coördinaten (breedte, lengte)
+      <div class="row">
+        <input type="search" id="map-q" placeholder="bijv. Dorpsstraat 1, Utrecht" autocomplete="off">
+        <button type="button" id="map-search">Zoek</button>
+        <button type="button" id="map-locate" title="Mijn locatie"><i data-icon="compass"></i></button>
+      </div>
+    </label>
+    <ul id="map-results" class="results"></ul>
+    <div class="grid2">
+      <label>Kaartsoort
+        <select id="map-source"></select>
+      </label>
+      <label>Gebied
+        <select id="map-size">
+          <option value="30">30 × 30 m</option>
+          <option value="60" selected>60 × 60 m</option>
+          <option value="100">100 × 100 m</option>
+          <option value="200">200 × 200 m</option>
+          <option value="400">400 × 400 m</option>
+        </select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="map-kadaster" checked> Perceelgrenzen (Kadaster) tonen</label>
+    <p class="hint" id="map-status">Kies een adres. De kaart wordt op ware grootte als ondergrond in een eigen laag geplaatst.</p>
+    <footer>
+      <button value="close">Annuleren</button>
+      <button type="button" class="primary" id="map-place" disabled>Kaart plaatsen</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Export -->
+<dialog id="dlg-export">
+  <form method="dialog" class="dlg">
+    <header><h2>Exporteren</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
+    <label>Titel <input type="text" id="exp-title"></label>
+    <label>Ondertitel / opdrachtgever <input type="text" id="exp-subtitle" placeholder="optioneel"></label>
+    <div class="grid2">
+      <label>Papierformaat
+        <select id="exp-paper"><option>A4</option><option selected>A3</option><option>A2</option><option>A1</option></select>
+      </label>
+      <label>Oriëntatie
+        <select id="exp-orient"><option value="landscape">Liggend</option><option value="portrait">Staand</option></select>
+      </label>
+      <label>Schaal
+        <select id="exp-scale"></select>
+      </label>
+      <label>Gebied
+        <select id="exp-area"><option value="all">Hele tekening</option><option value="view">Huidig beeld</option></select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="exp-titleblock" checked> Titelblok met schaalbalk en noordpijl</label>
+    <p class="hint" id="exp-info"></p>
+    <footer>
+      <button type="button" id="exp-png">PNG</button>
+      <button type="button" class="primary" id="exp-pdf"><i data-icon="pdf"></i> PDF maken</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Stencils -->
+<dialog id="dlg-stencils">
+  <form method="dialog" class="dlg wide">
+    <header><h2>Stencils</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
+    <div id="stencil-grid"></div>
+  </form>
+</dialog>
+
+<!-- Instellingen -->
+<dialog id="dlg-settings">
+  <form method="dialog" class="dlg">
+    <header><h2>Instellingen</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
+    <label class="check"><input type="checkbox" data-setting="pencilOnly"> Alleen de Pencil tekent (vingers verschuiven en zoomen)</label>
+    <label class="check"><input type="checkbox" data-setting="rotateGesture"> Draaien met twee vingers</label>
+    <label class="check"><input type="checkbox" data-setting="autoDims"> Automatische maatvoering bij lijnen en vormen</label>
+    <label class="check"><input type="checkbox" data-setting="grid"> Raster tonen</label>
+    <label class="check"><input type="checkbox" data-setting="snap"> Snappen aan eindpunten en raster</label>
+    <label class="check"><input type="checkbox" data-setting="angleSnap"> Hoeken snappen per 15°</label>
+    <label>Rastermaat (meter)
+      <select id="set-grid">
+        <option value="0.1">0,10 m</option><option value="0.25">0,25 m</option><option value="0.5">0,50 m</option>
+        <option value="1">1 m</option><option value="2">2 m</option><option value="5">5 m</option>
+      </select>
+    </label>
+    <p class="hint">Gebaren: twee vingers tikken = ongedaan maken, drie vingers tikken = opnieuw. Dubbeltik op een liniaal om een exacte hoek in te voeren.</p>
+  </form>
+</dialog>
+
+<!-- Invoer -->
+<dialog id="dlg-input">
+  <form method="dialog" class="dlg small">
+    <header><h2 id="input-title"></h2></header>
+    <p class="hint" id="input-hint"></p>
+    <textarea id="input-text" rows="2"></textarea>
+    <div id="input-extra"></div>
+    <footer>
+      <button value="cancel">Annuleren</button>
+      <button value="ok" class="primary" id="input-ok">OK</button>
+    </footer>
+  </form>
+</dialog>
+
+<input type="file" id="file-import" accept="image/*,application/pdf" hidden>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

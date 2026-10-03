@@ -1,0 +1,385 @@
+// Tekenen, raken, begrenzen en transformeren van items.
+
+import { BRUSHES, strokePath, grainPattern } from './brushes.js';
+import { hatchPattern } from './patterns.js';
+import { drawStencil, STENCIL_MAP } from './stencils.js';
+import { getImage } from './assets.js';
+import { paperToWorld } from './model.js';
+import { formatLength, formatArea } from './units.js';
+import {
+  dist, bbox, distToSegment, pointInPolygon, polygonArea, polygonCentroid, matApply, rotate,
+} from './geom.js';
+
+const pathCache = new WeakMap();
+
+export function invalidate(item) {
+  pathCache.delete(item);
+}
+
+function hexA(color, a) {
+  const c = (color || '#000000').replace('#', '');
+  const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ---------------------------------------------------------------- tekenen
+
+/**
+ * rc: { doc, scale, zoom }  — zoom = px per meter (voor schermafhankelijke details)
+ */
+export function drawItem(g, item, rc) {
+  switch (item.type) {
+    case 'stroke': return drawStroke(g, item, rc);
+    case 'shape': return drawShape(g, item, rc);
+    case 'dim': return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
+    case 'stencil': return drawStencil(g, item, paperToWorld(0.25, rc.scale));
+    case 'text': return drawText(g, item, rc);
+    case 'image': return drawImage(g, item, rc);
+  }
+}
+
+function drawStroke(g, item, rc) {
+  const brush = BRUSHES[item.brush] || BRUSHES.pen;
+  let path = pathCache.get(item);
+  if (!path) {
+    path = strokePath(item.points, brush, item.width);
+    pathCache.set(item, path);
+  }
+  g.save();
+  g.globalAlpha *= brush.alpha * (item.opacity ?? 1);
+  if (brush.composite) g.globalCompositeOperation = brush.composite;
+  if (brush.texture === 'grain') {
+    const pat = grainPattern(g, item.color);
+    // Korrel in schermruimte houden, zodat het potlood er bij elke zoom hetzelfde uitziet.
+    const m = g.getTransform();
+    pat.setTransform(m.inverse());
+    g.fillStyle = pat;
+  } else {
+    g.fillStyle = item.color;
+  }
+  if (brush.soft) {
+    g.shadowColor = item.color;
+    g.shadowBlur = Math.max(2, item.width * rc.zoom * rc.dpr * 0.35);
+  }
+  g.fill(path, 'nonzero');
+  g.restore();
+  if (item.dims && item.points.length > 1) {
+    const a = item.points[0], b = item.points[item.points.length - 1];
+    drawDim(g, a, b, (item.dimSide || 1) * paperToWorld(4, rc.scale), rc, { extension: false });
+  }
+}
+
+function tracePath(g, item) {
+  const pts = item.points;
+  g.beginPath();
+  if (item.kind === 'circle') {
+    const r = dist(pts[0], pts[1]);
+    g.arc(pts[0][0], pts[0][1], r, 0, Math.PI * 2);
+    return;
+  }
+  g.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+  if (item.kind === 'polygon') g.closePath();
+}
+
+function drawShape(g, item, rc) {
+  if (item.points.length < 2) return;
+  g.save();
+  g.globalAlpha *= item.opacity ?? 1;
+  tracePath(g, item);
+  const closed = item.kind === 'polygon' || item.kind === 'circle';
+  if (closed && item.fill) {
+    g.fillStyle = hexA(item.fill, item.fillAlpha ?? 0.35);
+    g.fill();
+  }
+  if (closed && item.hatch && item.hatch !== 'none') {
+    const pat = hatchPattern(g, item.hatch, item.hatchColor || item.color);
+    if (pat) {
+      g.save();
+      g.globalAlpha *= 0.75;
+      g.fillStyle = pat;
+      g.fill();
+      g.restore();
+    }
+  }
+  if (item.width > 0 && item.stroke !== false) {
+    g.strokeStyle = item.color;
+    g.lineWidth = item.width;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    if (item.dash) g.setLineDash([item.width * 4, item.width * 3]);
+    g.stroke();
+  }
+  g.restore();
+  if (item.dims) drawShapeDims(g, item, rc);
+}
+
+function drawShapeDims(g, item, rc) {
+  const pts = item.points;
+  const off = paperToWorld(4, rc.scale);
+  if (item.kind === 'circle') {
+    const c = pts[0], r = dist(pts[0], pts[1]);
+    drawDim(g, [c[0] - r, c[1]], [c[0] + r, c[1]], 0, rc, { prefix: 'Ø ', extension: false });
+    if (item.area !== false) drawLabel(g, formatArea(Math.PI * r * r), [c[0], c[1] + paperToWorld(5, rc.scale)], rc);
+    return;
+  }
+  const closed = item.kind === 'polygon';
+  const centroid = closed ? polygonCentroid(pts) : null;
+  const n = closed ? pts.length : pts.length - 1;
+  const edges = item.dimEdges || [...Array(n).keys()];
+  for (const i of edges) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if (!a || !b || dist(a, b) < 1e-6) continue;
+    let o = 0;
+    if (closed) {
+      const nx = -(b[1] - a[1]), ny = b[0] - a[0];
+      const mx = (a[0] + b[0]) / 2 - centroid[0], my = (a[1] + b[1]) / 2 - centroid[1];
+      o = nx * mx + ny * my > 0 ? off : -off;
+    }
+    drawDim(g, a, b, o, rc, { extension: closed });
+  }
+  if (closed && item.area !== false && pts.length >= 3) {
+    drawLabel(g, formatArea(polygonArea(pts)), centroid, rc, true);
+  }
+}
+
+/** Maatlijn met schuine tikjes en een leesbaar label. */
+export function drawDim(g, a, b, offset, rc, opts = {}) {
+  const len = dist(a, b);
+  if (len < 1e-9) return;
+  const s = rc.scale;
+  const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len;
+  const nx = -uy, ny = ux;
+  const ox = nx * offset, oy = ny * offset;
+  const A = [a[0] + ox, a[1] + oy], B = [b[0] + ox, b[1] + oy];
+  const color = opts.color || '#1d2b36';
+  const lw = paperToWorld(0.18, s);
+  const tick = paperToWorld(1.4, s);
+
+  g.save();
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.lineWidth = lw;
+  g.lineCap = 'round';
+  g.beginPath();
+  if (offset !== 0 && opts.extension !== false) {
+    const sg = Math.sign(offset);
+    const gap = paperToWorld(0.8, s) * sg, ext = paperToWorld(1.2, s) * sg;
+    g.moveTo(a[0] + nx * gap, a[1] + ny * gap); g.lineTo(A[0] + nx * ext, A[1] + ny * ext);
+    g.moveTo(b[0] + nx * gap, b[1] + ny * gap); g.lineTo(B[0] + nx * ext, B[1] + ny * ext);
+  }
+  g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]);
+  // architectonische tikjes onder 45°
+  const tx = (ux + nx) * tick * 0.5, ty = (uy + ny) * tick * 0.5;
+  g.moveTo(A[0] - tx, A[1] - ty); g.lineTo(A[0] + tx, A[1] + ty);
+  g.moveTo(B[0] - tx, B[1] - ty); g.lineTo(B[0] + tx, B[1] + ty);
+  g.stroke();
+
+  // label
+  let ang = Math.atan2(uy, ux);
+  if (ang > Math.PI / 2 + 1e-6 || ang <= -Math.PI / 2 + 1e-6) ang += Math.PI;
+  const up = [Math.sin(ang), -Math.cos(ang)];
+  let out = up;
+  if (offset !== 0) out = [nx * Math.sign(offset), ny * Math.sign(offset)];
+  const above = out[0] * up[0] + out[1] * up[1] >= 0;
+  const text = (opts.prefix || '') + formatLength(len, s);
+  const h = paperToWorld(2.3, s);
+  const gapT = paperToWorld(0.8, s);
+  const mx = (A[0] + B[0]) / 2 + out[0] * gapT, my = (A[1] + B[1]) / 2 + out[1] * gapT;
+  g.translate(mx, my);
+  g.rotate(ang);
+  const k = h / 100;
+  g.scale(k, k);
+  g.font = '500 100px system-ui, -apple-system, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = above ? 'bottom' : 'top';
+  g.lineWidth = 22;
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.lineJoin = 'round';
+  g.strokeText(text, 0, 0);
+  g.fillText(text, 0, 0);
+  g.restore();
+}
+
+export function drawLabel(g, text, p, rc, italic = false, sizeMm = 2.5, color = '#1d2b36') {
+  const h = paperToWorld(sizeMm, rc.scale);
+  g.save();
+  g.translate(p[0], p[1]);
+  const k = h / 100;
+  g.scale(k, k);
+  g.font = `${italic ? 'italic ' : ''}500 100px system-ui, -apple-system, sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineWidth = 22;
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.lineJoin = 'round';
+  g.strokeText(text, 0, 0);
+  g.fillStyle = color;
+  g.fillText(text, 0, 0);
+  g.restore();
+}
+
+function drawText(g, item) {
+  g.save();
+  g.translate(item.x, item.y);
+  g.rotate(item.rot || 0);
+  const k = item.size / 100;
+  g.scale(k, k);
+  g.font = `${item.bold ? '700' : '500'} 100px system-ui, -apple-system, sans-serif`;
+  g.textAlign = 'left';
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = item.color || '#222';
+  const lines = String(item.text).split('\n');
+  lines.forEach((line, i) => g.fillText(line, 0, i * 120));
+  g.restore();
+}
+
+export function measureText(item) {
+  const lines = String(item.text).split('\n');
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  return { w: longest * 0.56 * item.size, h: (lines.length - 1) * 1.2 * item.size + item.size };
+}
+
+function drawImage(g, item, rc) {
+  const img = getImage(rc.doc, item.asset);
+  g.save();
+  g.translate(item.x, item.y);
+  g.rotate(item.rot || 0);
+  g.globalAlpha *= item.opacity ?? 1;
+  if (img) {
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, -item.w / 2, -item.h / 2, item.w, item.h);
+  } else {
+    g.fillStyle = '#e8e8e8';
+    g.fillRect(-item.w / 2, -item.h / 2, item.w, item.h);
+  }
+  g.restore();
+}
+
+// ---------------------------------------------------------------- geometrie
+
+/** Omtrekpunten van een item (wereld), voor lasso, begrenzing en snappen. */
+export function itemOutline(item) {
+  switch (item.type) {
+    case 'stroke':
+    case 'shape':
+      if (item.kind === 'circle') {
+        const c = item.points[0], r = dist(item.points[0], item.points[1]);
+        return Array.from({ length: 16 }, (_, i) => [c[0] + Math.cos(i * Math.PI / 8) * r, c[1] + Math.sin(i * Math.PI / 8) * r]);
+      }
+      return item.points;
+    case 'dim':
+      return [item.a, item.b];
+    case 'stencil':
+    case 'image':
+      return rectCorners(item.x, item.y, item.w, item.h, item.rot || 0);
+    case 'text': {
+      const m = measureText(item);
+      const r = item.rot || 0;
+      return [[0, -item.size], [m.w, -item.size], [m.w, m.h - item.size], [0, m.h - item.size]]
+        .map((p) => rotate(p, r)).map((p) => [p[0] + item.x, p[1] + item.y]);
+    }
+  }
+  return [];
+}
+
+function rectCorners(cx, cy, w, h, rot) {
+  return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+    .map((p) => rotate(p, rot)).map((p) => [p[0] + cx, p[1] + cy]);
+}
+
+export function itemBBox(item) {
+  const pts = itemOutline(item);
+  if (!pts.length) return null;
+  const b = bbox(pts);
+  const pad = (item.width || 0) / 2;
+  return { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
+}
+
+/** Ligt wereldpunt p binnen tol (meters) van het item? */
+export function hitItem(item, p, tol) {
+  switch (item.type) {
+    case 'stroke': {
+      const pts = item.points;
+      const t = tol + item.width / 2;
+      if (pts.length === 1) return dist(p, pts[0]) <= t;
+      for (let i = 1; i < pts.length; i++) if (distToSegment(p, pts[i - 1], pts[i]) <= t) return true;
+      return false;
+    }
+    case 'shape': {
+      const t = tol + (item.width || 0) / 2;
+      if (item.kind === 'circle') {
+        const r = dist(item.points[0], item.points[1]);
+        const d = dist(p, item.points[0]);
+        return Math.abs(d - r) <= t || ((item.fill || item.hatch) && d <= r);
+      }
+      const pts = item.points;
+      const n = item.kind === 'polygon' ? pts.length : pts.length - 1;
+      for (let i = 0; i < n; i++) if (distToSegment(p, pts[i], pts[(i + 1) % pts.length]) <= t) return true;
+      if (item.kind === 'polygon' && (item.fill || (item.hatch && item.hatch !== 'none'))) return pointInPolygon(p, pts);
+      return false;
+    }
+    case 'dim':
+      return distToSegment(p, item.a, item.b) <= tol * 1.5;
+    case 'stencil':
+    case 'image':
+    case 'text':
+      return pointInPolygon(p, itemOutline(item)) || itemOutline(item).some((q, i, arr) => distToSegment(p, q, arr[(i + 1) % arr.length]) <= tol);
+  }
+  return false;
+}
+
+/** Punten waarop andere geometrie kan snappen. */
+export function itemSnapPoints(item) {
+  switch (item.type) {
+    case 'stroke':
+      return item.points.length ? [item.points[0], item.points[item.points.length - 1]] : [];
+    case 'shape':
+      return item.kind === 'circle' ? [item.points[0]] : item.points;
+    case 'dim':
+      return [item.a, item.b];
+    case 'stencil':
+      return [[item.x, item.y]];
+  }
+  return [];
+}
+
+/** Pas matrix m (gelijkvormig: schaal s, rotatie r) toe op een item. */
+export function transformItem(item, m, s, r) {
+  const tp = (p) => {
+    const q = matApply(m, p);
+    return p.length > 2 ? [q[0], q[1], ...p.slice(2)] : q;
+  };
+  switch (item.type) {
+    case 'stroke':
+    case 'shape':
+      item.points = item.points.map(tp);
+      if (item.width) item.width *= s;
+      break;
+    case 'dim':
+      item.a = tp(item.a);
+      item.b = tp(item.b);
+      item.offset = (item.offset || 0) * s;
+      break;
+    case 'stencil':
+    case 'image': {
+      const c = tp([item.x, item.y]);
+      item.x = c[0]; item.y = c[1];
+      item.w *= s; item.h *= s;
+      item.rot = (item.rot || 0) + r;
+      break;
+    }
+    case 'text': {
+      const c = tp([item.x, item.y]);
+      item.x = c[0]; item.y = c[1];
+      item.size *= s;
+      item.rot = (item.rot || 0) + r;
+      break;
+    }
+  }
+  invalidate(item);
+}
+
+export function stencilDef(item) {
+  return STENCIL_MAP[item.symbol];
+}

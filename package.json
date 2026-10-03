@@ -1,0 +1,11 @@
+{
+  "name": "tuinontwerpapp",
+  "private": true,
+  "type": "module",
+  "description": "Tuinontwerp-app voor iPad (Apple Pencil) en laptop, geïnspireerd op Morpholio Trace.",
+  "scripts": {
+    "start": "npx http-server -p 8123 -c-1 .",
+    "lint": "eslint js sw.js",
+    "test": "node tests/e2e.cjs && node tests/touch.cjs"
+  }
+}
