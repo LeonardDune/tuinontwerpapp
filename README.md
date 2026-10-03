@@ -13,6 +13,9 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs de rand voor een exact rechte lijn die
   automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
   Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
+- **Evenwijdig tekenen**: draai je de liniaal of driehoek in de buurt van een bestaande lijn, dan klikt hij precies
+  evenwijdig (bij de liniaal ook haaks). De lijnen waarmee hij uitgelijnd is lichten op (∥ / ⊥), met de afstand tot de
+  dichtstbijzijnde lijn. Verschuif je hem, dan klikt die afstand op ronde maten (bijv. 0,5 / 1,0 / 1,5 m).
 - **Instelbare tekendriehoek**: versleep de bovenste punt om de hoek te veranderen (5°–85°, snapt per graad en blijft
   kleven op 15°, 30°, 45°, 60° en 75°), of tik erop voor de snelknoppen 30°, 45° en 60°. Knijp met twee vingers om hem groter of kleiner te maken. Teken langs elke rand.
 - **Gradenboog / passer**: knijp met twee vingers om de diameter te veranderen (in meters, blijft op schaal bij zoomen).

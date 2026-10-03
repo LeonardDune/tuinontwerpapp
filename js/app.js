@@ -19,6 +19,7 @@ import {
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -167,6 +168,7 @@ class App {
   }
 
   onStoreChange(evt) {
+    this.segCache = null;
     this.baseDirty = true;
     this.requestRender();
     if (evt.type === 'load') return;
@@ -299,6 +301,7 @@ class App {
       g.sync(cam);
       g.draw(ctx, cam, dpr, g === activeGuide, this.settings.guidesLocked);
     }
+    this.drawAlignment(ctx);
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -306,6 +309,73 @@ class App {
     ctx.restore();
     renderScaleBar(ctx, cam, width, height, dpr);
     this.sun.drawOverlay(ctx);
+  }
+
+  /** Indicatoren blijven na het loslaten nog even zichtbaar. */
+  lingerAlign() {
+    this.alignUntil = performance.now() + 1600;
+    clearTimeout(this.alignTimer);
+    this.alignTimer = setTimeout(() => { this.alignGuide = null; this.requestRender(); }, 1650);
+  }
+
+  /** Markeer lijnen waarmee het hulpmiddel evenwijdig (∥) of haaks (⊥) ligt, met de afstand. */
+  drawAlignment(ctx) {
+    const g = this.alignGuide;
+    if (!g || !this.guides.has(g.type)) return;
+    const active = this.mode === 'guide' || this.mode === 'guide2' || performance.now() < (this.alignUntil || 0);
+    if (!active) return;
+    const al = currentAlignments(g, this.cam, this.segments());
+    if (!al.length) return;
+    const { cam, dpr } = this;
+    const color = '#d6336c';
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const a of al) {
+      const A = cam.toScreen(a.seg.a), B = cam.toScreen(a.seg.b);
+      ctx.strokeStyle = 'rgba(214, 51, 108, 0.55)';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+      const m = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(m[0], m[1], 10, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 13px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(a.kind === 'perp' ? '⊥' : '∥', m[0], m[1] + 1);
+    }
+    // afstand tot de dichtstbijzijnde evenwijdige lijn
+    const par = al.filter((a) => a.kind === 'parallel');
+    if (par.length) {
+      const a = par.reduce((mn, x) => (Math.abs(x.offset) < Math.abs(mn.offset) ? x : mn));
+      const c = cam.toWorld([g.x, g.y]);
+      const proj = (p, l) => {
+        const dx = l.b[0] - l.a[0], dy = l.b[1] - l.a[1], L = dx * dx + dy * dy || 1;
+        const t = ((p[0] - l.a[0]) * dx + (p[1] - l.a[1]) * dy) / L;
+        return [l.a[0] + dx * t, l.a[1] + dy * t];
+      };
+      const q = cam.toScreen(proj(c, a.seg)), r = cam.toScreen(proj(c, a.edge));
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(r[0], r[1]); ctx.stroke();
+      ctx.setLineDash([]);
+      const d = Math.abs(a.offset);
+      const text = d * cam.zoom < 1.5 ? '∥ in lijn' : `∥ ${formatLength(d, this.store.doc.scale)}`;
+      ctx.font = '600 13px system-ui, -apple-system, sans-serif';
+      const w = ctx.measureText(text).width + 14;
+      const mx = (q[0] + r[0]) / 2, my = (q[1] + r[1]) / 2;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(mx - w / 2, my - 12, w, 24, 12) : ctx.rect(mx - w / 2, my - 12, w, 24);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, mx, my + 1);
+    }
+    ctx.restore();
   }
 
   fitView(defaultIfEmpty = false) {
@@ -554,6 +624,7 @@ class App {
         break;
       case 'guide': {
         const gd = this.guideDrag;
+        this.lingerAlign();
         if (gd && !gd.moved) this.showGuideBar(this.guideBarFor === gd.guide && gd.kind === 'move' ? null : gd.guide);
         else if (this.guideBarFor) this.updateGuideBarValues();
         this.mode = null;
@@ -566,6 +637,7 @@ class App {
           this.mode = null;
           this.guideDrag = null;
           this.persistSettings();
+          this.lingerAlign();
           if (this.guideBarFor) this.updateGuideBarValues();
         }
         break;
@@ -657,13 +729,49 @@ class App {
       const c = [g.x, g.y];
       const a0 = Math.atan2(d.startS[1] - c[1], d.startS[0] - c[0]);
       const a1 = Math.atan2(s[1] - c[1], s[0] - c[0]);
-      g.rot = this.snapGuideRot(d.rot + a1 - a0);
+      g.rot = this.snapGuideRot(d.rot + a1 - a0, g);
       if (this.guideBarFor === g) this.updateGuideBarValues();
     }
+    if (d.kind === 'move' && g.type !== 'protractor') this.snapGuideOffset(g);
+    this.alignGuide = g;
     this.requestRender();
   }
 
-  snapGuideRot(rot) {
+  /** Evenwijdig liggende liniaal: afstand tot de dichtstbijzijnde lijn op ronde maten laten klikken. */
+  snapGuideOffset(g) {
+    const al = currentAlignments(g, this.cam, this.segments()).filter((a) => a.kind === 'parallel');
+    if (!al.length) return;
+    const a = al.reduce((m, x) => (Math.abs(x.offset) < Math.abs(m.offset) ? x : m));
+    const zoom = this.cam.zoom;
+    const step = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25].find((v) => v * zoom >= 18) || 50;
+    const snapped = Math.round(a.offset / step) * step;
+    const delta = snapped - a.offset;
+    if (Math.abs(delta) * zoom > 7) return;
+    const dx = a.seg.b[0] - a.seg.a[0], dy = a.seg.b[1] - a.seg.a[1], len = Math.hypot(dx, dy) || 1;
+    const n = [(-dy / len) * delta, (dx / len) * delta];
+    const s0 = this.cam.toScreen([0, 0]), s1 = this.cam.toScreen(n);
+    g.x += s1[0] - s0[0];
+    g.y += s1[1] - s0[1];
+  }
+
+  /** Rechte lijnen in de tekening (gecachet per documentwijziging en zoomniveau). */
+  segments() {
+    const key = Math.round(Math.log2(this.cam.zoom) * 2);
+    if (!this.segCache || this.segCache.key !== key) {
+      this.segCache = { key, segs: collectSegments(this.store.doc, 24 / this.cam.zoom) };
+    }
+    return this.segCache.segs;
+  }
+
+  snapGuideRot(rot, g = null) {
+    // eerst: magnetisch evenwijdig (of haaks) aan een bestaande lijn
+    if (g && g.type !== 'protractor') {
+      const old = g.rot;
+      g.rot = rot;
+      const best = bestAlignment(g, this.cam, this.segments(), 3 * DEG);
+      g.rot = old;
+      if (best) return rot - best.diff;
+    }
     const world = -(rot - this.cam.rot);
     const step = 15 * DEG;
     const snapped = Math.round(world / step) * step;
@@ -704,7 +812,7 @@ class App {
     // draaien
     const ang0 = Math.atan2(d.s2[1] - d.s1[1], d.s2[0] - d.s1[0]);
     const ang1 = Math.atan2(b.s[1] - a.s[1], b.s[0] - a.s[0]);
-    g.rot = this.snapGuideRot(d.rot + ang1 - ang0);
+    g.rot = this.snapGuideRot(d.rot + ang1 - ang0, g);
     const dr = g.rot - d.rot;
     // knijpen = groter/kleiner (niet voor de liniaal)
     let f = dist(a.s, b.s) / Math.max(1, dist(d.s1, d.s2));
@@ -727,6 +835,8 @@ class App {
     const off = rotate([(d.x - mid0[0]) * f, (d.y - mid0[1]) * f], dr);
     g.x = mid1[0] + off[0];
     g.y = mid1[1] + off[1];
+    if (g.type !== 'protractor') this.snapGuideOffset(g);
+    this.alignGuide = g;
     if (this.guideBarFor === g) this.updateGuideBarValues();
     this.requestRender();
   }
@@ -813,6 +923,8 @@ class App {
           g.y += corner[1] - c[1];
         } else {
           g.rot = this.cam.rot - v * DEG;
+          this.alignGuide = g;
+          this.lingerAlign();
         }
       }
     }
