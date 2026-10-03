@@ -17,6 +17,9 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
   snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
+- **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
+  teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
+  twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.
 - **Magische lasso**: omcirkel of tik om te selecteren, daarna verplaatsen, schalen, draaien, dupliceren, inkleuren,
   naar voren/achteren, naar een andere laag of verwijderen. Kopiëren en plakken met ⌘C/⌘V.
 - **Stencils**: bomen (kroondiameter), heesters, hagen, grassen, vaste planten, meubilair, schuur, pergola, kas, vijver,
@@ -41,7 +44,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 | Verschuiven | Eén vinger (zodra de Pencil is herkend) | Spatie + slepen, middelste muisknop of twee vingers scrollen |
 | Zoomen / draaien | Knijpen en draaien met twee vingers | Knijpen op het trackpad, ⌘/Ctrl + scrollen, muiswiel |
 | Ongedaan maken / opnieuw | Tik met twee / drie vingers | ⌘Z / ⇧⌘Z |
-| Langs een hulpmiddel tekenen | Houd het met een vinger vast en teken met de Pencil langs de rand | Teken langs de rand |
+| Langs een hulpmiddel tekenen | Teken langs of óp de rand, met Pencil of vinger (ook terwijl een vinger het vasthoudt) | Teken langs de rand |
+| Hulpmiddel verplaatsen | Tekenmodus: twee vingers (verplaatsen, draaien, knijpen). Verplaatsmodus: slepen en grepen | Slot open, dan slepen |
 
 Sneltoetsen: P pen, E gum, L lasso, M maatlijn, T tekst, S stencil, V vlak, R liniaal, G raster, 0 alles in beeld,
 Delete verwijdert de selectie en Esc annuleert.

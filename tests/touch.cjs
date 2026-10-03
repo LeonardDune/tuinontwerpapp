@@ -59,7 +59,8 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
     fire('pointerup', 12, 'touch', 0, 0); fire('pointerup', 13, 'touch', 0, 0);
     out.pinchAroundSmallProtractor = pr.worldR > 0.5 && app.cam.zoom === zoomBefore;
     app.toggleGuide('protractor');
-    // 8) bovenste punt van de driehoek slepen = hoek
+    // 8) bovenste punt van de driehoek slepen = hoek (verplaatsmodus)
+    app.setGuidesLocked(false);
     app.toggleGuide('tri45');
     const tri = app.guides.get('tri45');
     tri.x = 500; tri.y = 400; tri.build();
@@ -74,6 +75,10 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
     const c2 = tri.toScreen(tri.poly[0]);
     out.apexDragSetsAngle = tri.angle === 30 && Math.hypot(c2[0] - corner[0], c2[1] - corner[1]) < 0.01 && count() === 1;
 
+    app.setGuidesLocked(true);
+    const tx = tri.x, ty = tri.y;
+    fire('pointerdown', 15, 'pen', tri.x, tri.y, 0.5); fire('pointermove', 15, 'pen', tri.x + 60, tri.y + 30, 0.5); fire('pointerup', 15, 'pen', tri.x + 60, tri.y + 30, 0);
+    out.lockedGuideStaysPut = tri.x === tx && tri.y === ty;
     // 9) vinger houdt de gradenboog vast, Pencil tekent langs de boog
     app.toggleGuide('protractor');
     const gp = app.guides.get('protractor');

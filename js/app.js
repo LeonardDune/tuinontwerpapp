@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
   grid: true,
   snap: true,
   angleSnap: true,
+  guidesLocked: true, // tekenmodus: hulpmiddelen liggen vast, verplaatsen met twee vingers
   guides: [],
   lastDoc: null,
   state: null,
@@ -55,6 +56,9 @@ const DEFAULT_STATE = {
   stencilSizes: {},
   stencilOwnColor: false,
 };
+
+// Gereedschappen waarvan de invoer langs een liniaal/driehoek/gradenboog wordt geleid
+const GUIDE_TOOLS = new Set(['draw', 'eraser', 'line', 'rect', 'circle', 'polygon', 'area', 'dim', 'calibrate']);
 
 class App {
   constructor() {
@@ -284,7 +288,7 @@ class App {
     const activeGuide = this.guideDrag?.guide || this.guideBarFor;
     for (const g of this.guides.values()) {
       g.sync(cam);
-      g.draw(ctx, cam, dpr, g === activeGuide);
+      g.draw(ctx, cam, dpr, g === activeGuide, this.settings.guidesLocked);
     }
 
     ctx.save();
@@ -309,8 +313,14 @@ class App {
   }
 
   makeEvent(e, s) {
+    let guided = false;
+    if (this.activeGuideSnap) {
+      s = this.activeGuideSnap.project(s);
+      guided = true;
+    }
     return {
       s,
+      guided,
       w: this.cam.toWorld(s),
       pressure: e.pressure,
       pointerType: e.pointerType,
@@ -395,6 +405,7 @@ class App {
       const tp = this.pointers.get(this.toolPointer);
       if (tp && tp.type === 'touch' && (e.timeStamp - tp.t < 500 || dist(tp.s, tp.start) < 40)) {
         this.tool.cancel();
+        this.activeGuideSnap = null;
         const g = this.guideUnderPinch();
         if (g) {
           this.toolPointer = null;
@@ -421,34 +432,39 @@ class App {
   startToolOrGuide(e, s) {
     const touchNav = e.pointerType === 'touch' && this.settings.pencilOnly;
     const mouseNav = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || this.spaceDown);
+    const locked = this.settings.guidesLocked;
+    const guidesTool = GUIDE_TOOLS.has(this.state.tool);
 
-    // Liniaal / driehoek / gradenboog: eerst de grepen, dan tekenen langs een rand, dan verplaatsen
-    const guides = [...this.guides.values()].reverse();
-    for (const g of guides) g.sync(this.cam);
-    let guideHit = null;
-    for (const g of guides) {
-      const grip = g.gripAt(s);
-      if (grip) { guideHit = { g, hit: grip }; break; }
-    }
-    if (!guideHit) {
+    // Verplaatsmodus: grepen, dan tekenen langs een rand, dan het hulpmiddel verslepen.
+    // Tekenmodus: één vinger/Pencil/muis verplaatst nooit een hulpmiddel (dat gaat met twee vingers).
+    if (!locked) {
+      const guides = [...this.guides.values()].reverse();
+      for (const g of guides) g.sync(this.cam);
+      let guideHit = null;
       for (const g of guides) {
-        if (!touchNav && !mouseNav && this.state.tool === 'draw' && g.snapAt(s)) break;
-        const hit = g.hit(s);
-        if (hit) { guideHit = { g, hit }; break; }
+        const grip = g.gripAt(s);
+        if (grip) { guideHit = { g, hit: grip }; break; }
       }
-    }
-    if (guideHit) {
-      const { g, hit } = guideHit;
-      this.mode = 'guide';
-      this.guideDrag = {
-        guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, size: g.size, worldR: g.worldR, moved: false, id: e.pointerId,
-      };
-      if (hit === 'angle') {
-        this.guideDrag.corner = g.toScreen(g.poly[0]);
-        this.guideDrag.w0 = g.poly[1][0] - g.poly[0][0];
+      if (!guideHit) {
+        for (const g of guides) {
+          if (!touchNav && !mouseNav && guidesTool && g.snapAt(s)) break;
+          const hit = g.hit(s);
+          if (hit) { guideHit = { g, hit }; break; }
+        }
       }
-      this.requestRender();
-      return;
+      if (guideHit) {
+        const { g, hit } = guideHit;
+        this.mode = 'guide';
+        this.guideDrag = {
+          guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, size: g.size, worldR: g.worldR, moved: false, id: e.pointerId,
+        };
+        if (hit === 'angle') {
+          this.guideDrag.corner = g.toScreen(g.poly[0]);
+          this.guideDrag.w0 = g.poly[1][0] - g.poly[0][0];
+        }
+        this.requestRender();
+        return;
+      }
     }
     if (this.guideBarFor && !this.guideSnapAt(s)) this.showGuideBar(null);
 
@@ -459,6 +475,7 @@ class App {
     }
     this.mode = 'tool';
     this.toolPointer = e.pointerId;
+    this.activeGuideSnap = guidesTool ? this.guideSnapAt(s, locked) : null;
     this.tool.down(this.makeEvent(e, s));
     this.requestRender();
   }
@@ -509,6 +526,7 @@ class App {
         else this.tool.up(this.makeEvent(e, s));
         this.mode = null;
         this.toolPointer = null;
+        this.activeGuideSnap = null;
         break;
       case 'nav':
         if (this.pointers.size === 0) {
@@ -859,10 +877,11 @@ class App {
     return layer;
   }
 
-  guideSnapAt(s) {
+  guideSnapAt(s, anywhereInside = false) {
     const guides = [...this.guides.values()].reverse();
     for (const g of guides) {
-      const snap = g.snapAt(s);
+      g.sync(this.cam);
+      const snap = g.snapAt(s, anywhereInside);
       if (snap) return snap;
     }
     return null;
@@ -892,6 +911,7 @@ class App {
     // gereedschap
     for (const b of $$('#toolbar .tool')) b.addEventListener('click', () => this.setTool(b.dataset.tool));
     for (const b of $$('#toolbar .guide-btn')) b.addEventListener('click', () => this.toggleGuide(b.dataset.guide));
+    $('#btn-guide-lock').addEventListener('click', () => this.setGuidesLocked(!this.settings.guidesLocked));
     this.syncGuideButtons();
 
     $('#btn-undo').addEventListener('click', () => this.store.undo());
@@ -975,7 +995,9 @@ class App {
       this.guides.set(type, g);
       if (!this.settings.guideHintShown) {
         this.settings.guideHintShown = true;
-        this.toast('Sleep om te verplaatsen. Twee vingers: draaien en knijpen voor de grootte. Bij de driehoek de bovenste punt slepen voor de hoek. Teken langs een rand voor een rechte lijn.', 6000);
+        this.toast(this.settings.guidesLocked
+          ? 'Teken langs de rand (of erop) voor een rechte lijn. Verplaatsen, draaien en schalen met twee vingers, of zet het slot open.'
+          : 'Sleep om te verplaatsen; grepen voor draaien, grootte en hoek. Zet het slot dicht om er gewoon langs te tekenen.', 6000);
       }
     }
     this.syncGuideButtons();
@@ -985,6 +1007,25 @@ class App {
 
   syncGuideButtons() {
     for (const b of $$('#toolbar .guide-btn')) b.classList.toggle('active', this.guides.has(b.dataset.guide));
+    const lock = $('#btn-guide-lock');
+    const locked = this.settings.guidesLocked;
+    lock.hidden = this.guides.size === 0;
+    lock.classList.toggle('locked', locked);
+    lock.title = locked
+      ? 'Tekenmodus: hulpmiddelen liggen vast (twee vingers om te verplaatsen). Tik om te verplaatsen.'
+      : 'Verplaatsmodus: sleep hulpmiddelen en gebruik de grepen. Tik om ze vast te zetten.';
+    lock.innerHTML = `${icon(locked ? 'lock' : 'unlock')}<span>${locked ? 'Vast' : 'Los'}</span>`;
+  }
+
+  setGuidesLocked(locked) {
+    this.settings.guidesLocked = locked;
+    if (locked) this.showGuideBar(null);
+    this.persistSettings();
+    this.syncGuideButtons();
+    this.toast(locked
+      ? 'Tekenmodus: hulpmiddelen liggen vast. Teken langs de rand met vinger of Pencil; verplaatsen, draaien en schalen met twee vingers.'
+      : 'Verplaatsmodus: sleep om te verplaatsen, gebruik de grepen voor draaien, grootte en hoek, tik voor instellingen.', 4500);
+    this.requestRender();
   }
 
   updateUndoButtons() {

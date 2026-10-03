@@ -64,6 +64,28 @@ function assert(cond, msg) {
   const ys = ruled.points.map((p) => p[1]);
   assert(Math.max(...ys) - Math.min(...ys) < 1e-6, 'lijn langs liniaal is exact recht');
   assert(ruled.dims === true, 'lijn langs liniaal krijgt automatisch een maat');
+
+  // Tekenmodus (standaard): op de liniaal tekenen verplaatst hem niet maar volgt de dichtstbijzijnde rand
+  assert(await page.evaluate(() => window.app.settings.guidesLocked) === true, 'tekenmodus staat standaard aan');
+  const gBefore = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return [g.x, g.y]; });
+  await drag([[guide.x - 150, guide.y - 12], [guide.x, guide.y - 8], [guide.x + 120, guide.y - 16]]);
+  const gAfter = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return [g.x, g.y]; });
+  it = await items();
+  const onRuler = it[it.length - 1];
+  const ys2 = onRuler.points.map((p) => p[1]);
+  assert(gAfter[0] === gBefore[0] && gAfter[1] === gBefore[1], 'liniaal blijft liggen bij tekenen erop');
+  assert(Math.max(...ys2) - Math.min(...ys2) < 1e-6 && Math.abs(ys2[0] - ruled.points[0][1]) < 1e-6, 'streek op de liniaal komt exact op de bovenrand');
+  // lijngereedschap langs de onderrand
+  await tool('line');
+  const yLow = guide.y + guide.H / 2 + 5;
+  await drag([[guide.x - 100, yLow + 4], [guide.x + 100, yLow - 6]]);
+  it = await items();
+  const lineAlong = it[it.length - 1];
+  assert(lineAlong.type === 'shape' && Math.abs(lineAlong.points[0][1] - lineAlong.points[1][1]) < 1e-6, 'lijngereedschap volgt de rand van de liniaal');
+  await tool('draw');
+  // naar verplaatsmodus
+  await page.click('#btn-guide-lock');
+  assert(await page.evaluate(() => window.app.settings.guidesLocked) === false, 'slot open: verplaatsmodus');
   // liniaal draaien via greep
   await drag([[guide.x + 760 / 2 - 30, guide.y], [guide.x + 760 / 2 - 30, guide.y + 120]], 10);
   const rot = await page.evaluate(() => window.app.guides.get('ruler').rot);

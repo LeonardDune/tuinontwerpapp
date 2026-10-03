@@ -51,6 +51,11 @@ export function snapPoint(app, w, from = null, exclude = null) {
   return { p: w, kind: null };
 }
 
+/** Snappen, behalve als de invoer al langs een hulpmiddel (liniaal e.d.) is geleid. */
+function pick(app, e, from = null) {
+  return e.guided ? { p: e.w, kind: null } : snapPoint(app, e.w, from);
+}
+
 function drawSnapMarker(ctx, app, snap) {
   if (!snap || !snap.kind || snap.kind === 'angle') return;
   const s = app.cam.toScreen(snap.p);
@@ -98,7 +103,7 @@ export class DrawTool extends Tool {
   down(e) {
     this.layer = this.app.editableLayer();
     if (!this.layer) { this.points = null; return; }
-    this.snap = this.app.guideSnapAt(e.s);
+    this.snap = this.app.activeGuideSnap; // invoer wordt door de app al langs de rand geleid
     this.points = [];
     this.lastS = null;
     this.pEma = null;
@@ -107,8 +112,7 @@ export class DrawTool extends Tool {
   }
 
   add(e) {
-    let s = e.s;
-    if (this.snap) s = this.snap.project(s);
+    const s = e.s;
     this.curS = s;
     if (this.lastS && dist(s, this.lastS) < 0.75) return;
     const brush = BRUSHES[this.app.state.brush];
@@ -545,7 +549,7 @@ export class ShapeTool extends Tool {
       this.ptsS = [e.s];
       return;
     }
-    this.snap = snapPoint(this.app, e.w);
+    this.snap = pick(this.app, e);
     this.p0 = this.snap.p;
     this.p1 = this.p0;
     this.curS = e.s;
@@ -557,7 +561,7 @@ export class ShapeTool extends Tool {
     if (this.kind === 'polygon') {
       if (!this.poly) return;
       const prev = this.poly.length > 1 ? this.poly[this.poly.length - 2] : null;
-      this.snap = snapPoint(this.app, e.w, prev);
+      this.snap = pick(this.app, e, prev);
       this.poly[this.poly.length - 1] = this.snap.p;
       return;
     }
@@ -569,7 +573,7 @@ export class ShapeTool extends Tool {
       return;
     }
     if (!this.p0) return;
-    this.snap = snapPoint(this.app, e.w, this.kind === 'line' ? this.p0 : null);
+    this.snap = pick(this.app, e, this.kind === 'line' ? this.p0 : null);
     this.p1 = this.snap.p;
   }
 
@@ -635,7 +639,7 @@ export class ShapeTool extends Tool {
     const app = this.app;
     const now = e.time;
     if (!this.poly) {
-      this.snap = snapPoint(app, e.w);
+      this.snap = pick(app, e);
       this.poly = [this.snap.p, this.snap.p];
       this.lastDown = { t: now, s: e.s };
       app.updatePolygonUI(true);
@@ -654,7 +658,7 @@ export class ShapeTool extends Tool {
     }
     this.lastDown = { t: now, s: e.s };
     const prev = this.poly[this.poly.length - 2];
-    this.snap = snapPoint(app, e.w, prev);
+    this.snap = pick(app, e, prev);
     this.poly[this.poly.length - 1] = this.snap.p;
     this.poly.push(this.snap.p);
   }
@@ -735,14 +739,14 @@ export class DimTool extends Tool {
   down(e) {
     this.layer = this.app.editableLayer();
     if (!this.layer) return;
-    this.snap = snapPoint(this.app, e.w);
+    this.snap = pick(this.app, e);
     this.a = this.snap.p;
     this.b = this.a;
   }
 
   move(e) {
     if (!this.a) return;
-    this.snap = snapPoint(this.app, e.w, this.a);
+    this.snap = pick(this.app, e, this.a);
     this.b = this.snap.p;
   }
 
@@ -817,7 +821,7 @@ export class StencilTool extends Tool {
     if (!this.layer) return;
     const def = STENCIL_MAP[this.app.state.stencil];
     if (!def) return;
-    this.snap = snapPoint(this.app, e.w);
+    this.snap = pick(this.app, e);
     const size = this.app.stencilSize(def.id);
     this.item = {
       type: 'stencil', id: uid(), symbol: def.id,
@@ -857,14 +861,14 @@ export class StencilTool extends Tool {
 
 export class CalibrateTool extends Tool {
   down(e) {
-    this.snap = snapPoint(this.app, e.w);
+    this.snap = pick(this.app, e);
     this.a = this.snap.p;
     this.b = this.a;
   }
 
   move(e) {
     if (!this.a) return;
-    this.snap = snapPoint(this.app, e.w, this.a);
+    this.snap = pick(this.app, e, this.a);
     this.b = this.snap.p;
   }
 

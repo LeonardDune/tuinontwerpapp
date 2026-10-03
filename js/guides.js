@@ -122,22 +122,31 @@ export class Guide {
     return null;
   }
 
-  /** Zoek een rand om langs te tekenen. Geeft een snap-object of null. */
-  snapAt(p) {
+  /**
+   * Zoek een rand om langs te tekenen. Geeft een snap-object of null.
+   * anywhereInside: ook bij een begin midden óp het hulpmiddel de dichtstbijzijnde rand kiezen
+   * (tekenmodus, waarin hulpmiddelen vastliggen).
+   */
+  snapAt(p, anywhereInside = false) {
     const l = this.toLocal(p);
     const inside = pointInPolygon(l, this.poly);
+    const free = anywhereInside && inside;
     if (this.type === 'protractor') {
-      if (dist(l, [0, 0]) < SNAP_PX) return new RaySnap(this);
       const d = dist(l, [0, 0]);
-      if (Math.abs(d - this.R) < SNAP_PX && l[1] < SNAP_PX * 0.5) {
-        return new ArcSnap(this);
+      const centerD = d, arcD = Math.abs(d - this.R), diamD = Math.abs(l[1]);
+      if (free) {
+        // dichtstbijzijnde van middelpunt, boog en rechte rand
+        if (centerD < Math.min(SNAP_PX * 1.5, arcD, diamD)) return new RaySnap(this);
+        return arcD <= diamD ? new ArcSnap(this) : new LineSnap(this, this.edges[0][0], this.edges[0][1]);
       }
+      if (centerD < SNAP_PX) return new RaySnap(this);
+      if (arcD < SNAP_PX && l[1] < SNAP_PX * 0.5) return new ArcSnap(this);
     }
-    let best = null, bestD = SNAP_PX;
+    let best = null, bestD = free ? Infinity : SNAP_PX;
     for (const [a, b] of this.edges) {
-      const d = distToSegment(l, a, b);
-      if (d < bestD && (!inside || d < 14)) {
-        bestD = d;
+      const dd = distToSegment(l, a, b);
+      if (dd < bestD && (free || !inside || dd < 14)) {
+        bestD = dd;
         best = [a, b];
       }
     }
@@ -145,7 +154,7 @@ export class Guide {
     return null;
   }
 
-  draw(ctx, cam, dpr, active) {
+  draw(ctx, cam, dpr, active, locked = false) {
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(this.x, this.y);
@@ -172,8 +181,9 @@ export class Guide {
     if (this.type === 'tri45' || this.type === 'tri30') this.drawTriangleTicks(ctx, cam);
     if (this.type === 'protractor') this.drawProtractorTicks(ctx);
 
-    // draaigrepen
-    for (const g of this.grips.rotate) {
+    // grepen (alleen in de verplaatsmodus)
+    const grips = locked ? { rotate: [], resize: [], angle: [] } : this.grips;
+    for (const g of grips.rotate) {
       ctx.beginPath();
       ctx.arc(g[0], g[1], GRIP_R, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -189,7 +199,7 @@ export class Guide {
       ctx.stroke();
     }
 
-    for (const g of this.grips.resize) {
+    for (const g of grips.resize) {
       ctx.beginPath();
       ctx.arc(g[0], g[1], GRIP_R, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -203,7 +213,7 @@ export class Guide {
       ctx.stroke();
     }
 
-    for (const g of this.grips.angle || []) {
+    for (const g of grips.angle || []) {
       ctx.beginPath();
       ctx.arc(g[0], g[1], 9, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
