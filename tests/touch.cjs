@@ -73,6 +73,32 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
     fire('pointerup', 14, 'touch', target[0], target[1]);
     const c2 = tri.toScreen(tri.poly[0]);
     out.apexDragSetsAngle = tri.angle === 30 && Math.hypot(c2[0] - corner[0], c2[1] - corner[1]) < 0.01 && count() === 1;
+
+    // 9) vinger houdt de gradenboog vast, Pencil tekent langs de boog
+    app.toggleGuide('protractor');
+    const gp = app.guides.get('protractor');
+    gp.x = 600; gp.y = 600; gp.worldR = 3; gp.zoom = null; gp.sync(app.cam);
+    const before9 = count();
+    fire('pointerdown', 20, 'touch', 600, 600 - gp.R * 0.7); // vinger op de gradenboog
+    const arcPts = [];
+    for (let d = 40; d <= 140; d += 10) { const a = d * Math.PI / 180; arcPts.push([600 + Math.cos(a) * (gp.R + 6), 600 - Math.sin(a) * (gp.R + 6)]); }
+    fire('pointerdown', 21, 'pen', arcPts[0][0], arcPts[0][1], 0.5);
+    for (const p of arcPts.slice(1)) fire('pointermove', 21, 'pen', p[0], p[1], 0.6);
+    fire('pointermove', 20, 'touch', 610, 600 - gp.R * 0.7); // vinger beweegt iets: gradenboog blijft liggen
+    fire('pointerup', 21, 'pen', arcPts[arcPts.length - 1][0], arcPts[arcPts.length - 1][1], 0);
+    fire('pointerup', 20, 'touch', 610, 600 - gp.R * 0.7);
+    const arcItem = app.store.doc.layers[0].items[app.store.doc.layers[0].items.length - 1];
+    const cw = app.cam.toWorld([600, 600]);
+    out.penDrawsAlongHeldProtractor = count() === before9 + 1 && gp.x === 600 &&
+      arcItem.points.every((p) => Math.abs(Math.hypot(p[0] - cw[0], p[1] - cw[1]) - 3) < 0.01);
+    app.toggleGuide('protractor');
+    // 10) rustende handpalm (navigatie bezig) blokkeert de Pencil niet
+    const before10 = count();
+    const camX = app.cam.x;
+    fire('pointerdown', 22, 'touch', 900, 700);
+    fire('pointerdown', 23, 'pen', 300, 650, 0.5); fire('pointermove', 23, 'pen', 400, 660, 0.5); fire('pointerup', 23, 'pen', 400, 660, 0);
+    fire('pointerup', 22, 'touch', 900, 700);
+    out.palmDoesNotBlockPen = count() === before10 + 1 && app.cam.x === camX;
     return out;
   });
   console.log(res);

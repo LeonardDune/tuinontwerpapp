@@ -7,8 +7,7 @@ import { niceStep, formatTick, formatAngle, formatLength } from './units.js';
 
 export const GUIDE_TYPES = {
   ruler: 'Liniaal',
-  tri45: 'Driehoek 45°',
-  tri30: 'Driehoek 30°/60°',
+  tri45: 'Driehoek',
   protractor: 'Gradenboog',
 };
 

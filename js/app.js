@@ -93,7 +93,9 @@ class App {
     };
 
     for (const g of this.settings.guides || []) {
-      if (GUIDE_TYPES[g.type]) this.guides.set(g.type, new Guide(g.type, g.x, g.y, g.rot, g));
+      // vroegere tweede driehoek (30°/60°) wordt de ene instelbare driehoek
+      const type = g.type === 'tri30' ? 'tri45' : g.type;
+      if (GUIDE_TYPES[type] && !this.guides.has(type)) this.guides.set(type, new Guide(type, g.x, g.y, g.rot, g));
     }
 
     setAssetLoadHandler(() => { this.baseDirty = true; this.requestRender(); });
@@ -371,6 +373,17 @@ class App {
     }
     this.pointers.set(e.pointerId, { s, start: s, type: e.pointerType, t: e.timeStamp });
 
+    // De Pencil heeft altijd voorrang: een vinger die een hulpmiddel vasthoudt of een rustende
+    // handpalm blijft liggen (wordt genegeerd) en de Pencil tekent gewoon.
+    if (e.pointerType === 'pen' && this.mode && this.mode !== 'tool') {
+      if (this.mode === 'guide' || this.mode === 'guide2') this.persistSettings();
+      this.mode = null;
+      this.nav = null;
+      this.guideDrag = null;
+      this.startToolOrGuide(e, s);
+      return;
+    }
+
     if (this.mode === 'nav') {
       // twee vingers op (of rond) een hulpmiddel: dat hulpmiddel knijpen/draaien i.p.v. de tekening
       const g = e.pointerType === 'touch' && this.pointers.size === 2 && !this.nav?.moved ? this.guideUnderPinch() : null;
@@ -401,7 +414,11 @@ class App {
       return;
     }
     if (this.mode) return;
+    this.startToolOrGuide(e, s);
+  }
 
+  /** Begin een handeling voor een nieuwe aanraking: hulpmiddel verplaatsen, navigeren of tekenen. */
+  startToolOrGuide(e, s) {
     const touchNav = e.pointerType === 'touch' && this.settings.pencilOnly;
     const mouseNav = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || this.spaceDown);
 
@@ -695,8 +712,11 @@ class App {
       return;
     }
     const field = (key, label, unit) => `<label>${label}<button type="button" class="step" data-step="${key}:-1">−</button><input data-k="${key}" inputmode="decimal"><button type="button" class="step" data-step="${key}:1">+</button>${unit}</label>`;
-    let html = `<span>${g.type.startsWith('tri') ? 'Driehoek' : GUIDE_TYPES[g.type]}</span>`;
-    if (g.type === 'tri45' || g.type === 'tri30') html += field('angle', 'Hoek', '°') + '<span class="sepv"></span>';
+    let html = `<span>${GUIDE_TYPES[g.type]}</span>`;
+    if (g.type === 'tri45') {
+      html += field('angle', 'Hoek', '°');
+      html += [30, 45, 60].map((a) => `<button type="button" data-preset="${a}">${a}°</button>`).join('') + '<span class="sepv"></span>';
+    }
     if (g.type === 'protractor') html += field('diam', 'Diameter', 'm') + '<span class="sepv"></span>';
     html += field('rot', 'Draaiing', '°');
     html += `<button type="button" data-act="remove" title="Weghalen">${icon('trash', 20)}</button>`;
@@ -715,6 +735,7 @@ class App {
         this.applyGuideValue(k, String(Math.round((cur + step * Number(dir)) * 1000) / 1000));
       });
     }
+    for (const b of $$('[data-preset]', bar)) b.addEventListener('click', () => this.applyGuideValue('angle', b.dataset.preset));
     $('[data-act="remove"]', bar).addEventListener('click', () => this.toggleGuide(g.type));
     $('[data-act="close"]', bar).addEventListener('click', () => this.showGuideBar(null));
     this.updateGuideBarValues();
@@ -752,8 +773,15 @@ class App {
       const v = parseFloat(String(raw).replace(',', '.'));
       if (Number.isFinite(v)) {
         if (k === 'angle') {
+          const corner = g.toScreen(g.poly[0]);
+          const w0 = g.poly[1][0] - g.poly[0][0];
           g.angle = Math.min(85, Math.max(5, v));
+          const t = Math.tan(g.angle * DEG);
+          g.size = t <= 1 ? w0 : w0 * t;
           g.build();
+          const c = g.toScreen(g.poly[0]);
+          g.x += corner[0] - c[0];
+          g.y += corner[1] - c[1];
         } else {
           g.rot = this.cam.rot - v * DEG;
         }

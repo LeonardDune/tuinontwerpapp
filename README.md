@@ -12,7 +12,7 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
   Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
 - **Instelbare tekendriehoek**: versleep de bovenste punt om de hoek te veranderen (5°–85°, snapt per graad en blijft
-  kleven op 15°, 30°, 45°, 60° en 75°). Knijp met twee vingers om hem groter of kleiner te maken. Teken langs elke rand.
+  kleven op 15°, 30°, 45°, 60° en 75°), of tik erop voor de snelknoppen 30°, 45° en 60°. Knijp met twee vingers om hem groter of kleiner te maken. Teken langs elke rand.
 - **Gradenboog / passer**: knijp met twee vingers om de diameter te veranderen (in meters, blijft op schaal bij zoomen).
   Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
@@ -41,6 +41,7 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 | Verschuiven | Eén vinger (zodra de Pencil is herkend) | Spatie + slepen, middelste muisknop of twee vingers scrollen |
 | Zoomen / draaien | Knijpen en draaien met twee vingers | Knijpen op het trackpad, ⌘/Ctrl + scrollen, muiswiel |
 | Ongedaan maken / opnieuw | Tik met twee / drie vingers | ⌘Z / ⇧⌘Z |
+| Langs een hulpmiddel tekenen | Houd het met een vinger vast en teken met de Pencil langs de rand | Teken langs de rand |
 
 Sneltoetsen: P pen, E gum, L lasso, M maatlijn, T tekst, S stencil, V vlak, R liniaal, G raster, 0 alles in beeld,
 Delete verwijdert de selectie en Esc annuleert.

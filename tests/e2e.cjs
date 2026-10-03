@@ -95,6 +95,7 @@ function assert(cond, msg) {
   await page.press('#guide-bar input[data-k="angle"]', 'Enter');
   const hyp = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return [g.angle, g.edges[1].map((p) => g.toScreen(p))]; });
   assert(hyp[0] === 60, 'driehoekhoek ingesteld op 60°');
+  assert(await page.locator('.guide-btn').count() === 3, 'één driehoek in de werkbalk (liniaal, driehoek, gradenboog)');
   const hm = [(hyp[1][0][0] + hyp[1][1][0]) / 2, (hyp[1][0][1] + hyp[1][1][1]) / 2];
   const hdx = hyp[1][1][0] - hyp[1][0][0], hdy = hyp[1][1][1] - hyp[1][0][1], hl = Math.hypot(hdx, hdy);
   const hn = [hdy / hl * 6, -hdx / hl * 6]; // iets naast de rand, buiten de driehoek
