@@ -25,6 +25,7 @@
     <span class="sep"></span>
     <button class="tb" id="btn-map" title="Kaart op schaal"><i data-icon="map"></i><span class="lbl">Kaart</span></button>
     <button class="tb" id="btn-import" title="Afbeelding of PDF als ondergrond"><i data-icon="image"></i><span class="lbl">Ondergrond</span></button>
+    <button class="tb" id="btn-sun" title="Zon en schaduw"><i data-icon="sun"></i><span class="lbl">Zon</span></button>
     <button class="tb" id="btn-export" title="Exporteren naar PDF"><i data-icon="pdf"></i><span class="lbl">PDF</span></button>
     <span class="sep"></span>
     <button class="tb" id="btn-layers" title="Lagen"><i data-icon="layers"></i></button>
@@ -67,6 +68,7 @@
       <span class="count"></span>
       <button data-sel="duplicate" title="Dupliceren"><i data-icon="copy"></i></button>
       <button data-sel="color" title="Huidige kleur toepassen"><i data-icon="palette"></i></button>
+      <button data-sel="height" title="Hoogte (voor schaduw)"><i data-icon="height"></i></button>
       <button data-sel="front" title="Naar voren"><i data-icon="front"></i></button>
       <button data-sel="back" title="Naar achteren"><i data-icon="back"></i></button>
       <select data-sel="layer" title="Naar laag"></select>
@@ -80,6 +82,7 @@
       <button data-poly="cancel"><i data-icon="close"></i></button>
     </div>
     <div id="guide-bar" class="floatbar guide-bar" hidden></div>
+    <div id="sun-panel" class="sun-panel" hidden></div>
     <div id="toast" hidden></div>
   </main>
 

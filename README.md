@@ -32,6 +32,14 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Kaarten op schaal**: zoek een adres (PDOK, met OpenStreetMap als terugval voor buiten Nederland) en plaats een
   luchtfoto, topografische kaart of OpenStreetMap-kaart, optioneel met de perceelgrenzen van het Kadaster. De kaart
   krijgt precies de juiste afmeting in meters.
+- **Zon en schaduw** (knop *Zon*): de zonnestand wordt berekend uit de locatie van de geïmporteerde kaart; het noorden
+  is bij een PDOK-kaart automatisch goed (bij een foto stel je het in). Twee weergaven:
+  - *Schaduw*: kies een datum (snelkeuze 21 maart/juni/september/december) en schuif door de dag of speel de dag af;
+    schaduwen van huis, schuur, bomen, hagen en schuttingen bewegen mee. Een zonnekompas toont de zonnebaan.
+  - *Zonkaart*: per plek het gemiddeld aantal uren direct zon (gekozen dag, groeiseizoen apr–sep of heel jaar),
+    ingedeeld als **zon** (≥ 6 u), **halfschaduw** (3–6 u) en **schaduw** (< 3 u), zoals op plantlabels.
+  - Hoogtes: stencils hebben een standaardhoogte (bijv. loofboom 8 m, haag 1,8 m, schuur 2,5 m), aan te passen bij het
+    plaatsen of via de lasso (knop *Hoogte*). Vormen krijgen een hoogte via de optiebalk (huis, schutting, muur).
 - **Ondergrond importeren**: een foto of PDF. Je geeft de werkelijke breedte op of de schaal van de PDF (bijv. 1:100),
   of je kalibreert achteraf met de Schaal-tool.
 - **Lagen als trekpapier**: per laag de zichtbaarheid, vergrendeling, dekking en hoeveel "papier" eronder ligt.

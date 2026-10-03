@@ -14,7 +14,7 @@ function assert(cond, msg) {
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, acceptDownloads: true });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, acceptDownloads: true, timezoneId: 'Europe/Amsterdam' });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -255,6 +255,41 @@ function assert(cond, msg) {
   assert(pdf.slice(0, 5).toString() === '%PDF-' && pdf.length > 20000, `PDF gemaakt (${Math.round(pdf.length / 1024)} kB)`);
   const [dl2] = await Promise.all([page.waitForEvent('download'), (async () => { await page.click('#btn-export'); await page.click('#exp-png'); })()]);
   await dl2.saveAs(path.join(OUT, 'export.png'));
+
+  console.log('Zon en schaduw');
+  await page.evaluate(async () => {
+    const { uid } = await import('./js/model.js');
+    const a = window.app;
+    a.store.mutate((doc) => {
+      doc.geo = { lat: 52.0907, lon: 5.1214, name: 'Utrecht' };
+      doc.northDeg = 0;
+      const L = doc.layers.find((l) => l.id === doc.activeLayer).items;
+      L.push({ type: 'shape', id: 'huis', kind: 'polygon', points: [[100, 100], [110, 100], [110, 108], [100, 108]], color: '#333', width: 0.05, height: 8 });
+    });
+  });
+  await page.click('#btn-sun');
+  assert(await page.isVisible('#sun-panel'), 'zonpaneel open');
+  await page.selectOption('.sun-preset', '-06-21');
+  const sp = await page.evaluate(() => { const s = window.app.sun; s.minutes = 13 * 60 + 40; return s.sun(); });
+  assert(Math.abs(sp.altitude - 61.4) < 0.5 && Math.abs(sp.azimuth - 180) < 2, `zonnestand 21 juni 13:40 Utrecht ≈ 61° zuid (${sp.altitude.toFixed(1)}°, az ${sp.azimuth.toFixed(0)}°)`);
+  const off = await page.evaluate(async () => { const sh = await import('./js/shadows.js'); const s = window.app.sun; return sh.shadowOffset(s.sun(), 0); });
+  assert(off[1] < 0 && Math.abs(off[0]) < 0.05, 'schaduw valt bij zon in het zuiden naar het noorden');
+  await page.click('[data-mode="hours"]');
+  await page.selectOption('.sun-preset', '-03-21');
+  await page.selectOption('.sun-period', 'day');
+  await page.waitForFunction(() => window.app.sun.result && !window.app.sun.computing && window.app.sun.period === 'day', null, { timeout: 30000 });
+  await page.waitForFunction(() => !window.app.sun.computing, null, { timeout: 30000 });
+  const hrs = await page.evaluate(async () => { const sh = await import('./js/shadows.js'); const r = window.app.sun.result; return { north: sh.sunHoursAt(r, [105, 99.5]), south: sh.sunHoursAt(r, [105, 109]) }; });
+  assert(hrs.north < 1.5 && hrs.south > 10, `21 maart: noordkant huis schaduw (${hrs.north.toFixed(1)} u), zuidkant zon (${hrs.south.toFixed(1)} u)`);
+  // hoogte via selectiebalk
+  await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set(['huis'])); });
+  await page.click('[data-sel="height"]');
+  await page.fill('#input-text', '3');
+  await page.click('#input-ok');
+  await page.waitForFunction(() => window.app.store.findItem('huis').item.height === 3);
+  assert(true, 'hoogte instellen via selectiebalk');
+  await page.click('.sun-close');
+  await page.evaluate(() => { window.app.setTool('draw'); });
 
   console.log('Opslaan en herladen');
   await page.evaluate(() => window.app.saveNow());

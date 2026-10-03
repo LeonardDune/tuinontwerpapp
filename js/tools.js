@@ -564,6 +564,7 @@ function shapeStyle(app) {
     fillAlpha: 0.3,
     hatch: state.hatch,
     dims: settings.autoDims,
+    height: state.shapeHeight > 0 ? state.shapeHeight : undefined,
   };
 }
 
@@ -651,6 +652,7 @@ export class ShapeTool extends Tool {
     }
     if (!this.p0 || !this.p1 || dist(this.p0, this.p1) < minW) return null;
     const base = { type: 'shape', id: uid(), color: st.color, width: st.width, dims: st.dims };
+    if (st.height) base.height = st.height;
     if (this.kind === 'line') {
       return { ...base, kind: 'line', points: [this.p0, this.p1].map(roundPt) };
     }
@@ -713,6 +715,7 @@ export class ShapeTool extends Tool {
       type: 'shape', id: uid(), kind: closed ? 'polygon' : 'line', points: pts.map(roundPt),
       color: st.color, width: st.width, dims: st.dims,
     };
+    if (st.height) item.height = st.height;
     if (closed) Object.assign(item, { fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch });
     this.commitItem(item);
   }
@@ -866,6 +869,8 @@ export class StencilTool extends Tool {
       x: this.snap.p[0], y: this.snap.p[1], w: size.w, h: size.h, rot: -this.app.cam.rot,
       color: this.app.state.stencilOwnColor ? this.app.state.color : def.color,
     };
+    const hh = this.app.state.stencilHeights?.[def.id];
+    if (hh != null) this.item.height = hh;
     this.startS = e.s;
   }
 

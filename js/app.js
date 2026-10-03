@@ -18,6 +18,8 @@ import {
   DrawTool, EraserTool, LassoTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
+import { SunPanel } from './sunpanel.js';
+import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -55,6 +57,8 @@ const DEFAULT_STATE = {
   eraserSize: 14,
   stencil: 'loofboom',
   stencilSizes: {},
+  stencilHeights: {},
+  shapeHeight: 0,
   stencilOwnColor: false,
 };
 
@@ -107,6 +111,7 @@ class App {
     this.store.on((evt) => this.onStoreChange(evt));
 
     hydrateIcons();
+    this.sun = new SunPanel(this);
     this.setupCanvas();
     this.setupInput();
     this.setupUI();
@@ -147,6 +152,7 @@ class App {
     this.settings.lastDoc = doc.id;
     this.persistSettings();
     $('#doc-name').value = doc.name;
+    if (this.sun.active) { this.sun.render(); this.sun.onDocChange(); }
     this.refreshAll();
     if (isNew) this.scheduleSave();
   }
@@ -172,6 +178,7 @@ class App {
     this.updateSelectionUI();
     this.updateStatus();
     if ($('#doc-name').value !== this.store.doc.name) $('#doc-name').value = this.store.doc.name;
+    this.sun.onDocChange();
     this.scheduleSave();
   }
 
@@ -273,6 +280,7 @@ class App {
     if (this.baseDirty) {
       renderScene(this.baseCtx, { doc, cam, width, height, dpr });
       if (this.settings.grid) renderGrid(this.baseCtx, cam, width, height, dpr, doc.grid);
+      this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -297,6 +305,7 @@ class App {
     this.tool.drawScreen(ctx);
     ctx.restore();
     renderScaleBar(ctx, cam, width, height, dpr);
+    this.sun.drawOverlay(ctx);
   }
 
   fitView(defaultIfEmpty = false) {
@@ -486,6 +495,7 @@ class App {
     const s = this.pos(e);
     if (!p) {
       if (!this.mode) {
+        this.sun.hoverAt(this.makeEvent(e, s));
         this.tool.hover(this.makeEvent(e, s));
         if (this.state.tool === 'polygon' && this.tool.poly) this.tool.move(this.makeEvent(e, s));
         if (this.tool.cur !== undefined || this.tool.poly) this.requestRender();
@@ -1075,6 +1085,7 @@ class App {
         add(this.hatchSelect());
       }
       add(this.toggle('Maten', this.settings.autoDims, (v) => { this.settings.autoDims = v; this.syncSettingsUI(); }));
+      add(this.numberField('Hoogte (m)', this.state.shapeHeight || 0, (v) => { this.state.shapeHeight = v; }, 'Voor schaduw: bijv. huis 8, schutting 1,8. 0 = plat.'));
       add(this.swatches());
     } else if (t === 'area') {
       add(this.hatchSelect());
@@ -1094,6 +1105,22 @@ class App {
       add(this.hint('Sleep om te verschuiven. Knijp of gebruik het scrollwiel om te zoomen.'));
     }
     hydrateIcons(bar);
+  }
+
+  numberField(label, value, onChange, title = '') {
+    const wrap = document.createElement('div');
+    wrap.className = 'opt';
+    wrap.title = title;
+    wrap.innerHTML = `<span class="opt-label">${label}</span><input class="num" inputmode="decimal">`;
+    const inp = $('input', wrap);
+    const fmt = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
+    inp.value = fmt(value);
+    inp.addEventListener('change', () => {
+      const v = parseLength(inp.value);
+      if (v >= 0) { onChange(v); this.persistSettings(); }
+      else inp.value = fmt(value);
+    });
+    return wrap;
   }
 
   hint(text) {
@@ -1265,6 +1292,10 @@ class App {
     outer.style.gap = '14px';
     outer.appendChild(wrap);
     outer.appendChild(sizes);
+    const defH = this.state.stencilHeights?.[def.id] ?? STENCIL_SHADOW[def.id]?.h ?? 0;
+    outer.appendChild(this.numberField('Hoogte (m)', defH, (v) => {
+      this.state.stencilHeights = { ...(this.state.stencilHeights || {}), [def.id]: v };
+    }, 'Hoogte voor schaduw en zonkaart. 0 = geen schaduw.'));
     outer.appendChild(this.toggle('Eigen kleur', this.state.stencilOwnColor, (v) => { this.state.stencilOwnColor = v; }));
     if (this.state.stencilOwnColor) outer.appendChild(this.swatches());
     outer.appendChild(this.hint('Tik om te plaatsen, sleep om te draaien.'));
@@ -1457,6 +1488,21 @@ class App {
           }
         }, 'color');
         break;
+      }
+      case 'height': {
+        const targets = found.filter(({ item }) => canHaveHeight(item));
+        if (!targets.length) { this.toast('Alleen vormen en stencils kunnen een hoogte krijgen.'); return; }
+        const hs = [...new Set(targets.map(({ item }) => itemHeight(item)))];
+        this.askText('Hoogte (meter)', hs.length === 1 ? String(hs[0]).replace('.', ',') : '', {
+          hint: 'Gebruikt voor schaduw en zonkaart. 0 = plat, geen schaduw. Bijvoorbeeld: huis 8, schutting 1,8, boom 10.',
+        }).then((res) => {
+          if (res == null) return;
+          const v = parseLength(res);
+          if (!(v >= 0)) { this.toast('Ongeldige hoogte.'); return; }
+          this.store.mutate(() => { for (const { item } of targets) item.height = v; }, 'height');
+          this.toast(`Hoogte ${formatLength(v, 50)} ingesteld${this.sun.active ? '' : '. Zet "Zon" aan om de schaduw te zien.'}`);
+        });
+        return;
       }
       case 'front':
         this.store.mutate(() => {
@@ -1725,6 +1771,8 @@ class App {
         });
         this.placeUnderlay(map.dataUrl, map.widthM, map.heightM, `Kaart – ${chosen.name.split(',')[0]}`, map.attribution, true);
         this.store.doc.geo = { lat: chosen.lat, lon: chosen.lon, name: chosen.name };
+        this.store.doc.northDeg = 0; // PDOK/OSM-kaarten liggen met het noorden exact naar boven
+        if (this.sun.active) this.sun.render();
         dlg.close();
         this.toast(`Kaart geplaatst: ${sizeM} × ${sizeM} m op ware grootte. De laag is vergrendeld.`, 4000);
       } catch (err) {

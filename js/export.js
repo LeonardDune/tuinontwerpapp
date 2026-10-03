@@ -136,9 +136,13 @@ function drawTitleBlock(g, k, { drawW, drawH, scale, doc, opts }) {
   g.textAlign = 'center';
   for (let i = 0; i <= n; i++) g.fillText(formatTick(unit * i), mm(bx + i * segMm), mm(by + bh + 3.4));
 
-  // Noordpijl
+  // Noordpijl (meegedraaid als het noorden niet boven is)
   const nx = c2 + (x0 + w - c2) / 2, ny = y0 + h / 2 + 1;
   const r = 7;
+  g.save();
+  g.translate(mm(nx), mm(ny));
+  g.rotate(((doc.northDeg || 0) * Math.PI) / 180);
+  g.translate(-mm(nx), -mm(ny));
   g.beginPath();
   g.moveTo(mm(nx), mm(ny - r));
   g.lineTo(mm(nx + r * 0.4), mm(ny + r * 0.7));
@@ -154,6 +158,7 @@ function drawTitleBlock(g, k, { drawW, drawH, scale, doc, opts }) {
   g.font = font(3.5, 700);
   g.textAlign = 'left';
   g.fillText('N', mm(nx + r * 0.55), mm(ny - r * 0.45));
+  g.restore();
 }
 
 export async function exportPdf(doc, opts, viewBox) {
