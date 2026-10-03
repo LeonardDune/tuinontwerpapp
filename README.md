@@ -9,10 +9,13 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Pennen en penselen**: fineliner, inktpen, potlood (met korrel), marker, penseel en aquarel. De Apple Pencil is
   drukgevoelig; met muis of vinger wordt de druk uit de snelheid afgeleid. De dikte stel je in als millimeters op papier.
 - **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs de rand voor een exact rechte lijn die
-  automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°),
-  dubbeltikken om een exacte hoek in te voeren.
-- **Tekendriehoeken (45° en 30°/60°) en gradenboog**: teken langs elke rand; bij de gradenboog trek je vanuit het
-  middelpunt lijnen onder een hele graad, of langs de boog.
+  automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
+  Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
+- **Instelbare tekendriehoek**: de scherpe hoek is in te stellen (5°–85°, standaard 45° of 30°/60°) en hij is groter of
+  kleiner te maken met de schaalgreep. Teken langs elke rand.
+- **Gradenboog / passer**: de diameter stel je in meters in, en die blijft op schaal bij het zoomen. Een streek langs de
+  boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
+  snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
 - **Magische lasso**: omcirkel of tik om te selecteren, daarna verplaatsen, schalen, draaien, dupliceren, inkleuren,
   naar voren/achteren, naar een andere laag of verwijderen. Kopiëren en plakken met ⌘C/⌘V.
 - **Stencils**: bomen (kroondiameter), heesters, hagen, grassen, vaste planten, meubilair, schuur, pergola, kas, vijver,

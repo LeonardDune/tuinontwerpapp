@@ -79,13 +79,53 @@ function assert(cond, msg) {
   const tri = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return g.edges[1].map((p) => g.toScreen(p)); });
   const mid = [(tri[0][0] + tri[1][0]) / 2, (tri[0][1] + tri[1][1]) / 2];
   await page.click('.guide-btn[data-guide="protractor"]');
+  await page.waitForTimeout(50);
   await drag([[mid[0] + 8 - 60, mid[1] - 60 + 8], [mid[0] + 8 + 60, mid[1] + 60 + 8]]);
   it = await items();
   const diag = it[it.length - 1];
   const a = diag.points[0], b = diag.points[diag.points.length - 1];
   const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
   assert(Math.abs(Math.abs(ang) - 45) < 0.5 || Math.abs(Math.abs(ang) - 135) < 0.5, `lijn langs 45°-driehoek is 45° (${ang.toFixed(2)}°)`);
+
+  console.log('Instelbare driehoek en gradenboog');
+  const triC = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return [g.x, g.y]; });
+  await page.mouse.click(X(triC[0]), Y(triC[1]));
+  assert(await page.isVisible('#guide-bar'), 'tik op driehoek opent instellingenbalk');
+  await page.fill('#guide-bar input[data-k="angle"]', '60');
+  await page.press('#guide-bar input[data-k="angle"]', 'Enter');
+  const hyp = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return [g.angle, g.edges[1].map((p) => g.toScreen(p))]; });
+  assert(hyp[0] === 60, 'driehoekhoek ingesteld op 60°');
+  const hm = [(hyp[1][0][0] + hyp[1][1][0]) / 2, (hyp[1][0][1] + hyp[1][1][1]) / 2];
+  const hdx = hyp[1][1][0] - hyp[1][0][0], hdy = hyp[1][1][1] - hyp[1][0][1], hl = Math.hypot(hdx, hdy);
+  const hn = [hdy / hl * 6, -hdx / hl * 6]; // iets naast de rand, buiten de driehoek
+  await drag([[hm[0] - hdx * 0.2 + hn[0], hm[1] - hdy * 0.2 + hn[1]], [hm[0] + hdx * 0.2 + hn[0] + 5, hm[1] + hdy * 0.2 + hn[1] - 5]]);
+  it = await items();
+  const d60 = it[it.length - 1];
+  const p0 = d60.points[0], p1 = d60.points[d60.points.length - 1];
+  const a60 = Math.abs(Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI);
+  assert(Math.abs(a60 - 60) < 0.5 || Math.abs(a60 - 120) < 0.5, `lijn langs 60°-driehoek is 60° (${a60.toFixed(2)}°)`);
   await page.click('.guide-btn[data-guide="tri45"]');
+  assert(await page.isHidden('#guide-bar'), 'balk verdwijnt als driehoek weg is');
+
+  await page.click('.guide-btn[data-guide="protractor"]');
+  const pc = await page.evaluate(() => { const g = window.app.guides.get('protractor'); return [g.x, g.y, g.R]; });
+  await page.mouse.click(X(pc[0]), Y(pc[1] - pc[2] * 0.75));
+  await page.fill('#guide-bar input[data-k="diam"]', '5');
+  await page.press('#guide-bar input[data-k="diam"]', 'Enter');
+  await page.waitForTimeout(100);
+  const pr = await page.evaluate(() => { const g = window.app.guides.get('protractor'); return { R: g.R, worldR: g.worldR, zoom: window.app.cam.zoom, x: g.x, y: g.y }; });
+  assert(pr.worldR === 2.5 && Math.abs(pr.R - 2.5 * pr.zoom) < 1e-6, 'gradenboog-diameter ingesteld op 5 m (op schaal)');
+  // boog langs de rand trekken (net buiten de gradenboog)
+  const arcPts = [];
+  for (let d = 30; d <= 150; d += 15) { const a = d * Math.PI / 180; arcPts.push([pr.x + Math.cos(a) * (pr.R + 8), pr.y - Math.sin(a) * (pr.R + 8)]); }
+  await drag(arcPts, 4);
+  it = await items();
+  const arc = it[it.length - 1];
+  const cw = await page.evaluate(([x, y]) => window.app.cam.toWorld([x, y]), [pr.x, pr.y]);
+  const radii = arc.points.map((p) => Math.hypot(p[0] - cw[0], p[1] - cw[1]));
+  assert(radii.every((r) => Math.abs(r - 2.5) < 0.01), 'boog langs gradenboog heeft straal 2,50 m');
+  await page.screenshot({ path: path.join(OUT, '02b-gradenboog-instellen.png') });
+  await page.click('.guide-btn[data-guide="protractor"]');
 
   console.log('Vormen met maatvoering');
   await tool('rect');

@@ -10,12 +10,12 @@ import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stenci
 import { setAssetLoadHandler } from './assets.js';
 import { transformItem } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
-import { SCALES, formatAngle, parseLength, formatLength } from './units.js';
+import { SCALES, formatAngle, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
 import {
-  DrawTool, EraserTool, LassoTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool,
+  DrawTool, EraserTool, LassoTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 
@@ -93,7 +93,7 @@ class App {
     };
 
     for (const g of this.settings.guides || []) {
-      if (GUIDE_TYPES[g.type]) this.guides.set(g.type, new Guide(g.type, g.x, g.y, g.rot));
+      if (GUIDE_TYPES[g.type]) this.guides.set(g.type, new Guide(g.type, g.x, g.y, g.rot, g));
     }
 
     setAssetLoadHandler(() => { this.baseDirty = true; this.requestRender(); });
@@ -279,8 +279,11 @@ class App {
     this.tool.drawWorld(ctx, rc);
     ctx.restore();
 
-    const activeGuide = this.guideDrag?.guide;
-    for (const g of this.guides.values()) g.draw(ctx, cam, dpr, g === activeGuide);
+    const activeGuide = this.guideDrag?.guide || this.guideBarFor;
+    for (const g of this.guides.values()) {
+      g.sync(cam);
+      g.draw(ctx, cam, dpr, g === activeGuide);
+    }
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -392,25 +395,31 @@ class App {
     const touchNav = e.pointerType === 'touch' && this.settings.pencilOnly;
     const mouseNav = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || this.spaceDown);
 
-    // Liniaal / driehoek / gradenboog
+    // Liniaal / driehoek / gradenboog: eerst de grepen, dan tekenen langs een rand, dan verplaatsen
     const guides = [...this.guides.values()].reverse();
+    for (const g of guides) g.sync(this.cam);
+    let guideHit = null;
     for (const g of guides) {
-      if (!touchNav && !mouseNav && this.state.tool === 'draw' && g.snapAt(s)) break;
-      const hit = g.hit(s);
-      if (hit) {
-        const now = e.timeStamp;
-        if (hit === 'move' && this.lastGuideTap && this.lastGuideTap.guide === g && now - this.lastGuideTap.t < 350) {
-          this.lastGuideTap = null;
-          this.pointers.delete(e.pointerId);
-          this.askGuideAngle(g);
-          return;
-        }
-        this.mode = 'guide';
-        this.guideDrag = { guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, moved: false, id: e.pointerId };
-        this.requestRender();
-        return;
+      const grip = g.gripAt(s);
+      if (grip) { guideHit = { g, hit: grip }; break; }
+    }
+    if (!guideHit) {
+      for (const g of guides) {
+        if (!touchNav && !mouseNav && this.state.tool === 'draw' && g.snapAt(s)) break;
+        const hit = g.hit(s);
+        if (hit) { guideHit = { g, hit }; break; }
       }
     }
+    if (guideHit) {
+      const { g, hit } = guideHit;
+      this.mode = 'guide';
+      this.guideDrag = {
+        guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, size: g.size, worldR: g.worldR, moved: false, id: e.pointerId,
+      };
+      this.requestRender();
+      return;
+    }
+    if (this.guideBarFor && !this.guideSnapAt(s)) this.showGuideBar(null);
 
     if (touchNav || mouseNav) {
       this.mode = 'nav';
@@ -485,7 +494,8 @@ class App {
         break;
       case 'guide': {
         const gd = this.guideDrag;
-        if (gd && !gd.moved && gd.kind === 'move') this.lastGuideTap = { guide: gd.guide, t: e.timeStamp };
+        if (gd && !gd.moved) this.showGuideBar(this.guideBarFor === gd.guide && gd.kind === 'move' ? null : gd.guide);
+        else if (this.guideBarFor) this.updateGuideBarValues();
         this.mode = null;
         this.guideDrag = null;
         this.persistSettings();
@@ -496,6 +506,7 @@ class App {
           this.mode = null;
           this.guideDrag = null;
           this.persistSettings();
+          if (this.guideBarFor) this.updateGuideBarValues();
         }
         break;
     }
@@ -545,15 +556,34 @@ class App {
     const d = this.guideDrag;
     if (!d) return;
     if (dist(s, d.startS) > 4) d.moved = true;
+    if (!d.moved) return;
     const g = d.guide;
     if (d.kind === 'move') {
       g.x = d.x + s[0] - d.startS[0];
       g.y = d.y + s[1] - d.startS[1];
+      if (g.type === 'protractor') {
+        // middelpunt snapt aan eindpunten, handig om bogen rond een punt te tekenen
+        const snap = snapPoint(this, this.cam.toWorld([g.x, g.y]));
+        if (snap.kind === 'point') [g.x, g.y] = this.cam.toScreen(snap.p);
+      }
+    } else if (d.kind === 'resize') {
+      const c = [g.x, g.y];
+      if (g.type === 'protractor') {
+        const r0 = dist(d.startS, c), r1 = dist(s, c);
+        const step = Math.max(0.05, niceStep(20 / this.cam.zoom) / 2);
+        g.worldR = Math.max(step, Math.round((d.worldR * r1 / Math.max(r0, 1)) / step) * step);
+      } else {
+        g.size = Math.min(1600, Math.max(120, d.size * dist(s, c) / Math.max(dist(d.startS, c), 1)));
+      }
+      g.zoom = null;
+      g.build();
+      if (this.guideBarFor === g) this.updateGuideBarValues();
     } else {
       const c = [g.x, g.y];
       const a0 = Math.atan2(d.startS[1] - c[1], d.startS[0] - c[0]);
       const a1 = Math.atan2(s[1] - c[1], s[0] - c[0]);
       g.rot = this.snapGuideRot(d.rot + a1 - a0);
+      if (this.guideBarFor === g) this.updateGuideBarValues();
     }
     this.requestRender();
   }
@@ -594,16 +624,82 @@ class App {
     this.requestRender();
   }
 
-  async askGuideAngle(g) {
-    const cur = Math.round(-(g.rot - this.cam.rot) / DEG * 10) / 10;
-    const res = await this.askText(`${GUIDE_TYPES[g.type]}: hoek`, String(cur).replace('.', ','), {
-      hint: 'Hoek in graden ten opzichte van de tekening (tegen de klok in).',
-    });
-    if (res == null) return;
-    const v = parseFloat(String(res).replace(',', '.'));
-    if (!Number.isFinite(v)) return;
-    g.rot = this.cam.rot - v * DEG;
+  /** Instellingenbalk voor een hulpmiddel (hoek, maat, diameter). null = verbergen. */
+  showGuideBar(g) {
+    const bar = $('#guide-bar');
+    this.guideBarFor = g && this.guides.get(g.type) === g ? g : null;
+    if (!this.guideBarFor) {
+      bar.hidden = true;
+      this.requestRender();
+      return;
+    }
+    const field = (key, label, unit) => `<label>${label}<button type="button" class="step" data-step="${key}:-1">−</button><input data-k="${key}" inputmode="decimal"><button type="button" class="step" data-step="${key}:1">+</button>${unit}</label>`;
+    let html = `<span>${g.type.startsWith('tri') ? 'Driehoek' : GUIDE_TYPES[g.type]}</span>`;
+    if (g.type === 'tri45' || g.type === 'tri30') html += field('angle', 'Hoek', '°') + '<span class="sepv"></span>';
+    if (g.type === 'protractor') html += field('diam', 'Diameter', 'm') + '<span class="sepv"></span>';
+    html += field('rot', 'Draaiing', '°');
+    html += `<button type="button" data-act="remove" title="Weghalen">${icon('trash', 20)}</button>`;
+    html += `<button type="button" data-act="close" title="Sluiten">${icon('check', 20)}</button>`;
+    bar.innerHTML = html;
+    bar.hidden = false;
+    for (const input of $$('input', bar)) {
+      input.addEventListener('change', () => this.applyGuideValue(input.dataset.k, input.value));
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+    }
+    for (const b of $$('[data-step]', bar)) {
+      b.addEventListener('click', () => {
+        const [k, dir] = b.dataset.step.split(':');
+        const cur = this.guideValue(k);
+        const step = k === 'diam' ? Math.max(0.1, niceStep(cur / 20)) : k === 'angle' ? 1 : 1;
+        this.applyGuideValue(k, String(Math.round((cur + step * Number(dir)) * 1000) / 1000));
+      });
+    }
+    $('[data-act="remove"]', bar).addEventListener('click', () => this.toggleGuide(g.type));
+    $('[data-act="close"]', bar).addEventListener('click', () => this.showGuideBar(null));
+    this.updateGuideBarValues();
+    this.requestRender();
+  }
+
+  guideValue(k) {
+    const g = this.guideBarFor;
+    if (k === 'angle') return g.angle;
+    if (k === 'diam') return (g.worldR || 0) * 2;
+    let deg = (-(g.rot - this.cam.rot) / DEG) % 360;
+    if (deg < 0) deg += 360;
+    return Math.round(deg * 10) / 10;
+  }
+
+  updateGuideBarValues() {
+    const bar = $('#guide-bar');
+    if (!this.guideBarFor) return;
+    const fmt = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
+    for (const input of $$('input', bar)) {
+      if (document.activeElement !== input) input.value = fmt(this.guideValue(input.dataset.k));
+    }
+  }
+
+  applyGuideValue(k, raw) {
+    const g = this.guideBarFor;
+    if (!g) return;
+    if (k === 'diam') {
+      const v = parseLength(raw);
+      if (v > 0) {
+        g.worldR = v / 2;
+        g.zoom = null;
+      }
+    } else {
+      const v = parseFloat(String(raw).replace(',', '.'));
+      if (Number.isFinite(v)) {
+        if (k === 'angle') {
+          g.angle = Math.min(85, Math.max(5, v));
+          g.build();
+        } else {
+          g.rot = this.cam.rot - v * DEG;
+        }
+      }
+    }
     this.persistSettings();
+    this.updateGuideBarValues();
     this.requestRender();
   }
 
@@ -782,6 +878,7 @@ class App {
 
   toggleGuide(type) {
     if (this.guides.has(type)) {
+      if (this.guideBarFor === this.guides.get(type)) this.showGuideBar(null);
       this.guides.delete(type);
     } else {
       const offset = this.guides.size * 40;
@@ -789,7 +886,7 @@ class App {
       this.guides.set(type, g);
       if (!this.settings.guideHintShown) {
         this.settings.guideHintShown = true;
-        this.toast('Sleep het hulpmiddel om het te verplaatsen, gebruik de ronde greep of twee vingers om te draaien. Teken langs een rand voor een rechte lijn.', 5000);
+        this.toast('Sleep om te verplaatsen, draai met de ronde greep of twee vingers. Tik erop om hoek, maat of diameter in te stellen. Teken langs een rand voor een rechte lijn.', 6000);
       }
     }
     this.syncGuideButtons();

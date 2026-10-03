@@ -3,7 +3,7 @@
 // rand begint, wordt exact langs die rand getrokken.
 
 import { rotate, pointInPolygon, distToSegment, projectOnLine, dist, DEG, normAngle, sideOf } from './geom.js';
-import { niceStep, formatTick, formatAngle } from './units.js';
+import { niceStep, formatTick, formatAngle, formatLength } from './units.js';
 
 export const GUIDE_TYPES = {
   ruler: 'Liniaal',
@@ -16,12 +16,27 @@ const SNAP_PX = 26;
 const GRIP_R = 18;
 
 export class Guide {
-  constructor(type, x, y, rot = 0) {
+  constructor(type, x, y, rot = 0, params = {}) {
     this.type = type;
     this.x = x;
     this.y = y;
     this.rot = rot;
+    // driehoek: scherpe hoek (graden) en grootte (px); gradenboog: straal in meters
+    this.angle = params.angle ?? (type === 'tri30' ? 30 : 45);
+    this.size = params.size ?? (type === 'tri45' ? 330 : 380);
+    this.worldR = params.worldR ?? null;
+    this.zoom = null;
     this.build();
+  }
+
+  /** Houd schermmaten in de pas met de zoom (gradenboog heeft een vaste maat in meters). */
+  sync(cam) {
+    if (this.type !== 'protractor') return;
+    if (this.worldR == null) this.worldR = niceStep(480 / cam.zoom) / 2;
+    if (this.zoom !== cam.zoom) {
+      this.zoom = cam.zoom;
+      this.build();
+    }
   }
 
   build() {
@@ -31,25 +46,32 @@ export class Guide {
         this.L = L; this.H = H;
         this.poly = [[-L / 2, -H / 2], [L / 2, -H / 2], [L / 2, H / 2], [-L / 2, H / 2]];
         this.edges = [[this.poly[0], this.poly[1]], [this.poly[3], this.poly[2]]];
-        this.grips = { rotate: [[-L / 2 + 30, 0], [L / 2 - 30, 0]] };
+        this.grips = { rotate: [[-L / 2 + 30, 0], [L / 2 - 30, 0]], resize: [] };
         break;
       }
       case 'tri45':
       case 'tri30': {
-        const S = this.type === 'tri45' ? 330 : 380;
-        const h = this.type === 'tri45' ? S : S / Math.sqrt(3);
-        const raw = [[0, 0], [S, 0], [0, -h]];
-        const c = [S / 3, -h / 3];
+        // Rechte hoek linksonder, scherpe hoek this.angle rechtsonder.
+        const a = Math.min(85, Math.max(5, this.angle)) * DEG;
+        const S = this.size;
+        const t = Math.tan(a);
+        const w = t <= 1 ? S : S / t;
+        const h = t <= 1 ? S * t : S;
+        const raw = [[0, 0], [w, 0], [0, -h]];
+        const c = [w / 3, -h / 3];
         this.poly = raw.map((p) => [p[0] - c[0], p[1] - c[1]]);
         this.edges = [[this.poly[0], this.poly[1]], [this.poly[1], this.poly[2]], [this.poly[2], this.poly[0]]];
-        // Uitsparing (alleen decoratief)
         const k = 0.45;
-        this.hole = this.poly.map((p) => [p[0] * k, p[1] * k]);
-        this.grips = { rotate: [[this.poly[0][0] + 34, this.poly[0][1] - 34]] };
+        this.hole = Math.min(w, h) > 120 ? this.poly.map((p) => [p[0] * k, p[1] * k]) : null;
+        const g = Math.min(34, Math.min(w, h) * 0.18);
+        this.grips = {
+          rotate: [[this.poly[0][0] + g + 4, this.poly[0][1] - g - 4]],
+          resize: [[this.poly[1][0] - 46, this.poly[1][1] - 13]],
+        };
         break;
       }
       case 'protractor': {
-        const R = 240;
+        const R = this.worldR != null && this.zoom ? this.worldR * this.zoom : 240;
         this.R = R;
         this.poly = [];
         for (let i = 0; i <= 60; i++) {
@@ -57,7 +79,10 @@ export class Guide {
           this.poly.push([Math.cos(a) * R, -Math.sin(a) * R]);
         }
         this.edges = [[[-R, 0], [R, 0]]];
-        this.grips = { rotate: [[0, -R * 0.42]] };
+        this.grips = {
+          rotate: [[R < 140 ? -R * 0.45 : 0, R < 140 ? -R * 0.35 : -R * 0.42]],
+          resize: [R < 140 ? [R * 0.45, -R * 0.35] : rotate([R - 30, 0], -18 * DEG)],
+        };
         break;
       }
     }
@@ -81,10 +106,18 @@ export class Guide {
     return -(this.rot - cam.rot);
   }
 
-  hit(p) {
+  /** Alleen de grepen (gaan vóór het tekenen langs een rand). */
+  gripAt(p) {
     const l = this.toLocal(p);
     for (const g of this.grips.rotate) if (dist(l, g) <= GRIP_R + 6) return 'rotate';
-    if (pointInPolygon(l, this.poly)) return 'move';
+    for (const g of this.grips.resize) if (dist(l, g) <= GRIP_R + 6) return 'resize';
+    return null;
+  }
+
+  hit(p) {
+    const grip = this.gripAt(p);
+    if (grip) return grip;
+    if (pointInPolygon(this.toLocal(p), this.poly)) return 'move';
     return null;
   }
 
@@ -109,11 +142,6 @@ export class Guide {
     }
     if (best) return new LineSnap(this, best[0], best[1]);
     return null;
-  }
-
-  rotateGripCenter() {
-    if (this.type === 'protractor') return [this.x, this.y];
-    return [this.x, this.y];
   }
 
   draw(ctx, cam, dpr, active) {
@@ -160,11 +188,45 @@ export class Guide {
       ctx.stroke();
     }
 
+    for (const g of this.grips.resize) {
+      ctx.beginPath();
+      ctx.arc(g[0], g[1], GRIP_R, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(40, 80, 110, 0.6)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(g[0] - 6, g[1] + 6); ctx.lineTo(g[0] + 6, g[1] - 6);
+      ctx.moveTo(g[0] + 1, g[1] - 6); ctx.lineTo(g[0] + 6, g[1] - 6); ctx.lineTo(g[0] + 6, g[1] - 1);
+      ctx.moveTo(g[0] - 1, g[1] + 6); ctx.lineTo(g[0] - 6, g[1] + 6); ctx.lineTo(g[0] - 6, g[1] + 1);
+      ctx.stroke();
+    }
+
+    if (this.type === 'tri45' || this.type === 'tri30') {
+      // scherpe hoek bij het rechter hoekpunt
+      const v = this.poly[1];
+      ctx.fillStyle = '#1f3d52';
+      ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`${Math.round(this.angle * 10) / 10}°`.replace('.', ','), v[0] - 70, v[1] - 4);
+    }
+
     // hoekaanduiding
     ctx.rotate(-this.rot);
     const label = formatAngle(this.worldAngle(cam));
     let pos = [0, 0];
-    if (this.type === 'protractor') pos = rotate([0, -this.R * 0.2], this.rot);
+    if (this.type === 'protractor') {
+      pos = rotate([0, -this.R * 0.2], this.rot);
+      if (cam && this.worldR) {
+        const dpos = rotate([0, this.R < 140 ? -this.R * 0.62 - 6 : -this.R * 0.62], this.rot);
+        ctx.font = '600 13px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#1f3d52';
+        ctx.fillText(`Ø ${formatLength(this.worldR * 2, 100)}`, dpos[0], dpos[1]);
+      }
+    }
     if (this.type === 'tri45' || this.type === 'tri30') pos = [0, 0];
     ctx.font = '600 14px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
@@ -229,11 +291,14 @@ export class Guide {
 
   drawProtractorTicks(ctx) {
     const R = this.R;
+    // verdeling afstemmen op de grootte, zodat cijfers niet overlappen
+    const minor = R >= 170 ? 1 : R >= 90 ? 5 : 10;
+    const labelStep = R >= 200 ? 10 : R >= 120 ? 30 : R >= 70 ? 90 : 0;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let d = 0; d <= 180; d++) {
+    for (let d = 0; d <= 180; d += minor) {
       const a = d * DEG;
-      const len = d % 10 === 0 ? 18 : d % 5 === 0 ? 12 : 6;
+      const len = Math.min(R * 0.12, d % 10 === 0 ? 18 : d % 5 === 0 ? 12 : 6);
       const c = Math.cos(a), s = -Math.sin(a);
       ctx.moveTo(c * R, s * R);
       ctx.lineTo(c * (R - len), s * (R - len));
@@ -241,15 +306,17 @@ export class Guide {
     ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
     ctx.moveTo(0, 0); ctx.lineTo(0, -12);
     ctx.stroke();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let d = 0; d <= 180; d += 10) {
-      const a = d * DEG;
-      ctx.save();
-      ctx.translate(Math.cos(a) * (R - 30), -Math.sin(a) * (R - 30));
-      ctx.rotate(Math.PI / 2 - a);
-      ctx.fillText(String(d), 0, 0);
-      ctx.restore();
+    if (labelStep) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let d = 0; d <= 180; d += labelStep) {
+        const a = d * DEG;
+        ctx.save();
+        ctx.translate(Math.cos(a) * (R - 30), -Math.sin(a) * (R - 30));
+        ctx.rotate(Math.PI / 2 - a);
+        ctx.fillText(String(d), 0, 0);
+        ctx.restore();
+      }
     }
     ctx.beginPath();
     ctx.arc(0, 0, 4, 0, Math.PI * 2);
@@ -257,7 +324,7 @@ export class Guide {
   }
 
   toJSON() {
-    return { type: this.type, x: this.x, y: this.y, rot: this.rot };
+    return { type: this.type, x: this.x, y: this.y, rot: this.rot, angle: this.angle, size: this.size, worldR: this.worldR };
   }
 }
 
