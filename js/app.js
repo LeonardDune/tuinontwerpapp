@@ -47,6 +47,7 @@ const DEFAULT_STATE = {
   color: '#1d2b36',
   widths: Object.fromEntries(Object.entries(BRUSHES).map(([k, b]) => [k, b.width])),
   opacity: 1,
+  smoothing: 0.5,
   shapeWidth: 0.35,
   fill: false,
   hatch: 'none',
@@ -1060,6 +1061,7 @@ class App {
       add(this.brushPicker());
       add(this.slider('Dikte', 0.1, 20, 0.05, this.state.widths[this.state.brush], (v) => { this.state.widths[this.state.brush] = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`, true));
       add(this.slider('Dekking', 0.1, 1, 0.05, this.state.opacity, (v) => { this.state.opacity = v; }, (v) => `${Math.round(v * 100)}%`));
+      add(this.slider('Gladheid', 0, 1, 0.05, this.state.smoothing ?? 0.5, (v) => { this.state.smoothing = v; }, (v) => `${Math.round(v * 100)}%`));
       add(this.swatches());
     } else if (t === 'eraser') {
       add(this.slider('Grootte', 4, 60, 1, this.state.eraserSize, (v) => { this.state.eraserSize = v; }, (v) => `${v} px`));

@@ -107,13 +107,35 @@ export class DrawTool extends Tool {
     this.points = [];
     this.lastS = null;
     this.pEma = null;
+    this.stab = null;
     this.lastT = e.time;
     this.add(e);
   }
 
-  add(e) {
+  /**
+   * Stabilisator: het getekende punt volgt de pen met wat vertraging, zodat
+   * trillingen wegvallen. Hoe sneller de beweging, hoe minder vertraging.
+   * Langs een liniaal/gradenboog (guided) is de invoer al exact.
+   */
+  stabilize(e) {
     const s = e.s;
-    this.curS = s;
+    if (e.guided || !this.stab) {
+      this.stab = s;
+      return s;
+    }
+    const smoothing = this.app.state.smoothing ?? 0.5;
+    const dt = Math.max(1, e.time - this.lastT);
+    const v = dist(s, this.stab) / dt; // px per ms
+    const alpha = clamp(1 - smoothing * 0.85 + v * 0.12, 0.1, 1);
+    this.stab = [this.stab[0] + (s[0] - this.stab[0]) * alpha, this.stab[1] + (s[1] - this.stab[1]) * alpha];
+    return this.stab;
+  }
+
+  add(e) {
+    this.rawS = e.s;
+    this.guided = e.guided;
+    const s = this.stabilize(e);
+    this.curS = e.s;
     if (this.lastS && dist(s, this.lastS) < 0.75) return;
     const brush = BRUSHES[this.app.state.brush];
     let p;
@@ -163,8 +185,24 @@ export class DrawTool extends Tool {
     return item;
   }
 
+  /** Laat de gestabiliseerde lijn bij het optillen alsnog tot de pen doorlopen. */
+  catchUp() {
+    if (this.guided || !this.rawS || !this.stab) return;
+    const d = dist(this.rawS, this.stab);
+    if (d < 1) return;
+    const n = Math.min(12, Math.ceil(d / 3));
+    const p = this.pEma ?? 0.5;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      const w = this.app.cam.toWorld([this.stab[0] + (this.rawS[0] - this.stab[0]) * t, this.stab[1] + (this.rawS[1] - this.stab[1]) * t]);
+      this.points.push([w[0], w[1], p]);
+    }
+    this.stab = this.rawS;
+  }
+
   up() {
     if (!this.points || !this.points.length) { this.points = null; return; }
+    this.catchUp();
     const item = this.buildItem();
     const layerId = this.layer.id;
     this.app.store.mutate((doc) => {

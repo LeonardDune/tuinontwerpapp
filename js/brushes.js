@@ -33,18 +33,24 @@ export function widthAt(brush, baseWidth, p) {
 /**
  * Bouw het omtrekpad van een streek.
  * points: [[x, y, p], ...] in wereldcoördinaten. baseWidth in wereld-eenheden.
+ * De punten worden eerst tot een vloeiende kromme gemaakt (zie smoothCurve).
  */
 export function strokePath(points, brush, baseWidth) {
   const path = new Path2D();
-  const n = points.length;
-  if (!n) return path;
-  const pts = smooth(points);
+  if (!points.length) return path;
+  const pts = smoothCurve(points, Math.max(baseWidth * 0.2, 1e-4));
+  // lengte langs de streek, voor het taps toelopen van begin en eind
+  const along = [0];
+  for (let i = 1; i < pts.length; i++) {
+    along.push(along[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  }
+  const total = along[along.length - 1];
+  const taperLen = brush.taper ? brush.taper * baseWidth * 0.9 : 0;
   const widths = pts.map((p, i) => {
     let w = widthAt(brush, baseWidth, p[2] ?? 0.5);
-    if (brush.taper) {
-      const t = brush.taper;
-      const k = Math.min(1, (i + 1) / t, (pts.length - i) / t);
-      w *= 0.35 + 0.65 * k;
+    if (taperLen) {
+      const k = Math.min(1, along[i] / taperLen, (total - along[i]) / taperLen);
+      w *= 0.35 + 0.65 * Math.max(0, k);
     }
     return Math.max(w, baseWidth * 0.02);
   });
@@ -71,20 +77,35 @@ export function strokePath(points, brush, baseWidth) {
   return path;
 }
 
-/** Lichte afvlakking (gewogen gemiddelde) van een puntenreeks met druk. */
-export function smooth(points) {
-  if (points.length < 3) return points;
-  const out = [points[0]];
-  for (let i = 1; i < points.length - 1; i++) {
-    const a = points[i - 1], b = points[i], c = points[i + 1];
-    out.push([
-      (a[0] + 2 * b[0] + c[0]) / 4,
-      (a[1] + 2 * b[1] + c[1]) / 4,
-      ((a[2] ?? 0.5) + 2 * (b[2] ?? 0.5) + (c[2] ?? 0.5)) / 4,
-    ]);
+/**
+ * Maak van een puntenreeks een vloeiende kromme: twee keer Chaikin-afronding
+ * (hoeken worden bogen, begin- en eindpunt blijven staan) en daarna zo dicht
+ * bijvullen dat er geen zichtbare rechte stukjes overblijven.
+ */
+export function smoothCurve(points, maxSpacing) {
+  let pts = points.map((p) => [p[0], p[1], p[2] ?? 0.5]);
+  for (let pass = 0; pass < 2 && pts.length > 2; pass++) {
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      out.push(
+        [a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25, a[2] * 0.75 + b[2] * 0.25],
+        [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75, a[2] * 0.25 + b[2] * 0.75],
+      );
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
   }
-  out.push(points[points.length - 1]);
-  return out;
+  const dense = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const n = Math.min(64, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / maxSpacing));
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      dense.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+    }
+  }
+  return dense;
 }
 
 const grainCache = new Map();

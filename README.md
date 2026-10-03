@@ -8,6 +8,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 
 - **Pennen en penselen**: fineliner, inktpen, potlood (met korrel), marker, penseel en aquarel. De Apple Pencil is
   drukgevoelig; met muis of vinger wordt de druk uit de snelheid afgeleid. De dikte stel je in als millimeters op papier.
+  Lijnen worden vloeiend: een stabilisator filtert trillingen weg (instelbaar met *Gladheid*) en bochten worden als
+  vloeiende krommen getekend.
 - **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs de rand voor een exact rechte lijn die
   automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
   Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
