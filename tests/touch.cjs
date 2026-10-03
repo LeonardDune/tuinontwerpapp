@@ -41,6 +41,38 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
     fire('pointerdown', 6, 'touch', 500, 500); fire('pointerdown', 7, 'touch', 560, 500);
     fire('pointerup', 6, 'touch', 500, 500); fire('pointerup', 7, 'touch', 560, 500);
     out.twoFingerTapUndo = count() === 1;
+
+    // 6) knijpen op de gradenboog vergroot de diameter (op schaal)
+    app.toggleGuide('protractor');
+    const pr = app.guides.get('protractor');
+    pr.x = 600; pr.y = 500; app.render();
+    const r0 = pr.worldR;
+    fire('pointerdown', 10, 'touch', 560, 420); fire('pointerdown', 11, 'touch', 640, 420);
+    for (let i = 1; i <= 5; i++) { fire('pointermove', 10, 'touch', 560 - i * 16, 420); fire('pointermove', 11, 'touch', 640 + i * 16, 420); }
+    fire('pointerup', 10, 'touch', 480, 420); fire('pointerup', 11, 'touch', 720, 420);
+    out.pinchGrowsProtractor = pr.worldR > r0 * 2.5 && count() === 1;
+    // 7) kleine gradenboog: vingers ernaast, midden erop -> toch de gradenboog
+    pr.x = 600; pr.y = 500; pr.worldR = 0.5; pr.zoom = null; pr.sync(app.cam);
+    const zoomBefore = app.cam.zoom;
+    fire('pointerdown', 12, 'touch', 600 - pr.R - 40, 500 - 10); fire('pointerdown', 13, 'touch', 600 + pr.R + 40, 500 - 10);
+    for (let i = 1; i <= 4; i++) { fire('pointermove', 12, 'touch', 600 - pr.R - 40 - i * 15, 490); fire('pointermove', 13, 'touch', 600 + pr.R + 40 + i * 15, 490); }
+    fire('pointerup', 12, 'touch', 0, 0); fire('pointerup', 13, 'touch', 0, 0);
+    out.pinchAroundSmallProtractor = pr.worldR > 0.5 && app.cam.zoom === zoomBefore;
+    app.toggleGuide('protractor');
+    // 8) bovenste punt van de driehoek slepen = hoek
+    app.toggleGuide('tri45');
+    const tri = app.guides.get('tri45');
+    tri.x = 500; tri.y = 400; tri.build();
+    const corner = tri.toScreen(tri.poly[0]);
+    const apex = tri.toScreen(tri.poly[2]);
+    const w0 = tri.poly[1][0] - tri.poly[0][0];
+    const target = [apex[0], corner[1] - w0 * Math.tan(30 * Math.PI / 180) - 0.4];
+    fire('pointerdown', 14, 'touch', apex[0], apex[1]);
+    fire('pointermove', 14, 'touch', apex[0], (apex[1] + target[1]) / 2);
+    fire('pointermove', 14, 'touch', target[0], target[1]);
+    fire('pointerup', 14, 'touch', target[0], target[1]);
+    const c2 = tri.toScreen(tri.poly[0]);
+    out.apexDragSetsAngle = tri.angle === 30 && Math.hypot(c2[0] - corner[0], c2[1] - corner[1]) < 0.01 && count() === 1;
     return out;
   });
   console.log(res);

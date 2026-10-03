@@ -67,6 +67,7 @@ export class Guide {
         this.grips = {
           rotate: [[this.poly[0][0] + g + 4, this.poly[0][1] - g - 4]],
           resize: [[this.poly[1][0] - 46, this.poly[1][1] - 13]],
+          angle: [this.poly[2]], // bovenste punt verslepen = hoek aanpassen
         };
         break;
       }
@@ -111,6 +112,7 @@ export class Guide {
     const l = this.toLocal(p);
     for (const g of this.grips.rotate) if (dist(l, g) <= GRIP_R + 6) return 'rotate';
     for (const g of this.grips.resize) if (dist(l, g) <= GRIP_R + 6) return 'resize';
+    for (const g of this.grips.angle || []) if (dist(l, g) <= GRIP_R + 8) return 'angle';
     return null;
   }
 
@@ -199,6 +201,22 @@ export class Guide {
       ctx.moveTo(g[0] - 6, g[1] + 6); ctx.lineTo(g[0] + 6, g[1] - 6);
       ctx.moveTo(g[0] + 1, g[1] - 6); ctx.lineTo(g[0] + 6, g[1] - 6); ctx.lineTo(g[0] + 6, g[1] - 1);
       ctx.moveTo(g[0] - 1, g[1] + 6); ctx.lineTo(g[0] - 6, g[1] + 6); ctx.lineTo(g[0] - 6, g[1] + 1);
+      ctx.stroke();
+    }
+
+    for (const g of this.grips.angle || []) {
+      ctx.beginPath();
+      ctx.arc(g[0], g[1], 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(40, 80, 110, 0.85)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(g[0], g[1] - 4); ctx.lineTo(g[0], g[1] + 4);
+      ctx.moveTo(g[0] - 2.5, g[1] - 1.5); ctx.lineTo(g[0], g[1] - 4); ctx.lineTo(g[0] + 2.5, g[1] - 1.5);
+      ctx.moveTo(g[0] - 2.5, g[1] + 1.5); ctx.lineTo(g[0], g[1] + 4); ctx.lineTo(g[0] + 2.5, g[1] + 1.5);
+      ctx.lineWidth = 1.2;
       ctx.stroke();
     }
 

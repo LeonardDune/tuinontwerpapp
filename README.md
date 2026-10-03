@@ -11,9 +11,10 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs de rand voor een exact rechte lijn die
   automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
   Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
-- **Instelbare tekendriehoek**: de scherpe hoek is in te stellen (5°–85°, standaard 45° of 30°/60°) en hij is groter of
-  kleiner te maken met de schaalgreep. Teken langs elke rand.
-- **Gradenboog / passer**: de diameter stel je in meters in, en die blijft op schaal bij het zoomen. Een streek langs de
+- **Instelbare tekendriehoek**: versleep de bovenste punt om de hoek te veranderen (5°–85°, snapt per graad en blijft
+  kleven op 15°, 30°, 45°, 60° en 75°). Knijp met twee vingers om hem groter of kleiner te maken. Teken langs elke rand.
+- **Gradenboog / passer**: knijp met twee vingers om de diameter te veranderen (in meters, blijft op schaal bij zoomen).
+  Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
   snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
 - **Magische lasso**: omcirkel of tik om te selecteren, daarna verplaatsen, schalen, draaien, dupliceren, inkleuren,
