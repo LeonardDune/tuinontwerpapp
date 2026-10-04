@@ -36,7 +36,7 @@
     <div class="group">
       <button class="tool" data-tool="draw" title="Pennen &amp; penselen (P)"><i data-icon="pen"></i></button>
       <button class="tool" data-tool="eraser" title="Gum (E)"><i data-icon="eraser"></i></button>
-      <button class="tool" data-tool="lasso" title="Magische lasso (L)"><i data-icon="lasso"></i></button>
+      <button class="tool" data-tool="lasso" title="Selecteren en bewerken (L)"><i data-icon="select"></i></button>
     </div>
     <div class="group">
       <button class="tool" data-tool="line" title="Lijn"><i data-icon="line"></i></button>
@@ -64,17 +64,7 @@
 
   <main id="stage">
     <canvas id="canvas"></canvas>
-    <div id="selection-bar" class="floatbar" hidden>
-      <span class="count"></span>
-      <button data-sel="duplicate" title="Dupliceren"><i data-icon="copy"></i></button>
-      <button data-sel="color" title="Huidige kleur toepassen"><i data-icon="palette"></i></button>
-      <button data-sel="height" title="Hoogte (voor schaduw)"><i data-icon="height"></i></button>
-      <button data-sel="front" title="Naar voren"><i data-icon="front"></i></button>
-      <button data-sel="back" title="Naar achteren"><i data-icon="back"></i></button>
-      <select data-sel="layer" title="Naar laag"></select>
-      <button data-sel="delete" title="Verwijderen"><i data-icon="trash"></i></button>
-      <button data-sel="done" title="Klaar"><i data-icon="check"></i></button>
-    </div>
+    <div id="selection-bar" class="floatbar props-bar" hidden></div>
     <div id="polygon-bar" class="floatbar" hidden>
       <span>Tik punten · tik op het eerste punt om te sluiten</span>
       <button data-poly="close">Sluiten</button>

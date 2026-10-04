@@ -332,9 +332,8 @@ function assert(cond, msg) {
   assert(hrs.north < 1.5 && hrs.south > 10, `21 maart: noordkant huis schaduw (${hrs.north.toFixed(1)} u), zuidkant zon (${hrs.south.toFixed(1)} u)`);
   // hoogte via selectiebalk
   await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set(['huis'])); });
-  await page.click('[data-sel="height"]');
-  await page.fill('#input-text', '3');
-  await page.click('#input-ok');
+  await page.fill('#selection-bar input[data-k="height"]', '3');
+  await page.press('#selection-bar input[data-k="height"]', 'Enter');
   await page.waitForFunction(() => window.app.store.findItem('huis').item.height === 3);
   assert(true, 'hoogte instellen via selectiebalk');
   await page.click('.sun-close');

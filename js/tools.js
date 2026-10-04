@@ -3,15 +3,13 @@
 
 import { BRUSHES } from './brushes.js';
 import { uid, paperToWorld } from './model.js';
-import {
-  drawItem, hitItem, itemOutline, itemBBox, itemSnapPoints, transformItem, measureText,
-} from './items.js';
+import { drawItem, hitItem, itemSnapPoints, transformItem } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { gridStepFor } from './render.js';
 import { formatLength, formatAngle, parseLength, formatArea } from './units.js';
 import { collectSegments } from './parallel.js';
 import {
-  dist, angleOf, DEG, snapAngle, pointInPolygon, unionBox, matMul, matTranslate, matRotate, matScale,
+  dist, angleOf, DEG, snapAngle, pointInPolygon, matMul, matTranslate, matScale,
   simplify, distToSegment, clamp, projectOnLine, polygonArea,
 } from './geom.js';
 
@@ -68,7 +66,7 @@ function pick(app, e, from = null) {
   return e.guided ? { p: e.w, kind: null } : snapPoint(app, e.w, from);
 }
 
-function drawSnapMarker(ctx, app, snap) {
+export function drawSnapMarker(ctx, app, snap) {
   if (!snap || !snap.kind || snap.kind === 'angle') return;
   const s = app.cam.toScreen(snap.p);
   ctx.save();
@@ -99,7 +97,7 @@ export function drawBubble(ctx, text, x, y) {
   ctx.restore();
 }
 
-class Tool {
+export class Tool {
   constructor(app) { this.app = app; }
   down() {}
   move() {}
@@ -468,209 +466,6 @@ function splitStroke(item, w, r) {
   return pieces;
 }
 
-// ------------------------------------------------------------- magische lasso
-
-export class LassoTool extends Tool {
-  get selection() { return this.app.selection; }
-
-  selectedItems() {
-    const out = [];
-    for (const id of this.selection) {
-      const f = this.app.store.findItem(id);
-      if (f) out.push(f);
-    }
-    return out;
-  }
-
-  selectionBox() {
-    let box = null;
-    for (const { item } of this.selectedItems()) box = unionBox(box, itemBBox(item));
-    return box;
-  }
-
-  /** Schermposities van kader en grepen. */
-  handles() {
-    const box = this.selectionBox();
-    if (!box) return null;
-    const cam = this.app.cam;
-    const pad = 6 / cam.zoom;
-    const corners = [
-      [box.minX - pad, box.minY - pad], [box.maxX + pad, box.minY - pad],
-      [box.maxX + pad, box.maxY + pad], [box.minX - pad, box.maxY + pad],
-    ].map((p) => cam.toScreen(p));
-    const topMid = [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2];
-    const botMid = [(corners[2][0] + corners[3][0]) / 2, (corners[2][1] + corners[3][1]) / 2];
-    const len = dist(topMid, botMid) || 1;
-    const up = [(topMid[0] - botMid[0]) / len, (topMid[1] - botMid[1]) / len];
-    const rot = [topMid[0] + up[0] * 30, topMid[1] + up[1] * 30];
-    return { box, corners, rot, topMid };
-  }
-
-  handleAt(s) {
-    const h = this.handles();
-    if (!h) return null;
-    if (dist(s, h.rot) < 22) return 'rotate';
-    for (const c of h.corners) if (dist(s, c) < 22) return 'scale';
-    if (pointInPolygon(s, h.corners)) return 'move';
-    return null;
-  }
-
-  down(e) {
-    if (this.selection.size) {
-      const h = this.handleAt(e.s);
-      if (h) { this.startTransform(h, e); return; }
-    }
-    this.mode = 'lasso';
-    this.path = [e.w];
-    this.pathS = [e.s];
-  }
-
-  move(e) {
-    if (this.mode === 'lasso') {
-      if (dist(e.s, this.pathS[this.pathS.length - 1]) > 2) {
-        this.path.push(e.w);
-        this.pathS.push(e.s);
-      }
-    } else if (this.mode) {
-      this.updateTransform(e);
-    }
-  }
-
-  up(e) {
-    if (this.mode === 'lasso') this.finishLasso(e);
-    else if (this.mode) this.app.store.commit('transform');
-    this.mode = null;
-    this.path = null;
-    this.app.updateSelectionUI();
-  }
-
-  cancel() {
-    if (this.mode && this.mode !== 'lasso') this.app.store.cancel();
-    this.mode = null;
-    this.path = null;
-  }
-
-  finishLasso(e) {
-    const app = this.app;
-    const xs = this.pathS.map((p) => p[0]), ys = this.pathS.map((p) => p[1]);
-    const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-    const ids = new Set();
-    if (this.pathS.length < 4 || extent < 8) {
-      // Tik: selecteer het bovenste item onder de vinger, in elke zichtbare, ontgrendelde laag.
-      const tol = 8 / app.cam.zoom;
-      const layers = app.store.doc.layers;
-      for (let li = layers.length - 1; li >= 0 && !ids.size; li--) {
-        const layer = layers[li];
-        if (!layer.visible || layer.locked) continue;
-        for (let i = layer.items.length - 1; i >= 0; i--) {
-          if (hitItem(layer.items[i], e.w, tol)) {
-            ids.add(layer.items[i].id);
-            if (layer.id !== app.store.doc.activeLayer) app.setActiveLayer(layer.id);
-            break;
-          }
-        }
-      }
-    } else {
-      const layer = app.editableLayer();
-      if (layer) {
-        const poly = this.path;
-        for (const item of layer.items) {
-          if (item.type === 'stencil' || item.type === 'text' || item.type === 'image') {
-            const c = item.type === 'text' ? [item.x + measureText(item).w / 2, item.y - item.size / 2] : [item.x, item.y];
-            if (pointInPolygon(c, poly)) ids.add(item.id);
-            continue;
-          }
-          let pts = itemOutline(item);
-          if (pts.length > 60) pts = pts.filter((_, i) => i % Math.ceil(pts.length / 60) === 0);
-          const inside = pts.filter((p) => pointInPolygon(p, poly)).length;
-          if (pts.length && inside / pts.length >= 0.5) ids.add(item.id);
-        }
-      }
-    }
-    app.setSelection(ids);
-  }
-
-  startTransform(kind, e) {
-    const box = this.selectionBox();
-    this.app.store.begin();
-    this.mode = kind;
-    this.startW = e.w;
-    this.center = [(box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2];
-    this.orig = new Map(this.selectedItems().map(({ item }) => [item.id, JSON.parse(JSON.stringify(item))]));
-  }
-
-  updateTransform(e) {
-    const c = this.center;
-    let m, s = 1, r = 0;
-    if (this.mode === 'move') {
-      m = matTranslate(e.w[0] - this.startW[0], e.w[1] - this.startW[1]);
-    } else if (this.mode === 'scale') {
-      s = Math.max(0.02, dist(c, e.w) / Math.max(1e-9, dist(c, this.startW)));
-      m = matMul(matTranslate(c[0], c[1]), matMul(matScale(s), matTranslate(-c[0], -c[1])));
-    } else {
-      r = angleOf(c, e.w) - angleOf(c, this.startW);
-      r = snapAngle(r, 15 * DEG, 3 * DEG);
-      m = matMul(matTranslate(c[0], c[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
-    }
-    this.liveInfo = this.mode === 'rotate' ? formatAngle(-r) : this.mode === 'scale' ? `${Math.round(s * 100)}%` : null;
-    this.liveS = e.s;
-    for (const [id, orig] of this.orig) {
-      const f = this.app.store.findItem(id);
-      if (!f) continue;
-      const fresh = JSON.parse(JSON.stringify(orig));
-      for (const k of Object.keys(f.item)) delete f.item[k];
-      Object.assign(f.item, fresh);
-      transformItem(f.item, m, s, r);
-    }
-    this.app.store.touch();
-  }
-
-  drawScreen(ctx) {
-    if (this.mode === 'lasso' && this.pathS && this.pathS.length > 1) {
-      ctx.save();
-      ctx.setLineDash([6, 5]);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#2f5d3a';
-      ctx.fillStyle = 'rgba(47, 93, 58, 0.07)';
-      ctx.beginPath();
-      this.pathS.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-    if (!this.selection.size) return;
-    const h = this.handles();
-    if (!h) return;
-    ctx.save();
-    ctx.strokeStyle = '#2f5d3a';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([5, 4]);
-    ctx.beginPath();
-    h.corners.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-    ctx.closePath();
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(h.topMid[0], h.topMid[1]);
-    ctx.lineTo(h.rot[0], h.rot[1]);
-    ctx.stroke();
-    ctx.fillStyle = '#fff';
-    for (const c of h.corners) {
-      ctx.beginPath();
-      ctx.rect(c[0] - 6, c[1] - 6, 12, 12);
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(h.rot[0], h.rot[1], 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-    if (this.mode && this.liveInfo) drawBubble(ctx, this.liveInfo, this.liveS[0], this.liveS[1]);
-  }
-}
-
 // ------------------------------------------------------------- vormen
 
 function shapeStyle(app) {
@@ -692,8 +487,17 @@ export class ShapeTool extends Tool {
     this.poly = null;
   }
 
+  /** Bij rechthoek en cirkel legt een liniaal alleen het eerste punt (en de richting) vast. */
+  get guideAnchorOnly() {
+    return this.kind === 'rect' || this.kind === 'circle';
+  }
+
+  get rotated() {
+    return this.kind === 'rect' && this.app.state.rectMode === '3pt';
+  }
+
   get busy() {
-    return this.kind === 'polygon' && !!this.poly;
+    return (this.kind === 'polygon' && !!this.poly) || !!this.phase;
   }
 
   down(e) {
@@ -705,10 +509,28 @@ export class ShapeTool extends Tool {
       this.ptsS = [e.s];
       return;
     }
+    this.downS = e.s;
+    if (this.phase === 'depth') {
+      this.depthW = e.w;
+      return;
+    }
+    if (this.phase === 'p1') {
+      this.snap = pick(this.app, e, this.p0);
+      this.p1 = this.snap.p;
+      return;
+    }
     this.snap = pick(this.app, e);
     this.p0 = this.snap.p;
     this.p1 = this.p0;
     this.curS = e.s;
+    // richting van de liniaal/driehoek: eerste zijde van de rechthoek ligt langs de rand
+    this.dir = null;
+    const gs = this.app.activeGuideSnap;
+    if (this.kind === 'rect' && e.guided && gs && gs.kind === 'line') {
+      const a = this.app.cam.toWorld(gs.a), b = this.app.cam.toWorld(gs.b);
+      const l = dist(a, b) || 1;
+      this.dir = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+    }
   }
 
   move(e) {
@@ -728,20 +550,62 @@ export class ShapeTool extends Tool {
       }
       return;
     }
+    if (this.phase === 'depth') {
+      this.depthW = e.w;
+      return;
+    }
     if (!this.p0) return;
-    this.snap = pick(this.app, e, this.kind === 'line' ? this.p0 : null);
+    this.snap = pick(this.app, e, this.kind === 'line' || this.rotated ? this.p0 : null);
     this.p1 = this.snap.p;
   }
 
-  up() {
+  hover(e) {
+    this.curS = e.s;
+    if (this.phase === 'depth') this.depthW = e.w;
+    else if (this.phase === 'p1') { this.snap = pick(this.app, e, this.p0); this.p1 = this.snap.p; }
+  }
+
+  up(e) {
     if (!this.layer) return;
     if (this.kind === 'polygon') return;
+    if (this.rotated) return this.rotatedUp(e);
     const item = this.buildItem();
     this.p0 = this.p1 = null;
     this.pts = null;
     this.snap = null;
+    this.dir = null;
     if (!item) return;
     this.commitItem(item);
+  }
+
+  /** Gedraaide rechthoek: eerst de eerste zijde (slepen of twee tikken), dan de diepte. */
+  rotatedUp(e) {
+    if (this.phase === 'depth') {
+      const item = this.buildItem();
+      this.reset();
+      if (item) this.commitItem(item);
+      return;
+    }
+    const tap = e && this.downS && dist(e.s, this.downS) < 8;
+    if (!this.phase && tap) {
+      this.phase = 'p1';
+      return;
+    }
+    if (!this.p0 || !this.p1 || dist(this.p0, this.p1) < 3 / this.app.cam.zoom) {
+      if (this.phase !== 'p1') this.reset();
+      return;
+    }
+    this.phase = 'depth';
+    this.depthW = this.p1;
+    this.app.toast('Geef nu de diepte aan: beweeg en tik.', 2000);
+  }
+
+  reset() {
+    this.phase = null;
+    this.p0 = this.p1 = null;
+    this.depthW = null;
+    this.snap = null;
+    this.dir = null;
   }
 
   commitItem(item) {
@@ -775,6 +639,36 @@ export class ShapeTool extends Tool {
     if (this.kind === 'circle') {
       return { ...base, kind: 'circle', points: [this.p0, this.p1].map(roundPt), fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch };
     }
+    if (this.kind === 'rect' && (this.dir || this.rotated)) {
+      let u, a, b;
+      if (this.rotated) {
+        const l = dist(this.p0, this.p1);
+        if (l < minW) return null;
+        u = [(this.p1[0] - this.p0[0]) / l, (this.p1[1] - this.p0[1]) / l];
+        a = l;
+        const n = [-u[1], u[0]];
+        const q = this.depthW || this.p1;
+        b = (q[0] - this.p0[0]) * n[0] + (q[1] - this.p0[1]) * n[1];
+      } else {
+        u = this.dir;
+        const n = [-u[1], u[0]];
+        a = (this.p1[0] - this.p0[0]) * u[0] + (this.p1[1] - this.p0[1]) * u[1];
+        b = (this.p1[0] - this.p0[0]) * n[0] + (this.p1[1] - this.p0[1]) * n[1];
+      }
+      if (Math.abs(a) < minW) return null;
+      const n = [-u[1], u[0]];
+      const o = this.p0;
+      const pts = [o, [o[0] + u[0] * a, o[1] + u[1] * a], [o[0] + u[0] * a + n[0] * b, o[1] + u[1] * a + n[1] * b], [o[0] + n[0] * b, o[1] + n[1] * b]];
+      if (Math.abs(b) < minW) {
+        // nog geen diepte: alleen de eerste zijde als voorbeeld
+        if (this.rotated && this.phase !== 'depth') return { ...base, kind: 'line', points: [pts[0], pts[1]] };
+        return null;
+      }
+      return {
+        ...base, kind: 'polygon', rect: true, points: pts.map(roundPt),
+        fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch,
+      };
+    }
     if (this.kind === 'rect') {
       const cam = app.cam;
       const s0 = cam.toScreen(this.p0), s1 = cam.toScreen(this.p1);
@@ -783,7 +677,7 @@ export class ShapeTool extends Tool {
       corners[0] = this.p0;
       corners[2] = this.p1;
       return {
-        ...base, kind: 'polygon', points: corners.map(roundPt),
+        ...base, kind: 'polygon', rect: true, points: corners.map(roundPt),
         fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch,
       };
     }
@@ -852,9 +746,8 @@ export class ShapeTool extends Tool {
 
   cancel() {
     this.poly = null;
-    this.p0 = this.p1 = null;
+    this.reset();
     this.pts = null;
-    this.snap = null;
     this.app.updatePolygonUI(false);
   }
 
@@ -879,6 +772,12 @@ export class ShapeTool extends Tool {
     const sc = this.app.store.doc.scale;
     if (this.kind === 'line' && this.p0 && this.p1) return formatLength(dist(this.p0, this.p1), sc);
     if (this.kind === 'circle' && this.p0 && this.p1) return `Ø ${formatLength(dist(this.p0, this.p1) * 2, sc)}`;
+    if (this.kind === 'rect' && this.p0 && this.p1 && (this.dir || this.rotated)) {
+      const it = this.buildItem();
+      if (!it) return null;
+      const p = it.points;
+      return p.length === 4 ? `${formatLength(dist(p[0], p[1]), sc)} × ${formatLength(dist(p[1], p[2]), sc)}` : formatLength(dist(p[0], p[1]), sc);
+    }
     if (this.kind === 'rect' && this.p0 && this.p1) {
       const s0 = this.app.cam.toScreen(this.p0), s1 = this.app.cam.toScreen(this.p1);
       const z = this.app.cam.zoom;

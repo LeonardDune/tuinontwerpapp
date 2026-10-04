@@ -25,8 +25,15 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.
-- **Magische lasso**: omcirkel of tik om te selecteren, daarna verplaatsen, schalen, draaien, dupliceren, inkleuren,
-  naar voren/achteren, naar een andere laag of verwijderen. Kopiëren en plakken met ⌘C/⌘V.
+- **Selecteren en bewerken**: tik op een element (ook midden in een lege rechthoek) of omcirkel er meerdere.
+  - Slepen verplaatst; punten klikken vast op eindpunten van andere elementen.
+  - De ronde greep draait; de hoek klikt per 15°, en in de balk typ je een exacte hoek (bijv. 37,5°) of gebruik je −/+.
+  - Rechthoeken en stencils: hoekgrepen voor beide maten, zijgrepen voor alleen breedte of diepte.
+  - Lijnen, veelhoeken en vlakken: hoekpunten verslepen, met + een punt toevoegen, dubbeltik om een punt te verwijderen.
+  - Eigenschappenbalk: exacte breedte × diepte, diameter, lengte, hoek of draaiing, hoogte, kleur, lijndikte, vulling en
+    arcering; verder dupliceren, voor/achter, naar een andere laag, verwijderen. Kopiëren en plakken met ⌘C/⌘V.
+- **Rechthoeken**: *Recht* (ten opzichte van het scherm) of *Gedraaid* (eerst een zijde in elke richting, dan de diepte).
+  Begin je langs een liniaal of driehoek, dan ligt de eerste zijde langs de rand.
 - **Stencils**: bomen (kroondiameter), heesters, hagen, grassen, vaste planten, meubilair, schuur, pergola, kas, vijver,
   trampoline, auto en noordpijl, allemaal op ware grootte en met een instelbare maat.
 - **Vormen**: lijn, rechthoek, cirkel, veelhoek en vlak (bijvoorbeeld gazon of border) met arceringen op ware grootte:

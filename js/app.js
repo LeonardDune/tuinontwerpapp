@@ -8,17 +8,22 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem } from './items.js';
+import { transformItem, invalidate as invalidateItem } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, formatAngle, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
 import {
-  DrawTool, EraserTool, LassoTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
+  DrawTool, EraserTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { SelectTool } from './select.js';
+import {
+  isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
+  selectionBox, displayAngle, fromDisplayAngle, closedArea,
+} from './edit.js';
 import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
 import { fetchBuildings, DEFAULT_BUILDING_HEIGHT } from './buildings.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
@@ -89,7 +94,7 @@ class App {
     this.tools = {
       draw: new DrawTool(this),
       eraser: new EraserTool(this),
-      lasso: new LassoTool(this),
+      lasso: new SelectTool(this),
       line: new ShapeTool(this, 'line'),
       rect: new ShapeTool(this, 'rect'),
       circle: new ShapeTool(this, 'circle'),
@@ -403,7 +408,7 @@ class App {
 
   makeEvent(e, s) {
     let guided = false;
-    if (this.activeGuideSnap) {
+    if (this.activeGuideSnap && !(this.tool.guideAnchorOnly && this.guideAnchored)) {
       s = this.activeGuideSnap.project(s);
       guided = true;
     }
@@ -565,7 +570,9 @@ class App {
     this.mode = 'tool';
     this.toolPointer = e.pointerId;
     this.activeGuideSnap = guidesTool ? this.guideSnapAt(s, locked) : null;
+    this.guideAnchored = false;
     this.tool.down(this.makeEvent(e, s));
+    this.guideAnchored = true;
     this.requestRender();
   }
 
@@ -1074,10 +1081,6 @@ class App {
     });
 
     // selectiebalk
-    for (const b of $$('#selection-bar [data-sel]')) {
-      if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
-      else b.addEventListener('click', () => this.selectionAction(b.dataset.sel));
-    }
     for (const b of $$('#polygon-bar [data-poly]')) {
       b.addEventListener('click', () => {
         const t = this.tools.polygon;
@@ -1198,8 +1201,18 @@ class App {
       add(this.slider('Grootte', 4, 60, 1, this.state.eraserSize, (v) => { this.state.eraserSize = v; }, (v) => `${v} px`));
       add(this.hint('Gumt op de actieve laag. Afbeeldingen en kaarten worden niet gegumd (gebruik de lasso).'));
     } else if (t === 'lasso') {
-      add(this.hint('Omcirkel lijnen om ze te selecteren, of tik op een element. Sleep om te verplaatsen, hoeken om te schalen, de ronde greep om te draaien.'));
+      add(this.hint('Tik op een element of omcirkel er meerdere. Slepen = verplaatsen · ronde greep = draaien (klikt per 15°) · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Exacte maten en hoeken in de balk onderaan.'));
     } else if (['line', 'rect', 'circle', 'polygon'].includes(t)) {
+      if (t === 'rect') {
+        const seg = document.createElement('div');
+        seg.className = 'seg';
+        const mode = this.state.rectMode || 'axis';
+        seg.innerHTML = `<button type="button" data-m="axis" class="${mode === 'axis' ? 'on' : ''}" title="Recht ten opzichte van het scherm">Recht</button><button type="button" data-m="3pt" class="${mode === '3pt' ? 'on' : ''}" title="Eerst een zijde in elke richting, dan de diepte">Gedraaid</button>`;
+        for (const b of seg.querySelectorAll('button')) {
+          b.addEventListener('click', () => { this.tool.cancel(); this.state.rectMode = b.dataset.m; this.persistSettings(); this.renderOptions(); this.requestRender(); });
+        }
+        add(seg);
+      }
       add(this.slider('Lijndikte', 0.1, 5, 0.05, this.state.shapeWidth, (v) => { this.state.shapeWidth = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`, true));
       if (t !== 'line') {
         add(this.toggle('Vulling', this.state.fill, (v) => { this.state.fill = v; }));
@@ -1518,9 +1531,7 @@ class App {
       }
       list.appendChild(li);
     }
-    // laag-keuze in selectiebalk
-    const sel = $('#selection-bar select');
-    sel.innerHTML = '<option value="">Naar laag…</option>' + layers.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+
   }
 
   addLayer() {
@@ -1571,12 +1582,168 @@ class App {
 
   // ---------------------------------------------------------------- selectie
 
+  /** Eigenschappenbalk van de selectie: exacte maten, hoek, stijl en acties. */
   updateSelectionUI() {
     const bar = $('#selection-bar');
-    const n = this.selection.size;
-    bar.hidden = n === 0 || this.state.tool !== 'lasso';
-    if (n) $('.count', bar).textContent = n === 1 ? '1 element' : `${n} elementen`;
-    $('select', bar).value = '';
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    const show = found.length > 0 && this.state.tool === 'lasso';
+    bar.hidden = !show;
+    if (!show) return;
+    // balk aan de kant waar de selectie niet ligt
+    const sb = selectionBox(found.map((f) => f.item));
+    let atTop = false;
+    if (sb) {
+      const ys = [[sb.minX, sb.minY], [sb.maxX, sb.minY], [sb.maxX, sb.maxY], [sb.minX, sb.maxY]].map((p) => this.cam.toScreen(p)[1]);
+      atTop = Math.max(...ys) > this.height - 130 && Math.min(...ys) > 110;
+    }
+    bar.classList.toggle('at-top', atTop);
+    bar.classList.toggle('raised', !atTop && !!this.sun?.active);
+    const items = found.map((f) => f.item);
+    const it = items.length === 1 ? items[0] : null;
+    const sc = this.store.doc.scale;
+    const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('nl-NL', { maximumFractionDigits: d });
+    const field = (key, label, value, unit, steps = false) => `<label class="pf">${label}${steps ? `<button type="button" class="step" data-step="${key}:-1" title="−15°">−</button>` : ''}<input data-k="${key}" inputmode="decimal" value="${value}">${steps ? `<button type="button" class="step" data-step="${key}:1" title="+15°">+</button>` : ''}<span>${unit}</span></label>`;
+    const typeName = (i) => {
+      if (isRect(i)) return 'Rechthoek';
+      if (i.type === 'shape') return { circle: 'Cirkel', polygon: 'Vorm', line: i.points.length === 2 ? 'Lijn' : 'Lijnstuk' }[i.kind] || 'Vorm';
+      if (i.type === 'stencil') return STENCIL_MAP[i.symbol]?.name || 'Stencil';
+      return { stroke: 'Penseelstreek', dim: i.kind === 'area' ? 'Oppervlakte' : 'Maatlijn', text: 'Tekst', image: 'Afbeelding' }[i.type] || 'Element';
+    };
+    let html = `<span class="count">${it ? typeName(it) : `${items.length} elementen`}</span>`;
+    if (it) {
+      const size = itemSize(it);
+      const ang = itemAngle(it);
+      if (size.w != null) {
+        const round = it.type === 'stencil' && STENCIL_MAP[it.symbol]?.round && it.w === it.h;
+        if (round) html += field('diam', 'Ø', fmt(size.w), 'm');
+        else html += field('w', 'B', fmt(size.w), 'm') + field('h', 'D', fmt(size.h), 'm');
+      }
+      if (size.d != null) html += field('diam', 'Ø', fmt(size.d), 'm');
+      if (size.len != null) html += field('len', 'Lengte', fmt(size.len), 'm');
+      if (ang != null) html += field('angle', it.type === 'shape' && it.kind === 'line' ? 'Hoek' : 'Draaiing', String(displayAngle(ang)).replace('.', ','), '°', true);
+      const area = closedArea(it);
+      if (area != null && !isRect(it) && it.kind !== 'circle') html += `<span class="pinfo">${fmt(area, area < 100 ? 1 : 0)} m²</span>`;
+    }
+    if (!it || itemAngle(it) == null) {
+      // draaien met een exact aantal graden (om het midden van de selectie)
+      html += field('rotby', 'Draai', '0', '°', true);
+    }
+    const shapes = items.filter((i) => i.type === 'shape' || i.type === 'stroke');
+    if (items.some((i) => i.type === 'stencil' || i.type === 'shape')) {
+      const hs = [...new Set(items.filter((i) => i.type === 'stencil' || i.type === 'shape').map((i) => itemHeight(i)))];
+      html += field('height', 'Hoogte', hs.length === 1 ? fmt(hs[0]) : '', 'm');
+    }
+    html += '<span class="sepv"></span>';
+    const colored = items.find((i) => i.color);
+    if (colored) html += `<label class="pf" title="Kleur"><input type="color" data-k="color" value="${colored.color.length === 7 ? colored.color : '#1d2b36'}"></label>`;
+    if (shapes.length) {
+      const w = shapes[0].width ? Math.round((shapes[0].width / sc) * 1000 * 100) / 100 : 0.35;
+      html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
+    }
+    const closed = items.filter((i) => i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'));
+    if (closed.length) {
+      html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
+      html += `<select data-k="hatch" title="Arcering">${Object.entries(HATCHES).map(([k, h]) => `<option value="${k}" ${(closed[0].hatch || 'none') === k ? 'selected' : ''}>${h.name}</option>`).join('')}</select>`;
+    }
+    html += '<span class="sepv"></span>';
+    html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
+    html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
+    html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
+    html += `<select data-sel="layer" title="Naar laag"><option value="">Naar laag…</option>${[...this.store.doc.layers].reverse().map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select>`;
+    html += `<button data-sel="delete" title="Verwijderen">${icon('trash', 20)}</button>`;
+    html += `<button data-sel="done" title="Klaar">${icon('check', 20)}</button>`;
+    bar.innerHTML = html;
+
+    for (const b of bar.querySelectorAll('[data-sel]')) {
+      if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
+      else b.addEventListener('click', () => this.selectionAction(b.dataset.sel));
+    }
+    for (const inp of bar.querySelectorAll('input[data-k], select[data-k]')) {
+      inp.addEventListener('change', () => this.applyProperty(inp.dataset.k, inp.value));
+      if (inp.tagName === 'INPUT') inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+    }
+    for (const b of bar.querySelectorAll('[data-step]')) {
+      b.addEventListener('click', () => {
+        const [k, dir] = b.dataset.step.split(':');
+        if (k === 'rotby') this.applyProperty('rotby', String(15 * Number(dir)));
+        else {
+          const cur = displayAngle(itemAngle(it));
+          // naar het volgende veelvoud van 15°
+          const next = Number(dir) > 0 ? Math.floor(cur / 15 + 1e-6) * 15 + 15 : Math.ceil(cur / 15 - 1e-6) * 15 - 15;
+          this.applyProperty('angle', String(next));
+        }
+      });
+    }
+    bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
+  }
+
+  /** Eigenschap toepassen op de selectie (exacte maten, hoek, stijl). */
+  applyProperty(k, raw) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (!found.length) return;
+    const items = found.map((f) => f.item);
+    const it = items.length === 1 ? items[0] : null;
+    const num = (v) => parseFloat(String(v).replace(',', '.'));
+    const len = (v) => parseLength(v);
+    const sc = this.store.doc.scale;
+    this.store.mutate(() => {
+      switch (k) {
+        case 'w': if (it && len(raw) > 0) setFrameSize(it, len(raw), null); break;
+        case 'h': if (it && len(raw) > 0) setFrameSize(it, null, len(raw)); break;
+        case 'diam': if (it && len(raw) > 0) setDiameter(it, len(raw)); break;
+        case 'len': if (it && len(raw) > 0) setLength(it, len(raw)); break;
+        case 'angle': if (it && Number.isFinite(num(raw))) setItemAngle(it, fromDisplayAngle(num(raw))); break;
+        case 'rotby': {
+          const v = num(raw);
+          if (!Number.isFinite(v) || !v) break;
+          const b = selectionBox(items);
+          rotateItems(items, fromDisplayAngle(v), [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]);
+          break;
+        }
+        case 'height': {
+          const v = len(raw);
+          if (v >= 0) for (const i of items) if (i.type === 'stencil' || i.type === 'shape') i.height = v;
+          break;
+        }
+        case 'color':
+          for (const i of items) {
+            if (!i.color) continue;
+            i.color = raw;
+            if (i.fill) i.fill = raw;
+            invalidateItem(i);
+          }
+          break;
+        case 'lw': {
+          const mm = num(raw);
+          if (mm > 0) for (const i of items) if (i.type === 'shape' || i.type === 'stroke') { i.width = paperToWorld(mm, sc); invalidateItem(i); }
+          break;
+        }
+        case 'fill': {
+          const closed = items.filter((i) => i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'));
+          const on = !closed[0]?.fill;
+          for (const i of closed) { i.fill = on ? i.color : null; if (on && i.fillAlpha == null) i.fillAlpha = 0.3; }
+          break;
+        }
+        case 'hatch':
+          for (const i of items) if (i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle')) i.hatch = raw;
+          break;
+      }
+    }, 'property');
+    this.requestRender();
+  }
+
+  /** Tekst bewerken (dubbeltik met Selecteren). */
+  async editText(id) {
+    const f = this.store.findItem(id);
+    if (!f) return;
+    const text = await this.askText('Tekst wijzigen', f.item.text, { multiline: true });
+    if (text == null) return;
+    this.store.mutate(() => {
+      const g = this.store.findItem(id);
+      if (!g) return;
+      if (text.trim() === '') g.layer.items = g.layer.items.filter((i) => i.id !== id);
+      else g.item.text = text;
+    }, 'text');
   }
 
   updatePolygonUI(show) {
