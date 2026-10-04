@@ -123,27 +123,35 @@ export class DrawTool extends Tool {
     this.lastS = null;
     this.pEma = null;
     this.stab = null;
+    this.stab2 = null;
+    this.rawHist = [];
     this.lastT = e.time;
     this.add(e);
   }
 
   /**
-   * Stabilisator: het getekende punt volgt de pen met wat vertraging, zodat
-   * trillingen wegvallen. Hoe sneller de beweging, hoe minder vertraging.
+   * Stabilisator: tijdfilter in twee trappen (laagdoorlaat). Handtrilling (8–12 Hz) wordt
+   * gedempt, ongeacht hoeveel punten per seconde binnenkomen (muis ~60, Apple Pencil 240).
    * Langs een liniaal/gradenboog (guided) is de invoer al exact.
    */
   stabilize(e) {
     const s = e.s;
+    // ruwe invoer bewaren voor het laatste stukje (zie catchUp)
+    (this.rawHist ||= []).push({ s, t: e.time, p: e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : null });
     if (e.guided || !this.stab) {
       this.stab = s;
+      this.stab2 = s;
+      this.rawT = e.time;
       return s;
     }
     const smoothing = this.app.state.smoothing ?? 0.5;
-    const dt = Math.max(1, e.time - this.lastT);
-    const v = dist(s, this.stab) / dt; // px per ms
-    const alpha = clamp(1 - smoothing * 0.85 + v * 0.12, 0.1, 1);
-    this.stab = [this.stab[0] + (s[0] - this.stab[0]) * alpha, this.stab[1] + (s[1] - this.stab[1]) * alpha];
-    return this.stab;
+    const tau = 32 * Math.pow(smoothing, 1.2); // ms per trap
+    const dt = Math.max(0.5, e.time - this.rawT);
+    this.rawT = e.time;
+    const a = tau > 0.5 ? 1 - Math.exp(-dt / tau) : 1;
+    this.stab = [this.stab[0] + (s[0] - this.stab[0]) * a, this.stab[1] + (s[1] - this.stab[1]) * a];
+    this.stab2 = [this.stab2[0] + (this.stab[0] - this.stab2[0]) * a, this.stab2[1] + (this.stab[1] - this.stab2[1]) * a];
+    return this.stab2;
   }
 
   add(e) {
@@ -176,9 +184,14 @@ export class DrawTool extends Tool {
 
   buildItem() {
     const { state, store } = this.app;
-    const pts = this.points.length === 1
+    let pts = this.points.length === 1
       ? [this.points[0], [this.points[0][0] + 1e-4, this.points[0][1], this.points[0][2]]]
       : this.points;
+    if (!this.guided && pts.length > 3) {
+      // sensorruis gladstrijken langs de lijn (in schermpixels), begin- en eindpunt blijven staan
+      const sigma = (0.6 + (state.smoothing ?? 0.5) * 2.4) / this.app.cam.zoom;
+      pts = smoothAlong(pts, sigma);
+    }
     const item = {
       type: 'stroke',
       id: uid(),
@@ -193,22 +206,98 @@ export class DrawTool extends Tool {
 
   /** Laat de gestabiliseerde lijn bij het optillen alsnog tot de pen doorlopen. */
   catchUp() {
-    if (this.guided || !this.rawS || !this.stab) return;
-    const d = dist(this.rawS, this.stab);
-    if (d < 1) return;
-    const n = Math.min(12, Math.ceil(d / 3));
+    const from = this.stab2 || this.stab;
+    if (this.guided || !this.rawS || !from) return;
+    if (dist(this.rawS, from) < 1) return;
     const p = this.pEma ?? 0.5;
-    for (let k = 1; k <= n; k++) {
-      const t = k / n;
-      const w = this.app.cam.toWorld([this.stab[0] + (this.rawS[0] - this.stab[0]) * t, this.stab[1] + (this.rawS[1] - this.stab[1]) * t]);
+    const smoothing = this.app.state.smoothing ?? 0.5;
+    const lag = 2 * 32 * Math.pow(smoothing, 1.2); // vertraging van het tweetrapsfilter (ms)
+    const hist = this.rawHist || [];
+    const tEnd = hist.length ? hist[hist.length - 1].t : 0;
+    const tail = hist.filter((r) => r.t >= tEnd - lag);
+    const push = (sx, sy) => {
+      const w = this.app.cam.toWorld([sx, sy]);
       this.points.push([w[0], w[1], p]);
+    };
+    if (tail.length >= 3) {
+      // volg het werkelijke pad van de pen over het achterstallige stukje, vloeiend aansluitend
+      const off = [from[0] - tail[0].s[0], from[1] - tail[0].s[1]];
+      for (let k = 1; k < tail.length; k++) {
+        const u = k / (tail.length - 1);
+        push(tail[k].s[0] + off[0] * (1 - u), tail[k].s[1] + off[1] * (1 - u));
+      }
+    } else {
+      const n = Math.min(16, Math.ceil(dist(this.rawS, from) / 3));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n;
+        push(from[0] + (this.rawS[0] - from[0]) * t, from[1] + (this.rawS[1] - from[1]) * t);
+      }
     }
-    this.stab = this.rawS;
+    this.stab = this.stab2 = this.rawS;
+  }
+
+  /**
+   * Bij het optillen: hele streek opnieuw filteren, vooruit én achteruit (zonder vertraging).
+   * De lijn eindigt zo precies waar de pen werd opgetild en ook het laatste stuk is glad.
+   */
+  refine() {
+    const raw = this.rawHist || [];
+    const smoothing = this.app.state.smoothing ?? 0.5;
+    const tau = 32 * Math.pow(smoothing, 1.2);
+    if (this.guided || raw.length < 4 || tau < 0.5) return false;
+    const n = raw.length;
+    const xs = raw.map((r) => r.s[0]), ys = raw.map((r) => r.s[1]), ts = raw.map((r) => r.t);
+    // Gespiegelde verlenging aan beide uiteinden (punt-spiegeling), zodat het filter
+    // de uiteinden niet naar binnen trekt. Lengte: ruim 4× de tijdconstante.
+    const padT = 4 * tau;
+    let m0 = 1; while (m0 < n - 1 && ts[m0] - ts[0] < padT) m0++;
+    let m1 = 1; while (m1 < n - 1 && ts[n - 1] - ts[n - 1 - m1] < padT) m1++;
+    const PX = [], PY = [], PT = [];
+    for (let k = m0; k >= 1; k--) { PX.push(2 * xs[0] - xs[k]); PY.push(2 * ys[0] - ys[k]); PT.push(2 * ts[0] - ts[k]); }
+    for (let i = 0; i < n; i++) { PX.push(xs[i]); PY.push(ys[i]); PT.push(ts[i]); }
+    for (let k = 1; k <= m1; k++) { PX.push(2 * xs[n - 1] - xs[n - 1 - k]); PY.push(2 * ys[n - 1] - ys[n - 1 - k]); PT.push(2 * ts[n - 1] - ts[n - 1 - k]); }
+    const N = PX.length;
+    const pass = (arr, forward) => {
+      const out = arr.slice();
+      let a1 = forward ? arr[0] : arr[N - 1], a2 = a1;
+      for (let k = 0; k < N; k++) {
+        const i = forward ? k : N - 1 - k;
+        const j = forward ? i - 1 : i + 1;
+        const dt = j >= 0 && j < N ? Math.max(0.5, Math.abs(PT[i] - PT[j])) : 0;
+        const al = dt ? 1 - Math.exp(-dt / tau) : 1;
+        a1 += (arr[i] - a1) * al;
+        a2 += (a1 - a2) * al;
+        out[i] = a2;
+      }
+      return out;
+    };
+    const fx = pass(pass(PX, true), false).slice(m0, m0 + n);
+    const fy = pass(pass(PY, true), false).slice(m0, m0 + n);
+    // begin en eind exact op de pen
+    fx[0] = xs[0]; fy[0] = ys[0]; fx[n - 1] = xs[n - 1]; fy[n - 1] = ys[n - 1];
+    const pressures = this.points.map((q) => q[2]);
+    const pAt = (i) => {
+      if (raw[i].p != null) return raw[i].p;
+      return pressures[Math.min(pressures.length - 1, Math.round((i / (n - 1)) * (pressures.length - 1)))] ?? 0.5;
+    };
+    const pts = [];
+    let last = null, pE = null;
+    for (let i = 0; i < n; i++) {
+      const sc = [fx[i], fy[i]];
+      const pr = pAt(i);
+      pE = pE == null ? pr : pE * 0.55 + pr * 0.45;
+      if (last && i < n - 1 && dist(sc, last) < 0.75) continue;
+      const w = this.app.cam.toWorld(sc);
+      pts.push([w[0], w[1], pE]);
+      last = sc;
+    }
+    if (pts.length >= 2) this.points = pts;
+    return true;
   }
 
   up() {
     if (!this.points || !this.points.length) { this.points = null; return; }
-    this.catchUp();
+    if (!this.refine()) this.catchUp();
     const item = this.buildItem();
     const layerId = this.layer.id;
     this.app.store.mutate((doc) => {
@@ -325,6 +414,29 @@ export class EraserTool extends Tool {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/** Gaussische afvlakking langs de booglengte; venster krimpt naar de uiteinden toe. */
+function smoothAlong(points, sigma) {
+  const n = points.length;
+  const along = new Float64Array(n);
+  for (let i = 1; i < n; i++) along[i] = along[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+  const total = along[n - 1];
+  const out = new Array(n);
+  let lo = 0;
+  for (let i = 0; i < n; i++) {
+    const win = Math.min(3 * sigma, along[i], total - along[i]);
+    if (win <= 0) { out[i] = points[i]; continue; }
+    while (along[lo] < along[i] - win) lo++;
+    let sx = 0, sy = 0, sp = 0, sw = 0;
+    for (let j = lo; j < n && along[j] <= along[i] + win; j++) {
+      const d = along[j] - along[i];
+      const w = Math.exp(-(d * d) / (2 * sigma * sigma));
+      sx += points[j][0] * w; sy += points[j][1] * w; sp += (points[j][2] ?? 0.5) * w; sw += w;
+    }
+    out[i] = [sx / sw, sy / sw, sp / sw];
+  }
+  return out;
 }
 
 /** Knip een streek door op de plek van de gum. null = onaangeroerd. */
