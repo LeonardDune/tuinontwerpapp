@@ -31,7 +31,9 @@ export function drawItem(g, item, rc) {
   switch (item.type) {
     case 'stroke': return drawStroke(g, item, rc);
     case 'shape': return drawShape(g, item, rc);
-    case 'dim': return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
+    case 'dim':
+      if (item.kind === 'area') return drawAreaLabel(g, item, rc);
+      return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
     case 'stencil': return drawStencil(g, item, paperToWorld(0.25, rc.scale));
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
@@ -153,8 +155,10 @@ export function drawDim(g, a, b, offset, rc, opts = {}) {
   const ox = nx * offset, oy = ny * offset;
   const A = [a[0] + ox, a[1] + oy], B = [b[0] + ox, b[1] + oy];
   const color = opts.color || '#1d2b36';
-  const lw = paperToWorld(0.18, s);
-  const tick = paperToWorld(1.4, s);
+  // op het scherm nooit kleiner dan leesbaar (rc.minPx); in de export op papiergrootte
+  const minW = rc.minPx ? 1 / rc.zoom : 0;
+  const lw = Math.max(paperToWorld(0.18, s), minW);
+  const tick = Math.max(paperToWorld(1.4, s), minW * 7);
 
   g.save();
   g.strokeStyle = color;
@@ -164,7 +168,7 @@ export function drawDim(g, a, b, offset, rc, opts = {}) {
   g.beginPath();
   if (offset !== 0 && opts.extension !== false) {
     const sg = Math.sign(offset);
-    const gap = paperToWorld(0.8, s) * sg, ext = paperToWorld(1.2, s) * sg;
+    const gap = Math.max(paperToWorld(0.8, s), minW * 3) * sg, ext = Math.max(paperToWorld(1.2, s), minW * 5) * sg;
     g.moveTo(a[0] + nx * gap, a[1] + ny * gap); g.lineTo(A[0] + nx * ext, A[1] + ny * ext);
     g.moveTo(b[0] + nx * gap, b[1] + ny * gap); g.lineTo(B[0] + nx * ext, B[1] + ny * ext);
   }
@@ -183,8 +187,8 @@ export function drawDim(g, a, b, offset, rc, opts = {}) {
   if (offset !== 0) out = [nx * Math.sign(offset), ny * Math.sign(offset)];
   const above = out[0] * up[0] + out[1] * up[1] >= 0;
   const text = (opts.prefix || '') + formatLength(len, s);
-  const h = paperToWorld(2.3, s);
-  const gapT = paperToWorld(0.8, s);
+  const h = Math.max(paperToWorld(2.3, s), (rc.minPx || 0) / rc.zoom);
+  const gapT = Math.max(paperToWorld(0.8, s), h * 0.3);
   const mx = (A[0] + B[0]) / 2 + out[0] * gapT, my = (A[1] + B[1]) / 2 + out[1] * gapT;
   g.translate(mx, my);
   g.rotate(ang);
@@ -201,8 +205,30 @@ export function drawDim(g, a, b, offset, rc, opts = {}) {
   g.restore();
 }
 
+function findById(doc, id) {
+  for (const l of doc.layers) for (const i of l.items) if (i.id === id) return i;
+  return null;
+}
+
+/** Middelpunt en oppervlakte van de vorm waar een oppervlaktelabel bij hoort. */
+export function areaLabelInfo(doc, item) {
+  const ref = doc && findById(doc, item.ref);
+  if (!ref || ref.type !== 'shape') return null;
+  if (ref.kind === 'circle') {
+    const r = dist(ref.points[0], ref.points[1]);
+    return { c: ref.points[0], area: Math.PI * r * r };
+  }
+  if (ref.kind === 'polygon' && ref.points.length >= 3) return { c: polygonCentroid(ref.points), area: polygonArea(ref.points) };
+  return null;
+}
+
+function drawAreaLabel(g, item, rc) {
+  const info = areaLabelInfo(rc.doc, item);
+  if (info) drawLabel(g, formatArea(info.area), info.c, rc, true, 2.5, item.color || '#1d2b36');
+}
+
 export function drawLabel(g, text, p, rc, italic = false, sizeMm = 2.5, color = '#1d2b36') {
-  const h = paperToWorld(sizeMm, rc.scale);
+  const h = Math.max(paperToWorld(sizeMm, rc.scale), (rc.minPx || 0) / rc.zoom);
   g.save();
   g.translate(p[0], p[1]);
   const k = h / 100;
@@ -269,7 +295,7 @@ export function itemOutline(item) {
       }
       return item.points;
     case 'dim':
-      return [item.a, item.b];
+      return item.kind === 'area' ? [] : [item.a, item.b];
     case 'stencil':
     case 'image':
       return rectCorners(item.x, item.y, item.w, item.h, item.rot || 0);
@@ -320,6 +346,7 @@ export function hitItem(item, p, tol) {
       return false;
     }
     case 'dim':
+      if (item.kind === 'area') return false;
       return distToSegment(p, item.a, item.b) <= tol * 1.5;
     case 'stencil':
     case 'image':
@@ -337,7 +364,7 @@ export function itemSnapPoints(item) {
     case 'shape':
       return item.kind === 'circle' ? [item.points[0]] : item.points;
     case 'dim':
-      return [item.a, item.b];
+      return item.kind === 'area' ? [] : [item.a, item.b];
     case 'stencil':
       return [[item.x, item.y]];
   }
@@ -357,6 +384,7 @@ export function transformItem(item, m, s, r) {
       if (item.width) item.width *= s;
       break;
     case 'dim':
+      if (item.kind === 'area') break;
       item.a = tp(item.a);
       item.b = tp(item.b);
       item.offset = (item.offset || 0) * s;

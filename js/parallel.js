@@ -27,7 +27,7 @@ export function collectSegments(doc, minLen) {
           const s = simplify(item.points, Math.max(item.width, minLen * 0.03));
           for (let i = 1; i < s.length; i++) push(s[i - 1], s[i], item);
         }
-      } else if (item.type === 'dim') {
+      } else if (item.type === 'dim' && item.kind !== 'area') {
         push(item.a, item.b, item);
       } else if (item.type === 'stencil' && !STENCIL_MAP[item.symbol]?.round) {
         const o = itemOutline(item);

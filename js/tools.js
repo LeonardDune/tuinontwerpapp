@@ -8,10 +8,11 @@ import {
 } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { gridStepFor } from './render.js';
-import { formatLength, formatAngle, parseLength } from './units.js';
+import { formatLength, formatAngle, parseLength, formatArea } from './units.js';
+import { collectSegments } from './parallel.js';
 import {
   dist, angleOf, DEG, snapAngle, pointInPolygon, unionBox, matMul, matTranslate, matRotate, matScale,
-  simplify, distToSegment, clamp, sideOf,
+  simplify, distToSegment, clamp, projectOnLine, polygonArea,
 } from './geom.js';
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
@@ -34,6 +35,17 @@ export function snapPoint(app, w, from = null, exclude = null) {
       }
     }
     if (best) return { p: [best[0], best[1]], kind: 'point' };
+    // op een rand van een lijn of vorm
+    let edge = null, ed = 9 / cam.zoom;
+    for (const seg of collectSegments(store.doc, 0)) {
+      if (exclude && exclude.has(seg.item.id)) continue;
+      const d = distToSegment(w, seg.a, seg.b);
+      if (d < ed) {
+        const [q, t] = projectOnLine(w, seg.a, seg.b);
+        if (t >= 0 && t <= 1) { ed = d; edge = q; }
+      }
+    }
+    if (edge) return { p: edge, kind: 'edge' };
   }
   if (from && settings.angleSnap) {
     const ang = angleOf(from, w);
@@ -64,7 +76,10 @@ function drawSnapMarker(ctx, app, snap) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   if (snap.kind === 'point') ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
-  else ctx.rect(s[0] - 5, s[1] - 5, 10, 10);
+  else if (snap.kind === 'edge') {
+    ctx.moveTo(s[0] - 6, s[1] - 6); ctx.lineTo(s[0] + 6, s[1] + 6);
+    ctx.moveTo(s[0] + 6, s[1] - 6); ctx.lineTo(s[0] - 6, s[1] + 6);
+  } else ctx.rect(s[0] - 5, s[1] - 5, 10, 10);
   ctx.stroke();
   ctx.restore();
 }
@@ -173,15 +188,6 @@ export class DrawTool extends Tool {
       opacity: state.opacity,
       points: pts.map(roundPt),
     };
-    if (this.snap && this.snap.kind === 'line' && this.app.settings.autoDims) {
-      const a = pts[0], b = pts[pts.length - 1];
-      if (dist(a, b) > 0.005) {
-        item.dims = true;
-        const c = this.app.cam.toWorld([this.snap.guide.x, this.snap.guide.y]);
-        // drawDim legt het label aan de kant van de linkernormaal bij een positieve offset
-        item.dimSide = sideOf(c, a, b) > 0 ? -1 : 1;
-      }
-    }
     return item;
   }
 
@@ -279,7 +285,7 @@ export class EraserTool extends Tool {
     let changed = false;
     for (const item of this.layer.items) {
       if (item.type === 'image') { out.push(item); continue; }
-      if (item.type === 'stroke' && !item.dims) {
+      if (item.type === 'stroke') {
         const pieces = splitStroke(item, w, r);
         if (pieces === null) { out.push(item); continue; }
         changed = true;
@@ -556,14 +562,13 @@ export class LassoTool extends Tool {
 // ------------------------------------------------------------- vormen
 
 function shapeStyle(app) {
-  const { state, store, settings } = app;
+  const { state, store } = app;
   return {
     color: state.color,
     width: paperToWorld(state.shapeWidth, store.doc.scale),
     fill: state.fill ? state.color : null,
     fillAlpha: 0.3,
     hatch: state.hatch,
-    dims: settings.autoDims,
     height: state.shapeHeight > 0 ? state.shapeHeight : undefined,
   };
 }
@@ -647,11 +652,10 @@ export class ShapeTool extends Tool {
         type: 'shape', id: uid(), kind: 'polygon', points: pts,
         color: st.color, width: paperToWorld(0.25, app.store.doc.scale),
         fill: st.color, fillAlpha: 0.28, hatch: st.hatch,
-        dims: st.dims, dimEdges: [],
       };
     }
     if (!this.p0 || !this.p1 || dist(this.p0, this.p1) < minW) return null;
-    const base = { type: 'shape', id: uid(), color: st.color, width: st.width, dims: st.dims };
+    const base = { type: 'shape', id: uid(), color: st.color, width: st.width };
     if (st.height) base.height = st.height;
     if (this.kind === 'line') {
       return { ...base, kind: 'line', points: [this.p0, this.p1].map(roundPt) };
@@ -667,7 +671,7 @@ export class ShapeTool extends Tool {
       corners[0] = this.p0;
       corners[2] = this.p1;
       return {
-        ...base, kind: 'polygon', points: corners.map(roundPt), dimEdges: [0, 1],
+        ...base, kind: 'polygon', points: corners.map(roundPt),
         fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch,
       };
     }
@@ -713,7 +717,7 @@ export class ShapeTool extends Tool {
     const st = shapeStyle(this.app);
     const item = {
       type: 'shape', id: uid(), kind: closed ? 'polygon' : 'line', points: pts.map(roundPt),
-      color: st.color, width: st.width, dims: st.dims,
+      color: st.color, width: st.width,
     };
     if (st.height) item.height = st.height;
     if (closed) Object.assign(item, { fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch });
@@ -746,12 +750,11 @@ export class ShapeTool extends Tool {
     let item = null;
     const st = shapeStyle(this.app);
     if (this.kind === 'polygon' && this.poly) {
-      item = { type: 'shape', kind: 'line', points: this.poly, color: st.color, width: st.width, dims: st.dims };
+      item = { type: 'shape', kind: 'line', points: this.poly, color: st.color, width: st.width };
     } else if (this.kind === 'area' && this.pts && this.pts.length > 1) {
       item = {
         type: 'shape', kind: 'polygon', points: this.pts, color: st.color,
         width: paperToWorld(0.25, rc.scale), fill: st.color, fillAlpha: 0.28, hatch: st.hatch,
-        dims: st.dims, dimEdges: [],
       };
     } else if (this.p0) {
       item = this.buildItem();
@@ -759,8 +762,28 @@ export class ShapeTool extends Tool {
     if (item) drawItem(g, item, rc);
   }
 
+  /** Tijdelijke maat tijdens het tekenen (komt niet in de tekening). */
+  liveText() {
+    const sc = this.app.store.doc.scale;
+    if (this.kind === 'line' && this.p0 && this.p1) return formatLength(dist(this.p0, this.p1), sc);
+    if (this.kind === 'circle' && this.p0 && this.p1) return `Ø ${formatLength(dist(this.p0, this.p1) * 2, sc)}`;
+    if (this.kind === 'rect' && this.p0 && this.p1) {
+      const s0 = this.app.cam.toScreen(this.p0), s1 = this.app.cam.toScreen(this.p1);
+      const z = this.app.cam.zoom;
+      return `${formatLength(Math.abs(s1[0] - s0[0]) / z, sc)} × ${formatLength(Math.abs(s1[1] - s0[1]) / z, sc)}`;
+    }
+    if (this.kind === 'polygon' && this.poly && this.poly.length >= 2) {
+      const n = this.poly.length;
+      return formatLength(dist(this.poly[n - 2], this.poly[n - 1]), sc);
+    }
+    if (this.kind === 'area' && this.pts && this.pts.length > 2) return formatArea(polygonArea(this.pts));
+    return null;
+  }
+
   drawScreen(ctx) {
     drawSnapMarker(ctx, this.app, this.snap);
+    const text = this.liveText();
+    if (text && this.curS) drawBubble(ctx, text, this.curS[0], this.curS[1]);
     if (this.kind === 'polygon' && this.poly && this.poly.length >= 3) {
       const f = this.app.cam.toScreen(this.poly[0]);
       ctx.save();
@@ -777,41 +800,157 @@ export class ShapeTool extends Tool {
 // ------------------------------------------------------------- maatlijn
 
 export class DimTool extends Tool {
+  // Lengte: begin- en eindpunt aantikken (of slepen); daarna de maatlijn aan het midden opzij slepen.
+  // Oppervlakte: tik in een vlak of vorm om de oppervlakte erin te zetten (nogmaals tikken = weghalen).
+
+  get mode() {
+    return this.app.state.dimMode || 'length';
+  }
+
+  get busy() {
+    return !!this.pending;
+  }
+
+  /** Midden van een bestaande maatlijn onder de vinger (om opzij te slepen). */
+  dimHandleAt(s) {
+    const cam = this.app.cam;
+    for (const layer of [...this.app.store.doc.layers].reverse()) {
+      if (!layer.visible || layer.locked) continue;
+      for (const item of [...layer.items].reverse()) {
+        if (item.type !== 'dim' || item.kind === 'area') continue;
+        const len = dist(item.a, item.b) || 1;
+        const n = [-(item.b[1] - item.a[1]) / len, (item.b[0] - item.a[0]) / len];
+        const o = item.offset || 0;
+        const A = cam.toScreen([item.a[0] + n[0] * o, item.a[1] + n[1] * o]);
+        const B = cam.toScreen([item.b[0] + n[0] * o, item.b[1] + n[1] * o]);
+        if (distToSegment(s, A, B) < 14 && dist(s, A) > 10 && dist(s, B) > 10) return { item, layer, n };
+      }
+    }
+    return null;
+  }
+
   down(e) {
     this.layer = this.app.editableLayer();
     if (!this.layer) return;
-    this.snap = pick(this.app, e);
-    this.a = this.snap.p;
-    this.b = this.a;
+    this.downS = e.s;
+    this.downT = e.time;
+    if (this.mode === 'area') return;
+    if (!this.pending) {
+      const h = this.dimHandleAt(e.s);
+      if (h) {
+        this.app.store.begin();
+        this.offsetDrag = { id: h.item.id, n: h.n, a: h.item.a };
+        return;
+      }
+    }
+    this.snap = pick(this.app, e, this.pending || null);
+    if (this.pending) {
+      this.a = this.pending;
+      this.b = this.snap.p;
+    } else {
+      this.a = this.snap.p;
+      this.b = this.a;
+    }
   }
 
   move(e) {
+    this.curS = e.s;
+    if (this.offsetDrag) {
+      const f = this.app.store.findItem(this.offsetDrag.id);
+      if (!f) return;
+      const { n, a } = this.offsetDrag;
+      f.item.offset = Math.round(((e.w[0] - a[0]) * n[0] + (e.w[1] - a[1]) * n[1]) * 1000) / 1000;
+      this.app.store.touch();
+      return;
+    }
     if (!this.a) return;
     this.snap = pick(this.app, e, this.a);
     this.b = this.snap.p;
   }
 
-  up() {
+  hover(e) {
+    this.curS = e.s;
+    if (!this.pending) return;
+    this.snap = pick(this.app, e, this.pending);
+    this.a = this.pending;
+    this.b = this.snap.p;
+  }
+
+  up(e) {
+    if (!this.layer) return;
+    if (this.offsetDrag) {
+      this.offsetDrag = null;
+      this.app.store.commit('dim-offset');
+      return;
+    }
+    if (this.mode === 'area') return this.toggleArea(e);
     if (!this.a) return;
+    const tap = dist(e.s, this.downS) < 8;
+    if (!this.pending && tap) {
+      // eerste tik: beginpunt vastzetten, wachten op het eindpunt
+      this.pending = this.a;
+      this.a = this.b = null;
+      return;
+    }
     const a = this.a, b = this.b;
     this.a = this.b = null;
+    this.pending = null;
     if (dist(a, b) < 4 / this.app.cam.zoom) return;
     const layerId = this.layer.id;
     const item = { type: 'dim', id: uid(), a: roundPt(a), b: roundPt(b), offset: 0, color: '#1d2b36' };
     this.app.store.mutate((doc) => {
       doc.layers.find((l) => l.id === layerId)?.items.push(item);
     }, 'dim');
+    this.app.toast('Sleep het midden van de maatlijn om hem opzij te leggen.', 2200);
   }
 
-  cancel() { this.a = this.b = null; }
+  toggleArea(e) {
+    const app = this.app;
+    const doc = app.store.doc;
+    // bovenste gesloten vorm onder de vinger
+    let target = null;
+    for (const layer of [...doc.layers].reverse()) {
+      if (!layer.visible) continue;
+      for (const item of [...layer.items].reverse()) {
+        if (item.type !== 'shape') continue;
+        if (item.kind === 'polygon' && pointInPolygon(e.w, item.points)) { target = item; break; }
+        if (item.kind === 'circle' && dist(e.w, item.points[0]) <= dist(item.points[0], item.points[1])) { target = item; break; }
+      }
+      if (target) break;
+    }
+    if (!target) {
+      app.toast('Tik in een vlak, rechthoek, cirkel of veelhoek.');
+      return;
+    }
+    const existing = doc.layers.flatMap((l) => l.items.map((i) => ({ l, i }))).find(({ i }) => i.type === 'dim' && i.kind === 'area' && i.ref === target.id);
+    const layerId = this.layer.id;
+    app.store.mutate((d) => {
+      if (existing) existing.l.items = existing.l.items.filter((i) => i !== existing.i);
+      else d.layers.find((l) => l.id === layerId)?.items.push({ type: 'dim', kind: 'area', id: uid(), ref: target.id, color: '#1d2b36' });
+    }, 'area-label');
+  }
+
+  cancel() {
+    if (this.offsetDrag) this.app.store.cancel();
+    this.offsetDrag = null;
+    this.pending = null;
+    this.a = this.b = null;
+  }
 
   drawWorld(g, rc) {
-    if (!this.a) return;
+    if (!this.a || !this.b) return;
     drawItem(g, { type: 'dim', a: this.a, b: this.b, offset: 0 }, rc);
   }
 
   drawScreen(ctx) {
     drawSnapMarker(ctx, this.app, this.snap);
+    if (this.pending) {
+      const s = this.app.cam.toScreen(this.pending);
+      ctx.save();
+      ctx.fillStyle = '#d35400';
+      ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
   }
 }
 

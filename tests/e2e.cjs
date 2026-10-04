@@ -24,6 +24,27 @@ function assert(cond, msg) {
   const tile = fs.readFileSync(path.join(__dirname, 'fixtures', 'tile.png'));
   await ctx.route(/service\.pdok\.nl|tile\.openstreetmap\.org/, (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: tile, headers: { 'Access-Control-Allow-Origin': '*' } }));
+  const R = 6378137, lat0 = 52.0907, lon0 = 5.1214, k = Math.cos(lat0 * Math.PI / 180);
+  const merc = (lat, lon) => [lon * Math.PI * R / 180, R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+  const [mx0, my0] = merc(lat0, lon0);
+  const sq = (cx, cy, w, h) => { const p = [[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2, cy + h / 2], [cx - w / 2, cy + h / 2]];
+    const ring = p.map(([x, y]) => [mx0 + x / k, my0 + y / k]); ring.push(ring[0]); return { type: 'Polygon', coordinates: [ring] }; };
+  await ctx.route(/service\.pdok\.nl\/lv\/bag\/wfs/, (route) => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify({ type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: { identificatie: '0344100000000001', status: 'Pand in gebruik', bouwjaar: 1930 }, geometry: sq(0, 15, 10, 8) }, // 15 m ten noorden
+      { type: 'Feature', properties: { identificatie: '0344100000000002', status: 'Pand in gebruik', bouwjaar: 1975 }, geometry: sq(20, 0, 6, 6) },
+      { type: 'Feature', properties: { identificatie: '0344100000000003', status: 'Pand gesloopt' }, geometry: sq(-20, 0, 5, 5) },
+    ] }),
+  }));
+  await ctx.route(/api\.3dbag\.nl/, (route) => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify({ type: 'FeatureCollection', features: [
+      { type: 'CityJSONFeature', id: 'NL.IMBAG.Pand.0344100000000001', CityObjects: {
+        'NL.IMBAG.Pand.0344100000000001': { type: 'Building', attributes: { b3_h_dak_70p: 8.3, b3_h_maaiveld: 0.8 } },
+        'NL.IMBAG.Pand.0344100000000001-0': { type: 'BuildingPart', geometry: [] } }, vertices: [] },
+    ], links: [] }),
+  }));
   await ctx.route(/api\.pdok\.nl\/bzk\/locatieserver/, (route) => route.fulfill({
     status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ response: { docs: [{ weergavenaam: 'Dorpsstraat 1, Testdorp', centroide_ll: 'POINT(5.1214 52.0907)', type: 'adres' }] } }),
@@ -63,7 +84,7 @@ function assert(cond, msg) {
   const ruled = it[it.length - 1];
   const ys = ruled.points.map((p) => p[1]);
   assert(Math.max(...ys) - Math.min(...ys) < 1e-6, 'lijn langs liniaal is exact recht');
-  assert(ruled.dims === true, 'lijn langs liniaal krijgt automatisch een maat');
+  assert(!ruled.dims, 'lijn langs liniaal krijgt géén automatische maat');
 
   // Tekenmodus (standaard): op de liniaal tekenen verplaatst hem niet maar volgt de dichtstbijzijnde rand
   assert(await page.evaluate(() => window.app.settings.guidesLocked) === true, 'tekenmodus staat standaard aan');
@@ -163,16 +184,33 @@ function assert(cond, msg) {
   await drag([[420, 600], [520, 580], [620, 620], [600, 700], [450, 690], [420, 610]]);
   await tool('dim');
   await drag([[400, 560], [600, 560]]);
+  // tik-tik: beginpunt en eindpunt aantikken
+  await page.mouse.click(X(250), Y(300));
+  await page.mouse.click(X(250), Y(380));
+  // maatlijn opzij slepen aan het midden
+  await drag([[250, 340], [290, 340]]);
+  // oppervlakte: tik in de rechthoek
+  await page.click('#optionsbar .seg button[data-m="area"]');
+  await page.mouse.click(X(500), Y(460));
+  await page.click('#optionsbar .seg button[data-m="length"]');
   await tool('line');
   await drag([[650, 600], [800, 680]]);
   it = await items();
   const shapes = it.filter((i) => i.type === 'shape');
-  assert(shapes.some((s) => s.kind === 'polygon' && s.dimEdges && s.dimEdges.length === 2), 'rechthoek getekend');
+  const axisRect = (s) => s.kind === 'polygon' && s.points.length === 4 && Math.abs(s.points[0][1] - s.points[1][1]) < 1e-6 && Math.abs(s.points[1][0] - s.points[2][0]) < 1e-6;
+  assert(shapes.some(axisRect), 'rechthoek getekend');
   assert(shapes.some((s) => s.kind === 'circle'), 'cirkel getekend');
-  assert(shapes.some((s) => s.kind === 'polygon' && s.points.length === 4 && !s.dimEdges), 'veelhoek gesloten');
+  assert(shapes.some((s) => s.kind === 'polygon' && s.points.length === 4 && !axisRect(s)), 'veelhoek gesloten');
   assert(shapes.some((s) => s.hatch === 'gras'), 'vlak met gras-arcering');
-  assert(it.some((i) => i.type === 'dim'), 'maatlijn getekend');
-  assert(shapes.filter((s) => s.dims).length >= 4, 'vormen hebben automatische maten');
+  assert(shapes.every((s) => !s.dims && !s.dimEdges), 'vormen krijgen geen automatische maten meer');
+  const dims = it.filter((i) => i.type === 'dim' && i.kind !== 'area');
+  assert(dims.length === 2, 'twee maatlijnen: slepen en tik-tik');
+  const tapDim = dims[1];
+  assert(Math.abs(Math.abs(tapDim.a[1] - tapDim.b[1]) * 40 - 80) < 2 || Math.abs(tapDim.a[0] - tapDim.b[0]) < 1e-6, 'tik-tik maatlijn tussen de twee punten');
+  assert(Math.abs(tapDim.offset) > 0.5, `maatlijn opzij gesleept (offset ${tapDim.offset} m)`);
+  const areaLabel = it.find((i) => i.type === 'dim' && i.kind === 'area');
+  const rectItem = shapes.find(axisRect);
+  assert(areaLabel && areaLabel.ref === rectItem.id, 'oppervlaktelabel in de rechthoek gezet');
 
   console.log('Stencils');
   await tool('stencil');
@@ -242,6 +280,17 @@ function assert(cond, msg) {
   await page.waitForFunction(() => window.app.store.doc.layers.some((l) => l.items.some((i) => i.type === 'image')), null, { timeout: 15000 });
   const img = await page.evaluate(() => window.app.store.doc.layers[0].items[0]);
   assert(img.type === 'image' && img.w === 60 && img.h === 60, 'kaart van 60 × 60 m geplaatst in onderste laag');
+  await page.waitForFunction(() => window.app.store.doc.layers.some((l) => l.source === 'gebouwen'), null, { timeout: 15000 });
+  const bag = await page.evaluate(() => {
+    const d = window.app.store.doc; const l = d.layers.find((x) => x.source === 'gebouwen');
+    const c = (pts) => [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+    return { idx: d.layers.indexOf(l), items: l.items.map((i) => ({ bag: i.bag, h: i.height, est: !!i.heightEstimated, c: c(i.points) })), anchor: [d.geo.x, d.geo.y] };
+  });
+  assert(bag.idx === 1 && bag.items.length === 2, 'gebouwenlaag met 2 panden direct boven de kaart');
+  const huisA = bag.items.find((b) => b.bag === '0344100000000001'), huisB = bag.items.find((b) => b.bag === '0344100000000002');
+  assert(huisA.h === 7.5 && !huisA.est, 'hoogte uit 3D BAG gekoppeld (7,5 m)');
+  assert(huisB.h === 6 && huisB.est, 'pand zonder 3D BAG-hoogte krijgt standaard 6 m');
+  assert(Math.abs(huisA.c[0] - bag.anchor[0]) < 0.05 && Math.abs(huisA.c[1] - (bag.anchor[1] - 15)) < 0.05, `pand op de juiste plek (15 m ten noorden van het adres)`);
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(OUT, '04-kaart.png') });
 

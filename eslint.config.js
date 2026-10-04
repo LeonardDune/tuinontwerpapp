@@ -10,7 +10,7 @@ export default [
         performance: 'readonly', console: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly',
         Image: 'readonly', Path2D: 'readonly', DOMMatrix: 'readonly', Blob: 'readonly', File: 'readonly',
         FileReader: 'readonly', URL: 'readonly', TextEncoder: 'readonly', ResizeObserver: 'readonly',
-        fetch: 'readonly', atob: 'readonly', setInterval: 'readonly', clearInterval: 'readonly', confirm: 'readonly', self: 'readonly', caches: 'readonly',
+        fetch: 'readonly', atob: 'readonly', setInterval: 'readonly', clearInterval: 'readonly', URLSearchParams: 'readonly', confirm: 'readonly', self: 'readonly', caches: 'readonly',
       },
     },
     rules: {

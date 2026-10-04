@@ -29,9 +29,11 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   naar voren/achteren, naar een andere laag of verwijderen. Kopiëren en plakken met ⌘C/⌘V.
 - **Stencils**: bomen (kroondiameter), heesters, hagen, grassen, vaste planten, meubilair, schuur, pergola, kas, vijver,
   trampoline, auto en noordpijl, allemaal op ware grootte en met een instelbare maat.
-- **Vormen met automatische maten**: lijn, rechthoek, cirkel (diameter en oppervlakte), veelhoek en vlak (bijvoorbeeld
-  gazon of border) met arceringen op ware grootte: gras, grind, tegels, klinkers, vlonder, water en beplanting.
-- **Maatlijnen** die snappen aan eindpunten en het raster. Afronding en labelgrootte hangen af van de tekenschaal (1:10 tot 1:5000).
+- **Vormen**: lijn, rechthoek, cirkel, veelhoek en vlak (bijvoorbeeld gazon of border) met arceringen op ware grootte:
+  gras, grind, tegels, klinkers, vlonder, water en beplanting. Tijdens het tekenen zie je de maat in een tijdelijk label.
+- **Maatvoering** (apart gereedschap): *Lengte*: tik begin- en eindpunt aan of sleep; snapt aan eindpunten, randen en het
+  raster. Sleep het midden van een maatlijn om hem opzij te leggen. *Oppervlakte*: tik in een vlak of vorm voor de m².
+  Afronding en labelgrootte op papier hangen af van de tekenschaal (1:10 tot 1:5000); op het scherm blijven labels leesbaar.
 - **Kaarten op schaal**: zoek een adres (PDOK, met OpenStreetMap als terugval voor buiten Nederland) en plaats een
   luchtfoto, topografische kaart of OpenStreetMap-kaart, optioneel met de perceelgrenzen van het Kadaster. De kaart
   krijgt precies de juiste afmeting in meters.
@@ -41,6 +43,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
     schaduwen van huis, schuur, bomen, hagen en schuttingen bewegen mee. Een zonnekompas toont de zonnebaan.
   - *Zonkaart*: per plek het gemiddeld aantal uren direct zon (gekozen dag, groeiseizoen apr–sep of heel jaar),
     ingedeeld als **zon** (≥ 6 u), **halfschaduw** (3–6 u) en **schaduw** (< 3 u), zoals op plantlabels.
+  - Gebouwen: bij het importeren van een kaart (of via *Gebouwen ophalen* in het zonpaneel) komen de panden uit de
+    BAG (PDOK) in een eigen laag, met hun hoogte uit de 3D BAG (dakhoogte min maaiveld). Zonder bekende hoogte: 6 m.
   - Hoogtes: stencils hebben een standaardhoogte (bijv. loofboom 8 m, haag 1,8 m, schuur 2,5 m), aan te passen bij het
     plaatsen of via de lasso (knop *Hoogte*). Vormen krijgen een hoogte via de optiebalk (huis, schutting, muur).
 - **Ondergrond importeren**: een foto of PDF. Je geeft de werkelijke breedte op of de schaal van de PDF (bijv. 1:100),

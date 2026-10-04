@@ -1,6 +1,6 @@
 // Tuinontwerp — hoofdmodule: invoer, weergave en interface.
 
-import { Store, newDoc, newLayer, uid } from './model.js';
+import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
 import { renderScene, renderGrid, renderScaleBar } from './render.js';
 import { Guide, GUIDE_TYPES } from './guides.js';
@@ -20,6 +20,7 @@ import {
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
+import { fetchBuildings, DEFAULT_BUILDING_HEIGHT } from './buildings.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -34,7 +35,6 @@ const DEFAULT_SETTINGS = {
   pencilOnly: false,
   penDetected: false,
   rotateGesture: true,
-  autoDims: true,
   grid: true,
   snap: true,
   angleSnap: true,
@@ -146,6 +146,15 @@ class App {
     this.selection.clear();
     doc.assets = doc.assets || {};
     doc.grid = doc.grid || 1;
+    if (!doc.manualDims) {
+      // Maten werden vroeger automatisch bij lijnen en vormen gezet; dat is nu een apart gereedschap.
+      for (const l of doc.layers || []) {
+        for (const i of l.items) {
+          if (i.type === 'stroke' || i.type === 'shape') { delete i.dims; delete i.dimSide; delete i.dimEdges; delete i.area; }
+        }
+      }
+      doc.manualDims = true;
+    }
     doc.scale = doc.scale || 100;
     this.store.load(doc);
     if (doc.view) this.cam.set(doc.view);
@@ -280,7 +289,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12 });
       if (this.settings.grid) renderGrid(this.baseCtx, cam, width, height, dpr, doc.grid);
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
@@ -290,7 +299,7 @@ class App {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.base, 0, 0);
 
-    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr };
+    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12 };
     ctx.save();
     cam.apply(ctx, dpr);
     this.tool.drawWorld(ctx, rc);
@@ -1196,16 +1205,24 @@ class App {
         add(this.toggle('Vulling', this.state.fill, (v) => { this.state.fill = v; }));
         add(this.hatchSelect());
       }
-      add(this.toggle('Maten', this.settings.autoDims, (v) => { this.settings.autoDims = v; this.syncSettingsUI(); }));
       add(this.numberField('Hoogte (m)', this.state.shapeHeight || 0, (v) => { this.state.shapeHeight = v; }, 'Voor schaduw: bijv. huis 8, schutting 1,8. 0 = plat.'));
       add(this.swatches());
     } else if (t === 'area') {
       add(this.hatchSelect());
-      add(this.toggle('Oppervlakte', this.settings.autoDims, (v) => { this.settings.autoDims = v; this.syncSettingsUI(); }));
       add(this.swatches());
       add(this.hint('Teken de omtrek van een vak (gazon, border, terras).'));
     } else if (t === 'dim') {
-      add(this.hint('Sleep van punt naar punt. Snapt aan eindpunten en het raster; de maat volgt uit de tekenschaal.'));
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      const mode = this.state.dimMode || 'length';
+      seg.innerHTML = `<button type="button" data-m="length" class="${mode === 'length' ? 'on' : ''}">Lengte</button><button type="button" data-m="area" class="${mode === 'area' ? 'on' : ''}">Oppervlakte</button>`;
+      for (const b of seg.querySelectorAll('button')) {
+        b.addEventListener('click', () => { this.tool.cancel(); this.state.dimMode = b.dataset.m; this.persistSettings(); this.renderOptions(); this.requestRender(); });
+      }
+      add(seg);
+      add(this.hint(mode === 'area'
+        ? 'Tik in een vlak of vorm om de oppervlakte erin te zetten. Nogmaals tikken haalt hem weg.'
+        : 'Tik het beginpunt en het eindpunt aan (of sleep). Snapt aan eindpunten, randen en het raster. Sleep daarna het midden van een maatlijn om hem opzij te leggen.'));
     } else if (t === 'text') {
       add(this.slider('Tekstgrootte', 1.5, 12, 0.5, this.state.textSize, (v) => { this.state.textSize = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`));
       add(this.swatches());
@@ -1881,12 +1898,14 @@ class App {
           lat: chosen.lat, lon: chosen.lon, sizeM, source: src.value, kadaster: $('#map-kadaster').checked,
           onProgress: (f) => { status.textContent = `Kaart laden… ${Math.round(f * 100)}%`; },
         });
-        this.placeUnderlay(map.dataUrl, map.widthM, map.heightM, `Kaart – ${chosen.name.split(',')[0]}`, map.attribution, true);
-        this.store.doc.geo = { lat: chosen.lat, lon: chosen.lon, name: chosen.name };
+        const center = this.placeUnderlay(map.dataUrl, map.widthM, map.heightM, `Kaart – ${chosen.name.split(',')[0]}`, map.attribution, true);
+        // midden van de kaart = gezochte locatie; nodig om gebouwen precies te plaatsen
+        this.store.doc.geo = { lat: chosen.lat, lon: chosen.lon, name: chosen.name, x: center[0], y: center[1], sizeM };
         this.store.doc.northDeg = 0; // PDOK/OSM-kaarten liggen met het noorden exact naar boven
         if (this.sun.active) this.sun.render();
         dlg.close();
         this.toast(`Kaart geplaatst: ${sizeM} × ${sizeM} m op ware grootte. De laag is vergrendeld.`, 4000);
+        if ($('#map-buildings').checked) await this.loadBuildings();
       } catch (err) {
         status.textContent = err.message || String(err);
       } finally {
@@ -1914,6 +1933,65 @@ class App {
     }, 'underlay');
     this.cam.fitBox({ minX: center[0] - widthM / 2, minY: center[1] - heightM / 2, maxX: center[0] + widthM / 2, maxY: center[1] + heightM / 2 }, this.width, this.height, 30);
     this.cameraChanged();
+    return center;
+  }
+
+  /** Waar ligt de kaartlocatie in de tekening? (ook voor tekeningen van vóór deze functie) */
+  geoAnchor() {
+    const geo = this.store.doc.geo;
+    if (!geo) return null;
+    if (Number.isFinite(geo.x)) return [geo.x, geo.y];
+    for (const l of this.store.doc.layers) {
+      for (const i of l.items) {
+        if (i.type === 'image' && /PDOK|OpenStreetMap/.test(i.attribution || '')) return [i.x, i.y];
+      }
+    }
+    return null;
+  }
+
+  /** Gebouwen met hoogte rond de kaartlocatie ophalen (BAG + 3D BAG) in een eigen laag. */
+  async loadBuildings() {
+    const geo = this.store.doc.geo;
+    const anchor = this.geoAnchor();
+    if (!geo || !anchor) {
+      this.toast('Importeer eerst een kaart van je adres; dan weet de app waar de gebouwen moeten komen.');
+      return;
+    }
+    const sizeM = Math.min(250, geo.sizeM || 100);
+    try {
+      const res = await fetchBuildings({ lat: geo.lat, lon: geo.lon, sizeM, anchor, onStatus: (t) => this.toast(t, 8000) });
+      if (!res.buildings.length) {
+        this.toast('Geen gebouwen gevonden in dit gebied.');
+        return;
+      }
+      const lw = paperToWorld(0.25, this.store.doc.scale);
+      const items = res.buildings.map((b) => ({
+        type: 'shape', id: uid(), kind: 'polygon', points: b.points, color: '#4a4f55', width: lw,
+        fill: '#9aa0a6', fillAlpha: 0.35, hatch: 'arcering', hatchColor: '#6b7075',
+        height: b.height, bag: b.id, source: '3dbag', ...(b.estimated ? { heightEstimated: true } : {}),
+      }));
+      this.store.mutate((doc) => {
+        let layer = doc.layers.find((l) => l.source === 'gebouwen');
+        if (!layer) {
+          layer = newLayer('Gebouwen (BAG / 3D BAG)');
+          layer.source = 'gebouwen';
+          // direct boven de kaart
+          const mapIdx = doc.layers.findIndex((l) => l.items.some((i) => i.type === 'image'));
+          doc.layers.splice(mapIdx >= 0 ? mapIdx + 1 : 0, 0, layer);
+        }
+        layer.items = items;
+      }, 'buildings');
+      if (res.withHeight === res.buildings.length) {
+        this.toast(`${res.buildings.length} gebouwen toegevoegd met hun hoogte uit de 3D BAG.`, 4500);
+      } else if (res.withHeight > 0) {
+        this.toast(`${res.buildings.length} gebouwen toegevoegd; ${res.buildings.length - res.withHeight} zonder bekende hoogte kregen ${DEFAULT_BUILDING_HEIGHT} m (aan te passen met de lasso → Hoogte).`, 6000);
+      } else {
+        this.toast(`${res.buildings.length} gebouwen toegevoegd, maar de hoogtes konden niet worden opgehaald${res.heightError ? ` (${res.heightError})` : ''}. Ze kregen ${DEFAULT_BUILDING_HEIGHT} m; pas aan met de lasso → Hoogte.`, 7000);
+      }
+    } catch (err) {
+      console.error(err);
+      this.toast('Gebouwen ophalen mislukt: ' + (err.message || err), 6000);
+    }
   }
 
   // --- ondergrond importeren

@@ -26,7 +26,7 @@ export function renderScene(ctx, opts) {
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
 
-  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr };
+  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0 };
   const hide = opts.hideItems;
 
   for (const layer of doc.layers) {

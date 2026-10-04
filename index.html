@@ -46,7 +46,7 @@
       <button class="tool" data-tool="area" title="Vlak / beplantingsvak"><i data-icon="area"></i></button>
     </div>
     <div class="group">
-      <button class="tool" data-tool="dim" title="Maatlijn (M)"><i data-icon="dim"></i></button>
+      <button class="tool" data-tool="dim" title="Maatvoering: lengte en oppervlakte (M)"><i data-icon="dim"></i></button>
       <button class="tool" data-tool="text" title="Tekst (T)"><i data-icon="text"></i></button>
       <button class="tool" data-tool="stencil" title="Stencils (S)"><i data-icon="tree"></i></button>
     </div>
@@ -150,6 +150,7 @@
       </label>
     </div>
     <label class="check"><input type="checkbox" id="map-kadaster" checked> Perceelgrenzen (Kadaster) tonen</label>
+    <label class="check"><input type="checkbox" id="map-buildings" checked> Gebouwen met hun hoogte toevoegen (BAG / 3D BAG, voor schaduw)</label>
     <p class="hint" id="map-status">Kies een adres. De kaart wordt op ware grootte als ondergrond in een eigen laag geplaatst.</p>
     <footer>
       <button value="close">Annuleren</button>
@@ -201,7 +202,6 @@
     <header><h2>Instellingen</h2><button class="x" value="close"><i data-icon="close"></i></button></header>
     <label class="check"><input type="checkbox" data-setting="pencilOnly"> Alleen de Pencil tekent (vingers verschuiven en zoomen)</label>
     <label class="check"><input type="checkbox" data-setting="rotateGesture"> Draaien met twee vingers</label>
-    <label class="check"><input type="checkbox" data-setting="autoDims"> Automatische maatvoering bij lijnen en vormen</label>
     <label class="check"><input type="checkbox" data-setting="grid"> Raster tonen</label>
     <label class="check"><input type="checkbox" data-setting="snap"> Snappen aan eindpunten en raster</label>
     <label class="check"><input type="checkbox" data-setting="angleSnap"> Hoeken snappen per 15°</label>

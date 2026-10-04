@@ -138,7 +138,7 @@ export class SunPanel {
         <button type="button" class="x sun-close" title="Sluiten">${icon('close', 18)}</button>
       </div>
       <div class="sun-row sun-mode-row"></div>
-      <div class="sun-loc">${geo.fallback
+      <div class="sun-loc">${!geo.fallback ? `<button type="button" class="sun-bag">Gebouwen ophalen (3D BAG)</button> ` : ''}${geo.fallback
         ? 'Locatie: midden van Nederland. Importeer een kaart van je adres voor de exacte zonnestand.'
         : `Locatie: ${escapeHtml(geo.name || `${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}`)} · noorden ${this.doc.northDeg ? `${Math.round(this.doc.northDeg)}° gedraaid` : 'boven (van de kaart)'}`}</div>`;
     el.hidden = false;
@@ -166,6 +166,11 @@ export class SunPanel {
       this.changed();
     });
     $('.sun-close', el).addEventListener('click', () => this.toggle(false));
+    $('.sun-bag', el)?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      await this.app.loadBuildings();
+      e.target.disabled = false;
+    });
     this.renderModeRow();
   }
 
