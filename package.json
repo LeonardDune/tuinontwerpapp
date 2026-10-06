@@ -6,6 +6,6 @@
   "scripts": {
     "start": "npx http-server -p 8123 -c-1 .",
     "lint": "eslint js sw.js",
-    "test": "node tests/e2e.cjs && node tests/touch.cjs && node tests/parallel.cjs && CHECK=1 node tests/smooth.cjs && node tests/edit.cjs"
+    "test": "node tests/e2e.cjs && node tests/touch.cjs && node tests/parallel.cjs && CHECK=1 node tests/smooth.cjs && node tests/edit.cjs && node tests/planting.cjs"
   }
 }

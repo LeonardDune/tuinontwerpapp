@@ -1,6 +1,7 @@
 // Weergave van het document: lagen (met trekpapier en dekking), raster en schaalbalk.
 
 import { drawItem } from './items.js';
+import { rolesMap } from './planting.js';
 import { niceStep, formatTick } from './units.js';
 
 let layerCanvas = null;
@@ -26,7 +27,7 @@ export function renderScene(ctx, opts) {
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
 
-  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0 };
+  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, roles: rolesMap(doc) };
   const hide = opts.hideItems;
 
   for (const layer of doc.layers) {

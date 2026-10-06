@@ -4,6 +4,7 @@ import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern } from './patterns.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
+import { drawRoleSymbol, rolesMap, vakLayout, roleDiameter, plantOutline, hitPlant } from './planting.js';
 import { paperToWorld } from './model.js';
 import { formatLength, formatArea } from './units.js';
 import {
@@ -37,7 +38,37 @@ export function drawItem(g, item, rc) {
     case 'stencil': return drawStencil(g, item, paperToWorld(0.25, rc.scale));
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
+    case 'plant': return drawPlant(g, item, rc);
   }
+}
+
+function drawPlant(g, item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  const r = roles[item.role];
+  if (!r) return;
+  drawRoleSymbol(g, r, item.x, item.y, item.d, rc.month || null, paperToWorld(0.2, rc.scale));
+}
+
+/** Plantvak: rand plus symbolen van de mix in driehoeksverband. */
+function drawVak(g, item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  g.save();
+  tracePath(g, item);
+  g.fillStyle = 'rgba(122, 154, 90, 0.10)';
+  g.fill();
+  g.save();
+  g.clip();
+  const lw = paperToWorld(0.15, rc.scale);
+  for (const p of vakLayout(item, roles)) {
+    drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
+  }
+  g.restore();
+  tracePath(g, item);
+  g.strokeStyle = item.color || '#3f7a2e';
+  g.lineWidth = item.width || paperToWorld(0.3, rc.scale);
+  g.setLineDash([g.lineWidth * 4, g.lineWidth * 2]);
+  g.stroke();
+  g.restore();
 }
 
 function drawStroke(g, item, rc) {
@@ -86,6 +117,7 @@ function tracePath(g, item) {
 
 function drawShape(g, item, rc) {
   if (item.points.length < 2) return;
+  if (item.planting && item.kind === 'polygon') return drawVak(g, item, rc);
   g.save();
   g.globalAlpha *= item.opacity ?? 1;
   tracePath(g, item);
@@ -296,6 +328,8 @@ export function itemOutline(item) {
       return item.points;
     case 'dim':
       return item.kind === 'area' ? [] : [item.a, item.b];
+    case 'plant':
+      return plantOutline(item);
     case 'stencil':
     case 'image':
       return rectCorners(item.x, item.y, item.w, item.h, item.rot || 0);
@@ -345,6 +379,8 @@ export function hitItem(item, p, tol) {
       if (item.kind === 'polygon' && (item.fill || (item.hatch && item.hatch !== 'none'))) return pointInPolygon(p, pts);
       return false;
     }
+    case 'plant':
+      return hitPlant(item, p, tol);
     case 'dim':
       if (item.kind === 'area') return false;
       return distToSegment(p, item.a, item.b) <= tol * 1.5;
@@ -366,6 +402,7 @@ export function itemSnapPoints(item) {
     case 'dim':
       return item.kind === 'area' ? [] : [item.a, item.b];
     case 'stencil':
+    case 'plant':
       return [[item.x, item.y]];
   }
   return [];
@@ -395,6 +432,12 @@ export function transformItem(item, m, s, r) {
       item.x = c[0]; item.y = c[1];
       item.w *= s; item.h *= s;
       item.rot = (item.rot || 0) + r;
+      break;
+    }
+    case 'plant': {
+      const c = tp([item.x, item.y]);
+      item.x = c[0]; item.y = c[1];
+      item.d *= s;
       break;
     }
     case 'text': {

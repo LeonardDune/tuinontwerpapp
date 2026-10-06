@@ -54,6 +54,16 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
     BAG (PDOK) in een eigen laag, met hun hoogte uit de 3D BAG (dakhoogte min maaiveld). Zonder bekende hoogte: 6 m.
   - Hoogtes: stencils hebben een standaardhoogte (bijv. loofboom 8 m, haag 1,8 m, schuur 2,5 m), aan te passen bij het
     plaatsen of via de lasso (knop *Hoogte*). Vormen krijgen een hoogte via de optiebalk (huis, schutting, muur).
+- **Beplantingsplan (concept)**: ontwerp eerst op kleur, structuur, vorm en hoogte, nog zonder plantnamen.
+  - *Bouwstenen*: abstracte planten met rol (structuur, vulling/matrix, accent), hoogte, groeivorm (rechtop, bolvormig,
+    kussen, spreidend, overhangend, ijl/doorkijk), bloei- en zaadvorm (aar, knop, pluim, scherm, schijf; naar Oudolf
+    & Kingsbury), bloeikleur en -maanden, blad, herfstkleur, wat er in de winter overblijft en standplaats.
+  - *Kleurenschema*: monochroom, verwant, complementair, gesplitst complementair, drieklank, warm, koel of wit en zilver;
+    bloeikleuren kies je uit het palet, afwijkingen worden gemarkeerd.
+  - *Beplanten*: losse bouwstenen op hun uiteindelijke breedte, of een plantvak met een mix in driehoeksverband.
+  - *Het hele jaar*: balk met per maand hoeveel er te zien is (en in welke kleuren); tik een maand om de hele tekening
+    zo te zien. Kleurcirkel per maand. Adviezen over dode periodes, kleuren buiten het schema en afwisseling in rol,
+    hoogte, groeivorm en bloeivorm.
 - **Ondergrond importeren**: een foto of PDF. Je geeft de werkelijke breedte op of de schaal van de PDF (bijv. 1:100),
   of je kalibreert achteraf met de Schaal-tool.
 - **Lagen als trekpapier**: per laag de zichtbaarheid, vergrendeling, dekking en hoeveel "papier" eronder ligt.

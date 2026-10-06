@@ -151,6 +151,7 @@ export function itemSize(item) {
   const f = itemFrame(item);
   if (f) return { w: Math.abs(f.w), h: Math.abs(f.h) };
   if (item.type === 'shape' && item.kind === 'circle') return { d: dist(item.points[0], item.points[1]) * 2 };
+  if (item.type === 'plant') return { d: item.d };
   if (item.type === 'shape' && item.kind === 'line' && item.points.length === 2) return { len: dist(item.points[0], item.points[1]) };
   if (item.type === 'dim' && item.kind !== 'area') return { len: dist(item.a, item.b) };
   return {};
@@ -178,6 +179,10 @@ export function setFrameSize(item, w, h) {
 
 /** Diameter van een cirkel (of rond stencil). */
 export function setDiameter(item, d) {
+  if (item.type === 'plant') {
+    item.d = d;
+    return;
+  }
   if (item.type === 'shape' && item.kind === 'circle') {
     const [c, e] = item.points;
     const r = dist(c, e) || 1;

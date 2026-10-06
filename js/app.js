@@ -20,6 +20,9 @@ import {
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
+import { PlantTool } from './planttool.js';
+import { PlantPanel } from './plantpanel.js';
+import { rolesMap, describeRole, ROLES as PLANT_ROLES } from './planting.js';
 import {
   isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
   selectionBox, displayAngle, fromDisplayAngle, closedArea,
@@ -104,6 +107,7 @@ class App {
       text: new TextTool(this),
       stencil: new StencilTool(this),
       calibrate: new CalibrateTool(this),
+      plant: new PlantTool(this),
       pan: new PanTool(this),
     };
 
@@ -118,6 +122,7 @@ class App {
 
     hydrateIcons();
     this.sun = new SunPanel(this);
+    this.plantPanel = new PlantPanel(this);
     this.setupCanvas();
     this.setupInput();
     this.setupUI();
@@ -168,6 +173,7 @@ class App {
     this.persistSettings();
     $('#doc-name').value = doc.name;
     if (this.sun.active) { this.sun.render(); this.sun.onDocChange(); }
+    this.plantPanel.refresh();
     this.refreshAll();
     if (isNew) this.scheduleSave();
   }
@@ -195,6 +201,7 @@ class App {
     this.updateStatus();
     if ($('#doc-name').value !== this.store.doc.name) $('#doc-name').value = this.store.doc.name;
     this.sun.onDocChange();
+    this.plantPanel.refresh();
     this.scheduleSave();
   }
 
@@ -294,7 +301,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12 });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month });
       if (this.settings.grid) renderGrid(this.baseCtx, cam, width, height, dpr, doc.grid);
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
@@ -304,7 +311,7 @@ class App {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.base, 0, 0);
 
-    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12 };
+    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, roles: rolesMap(doc) };
     ctx.save();
     cam.apply(ctx, dpr);
     this.tool.drawWorld(ctx, rc);
@@ -993,7 +1000,7 @@ class App {
       return;
     }
     if (k === 'enter' && this.state.tool === 'polygon') { this.tool.finishPolygon(); return; }
-    const map = { p: 'draw', b: 'draw', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area' };
+    const map = { p: 'draw', b: 'plant', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area' };
     if (map[k]) { this.setTool(map[k]); return; }
     if (k === 'r') { this.toggleGuide('ruler'); return; }
     if (k === 'g') { this.settings.grid = !this.settings.grid; this.persistSettings(); this.syncSettingsUI(); this.baseDirty = true; this.requestRender(); return; }
@@ -1055,7 +1062,10 @@ class App {
 
     $('#btn-undo').addEventListener('click', () => this.store.undo());
     $('#btn-redo').addEventListener('click', () => this.store.redo());
-    $('#btn-layers').addEventListener('click', () => { $('#layers-panel').hidden = !$('#layers-panel').hidden; });
+    $('#btn-layers').addEventListener('click', () => {
+      $('#layers-panel').hidden = !$('#layers-panel').hidden;
+      if (!$('#layers-panel').hidden && !$('#plant-panel').hidden) this.plantPanel.close();
+    });
     $('#btn-layers-close').addEventListener('click', () => { $('#layers-panel').hidden = true; });
     $('#btn-layer-add').addEventListener('click', () => this.addLayer());
     $('#btn-fit').addEventListener('click', () => this.fitView());
@@ -1241,6 +1251,8 @@ class App {
       add(this.swatches());
     } else if (t === 'stencil') {
       add(this.stencilOptions());
+    } else if (t === 'plant') {
+      add(this.plantOptions());
     } else if (t === 'calibrate') {
       add(this.hint('Trek een lijn over een bekende maat in de ondergrond (bijv. een gevel) en vul de werkelijke lengte in.'));
     } else if (t === 'pan') {
@@ -1262,6 +1274,58 @@ class App {
       if (v >= 0) { onChange(v); this.persistSettings(); }
       else inp.value = fmt(value);
     });
+    return wrap;
+  }
+
+  /** Optiebalk van het gereedschap Beplanten. */
+  plantOptions() {
+    const wrap = document.createElement('div');
+    wrap.className = 'opt';
+    wrap.style.gap = '12px';
+    const roles = this.store.doc.planting?.roles || [];
+    if (!roles.length) {
+      wrap.appendChild(this.hint('Nog geen bouwstenen. Open het paneel Beplanting en maak er een paar aan.'));
+      const b = document.createElement('button');
+      b.className = 'toggle';
+      b.textContent = 'Paneel openen';
+      b.addEventListener('click', () => this.plantPanel.open());
+      wrap.appendChild(b);
+      return wrap;
+    }
+    const mode = this.state.plantMode || 'plant';
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.innerHTML = `<button type="button" data-m="plant" class="${mode === 'plant' ? 'on' : ''}">Losse plant</button><button type="button" data-m="vak" class="${mode === 'vak' ? 'on' : ''}">Plantvak</button>`;
+    for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.state.plantMode = b.dataset.m; this.persistSettings(); this.renderOptions(); });
+    wrap.appendChild(seg);
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    const cur = this.state.plantRole || roles[0].id;
+    const mix = new Set(this.state.plantMix || []);
+    for (const r of roles) {
+      const c = document.createElement('button');
+      c.type = 'button';
+      const on = mode === 'plant' ? r.id === cur : mix.has(r.id);
+      c.className = 'chip' + (on ? ' on' : '');
+      c.title = describeRole(r);
+      c.appendChild(this.plantPanel.symbol(r, 22));
+      c.append(` ${r.code}`);
+      c.addEventListener('click', () => {
+        if (mode === 'plant') this.state.plantRole = r.id;
+        else {
+          if (mix.has(r.id)) mix.delete(r.id); else mix.add(r.id);
+          this.state.plantMix = [...mix];
+        }
+        this.persistSettings();
+        this.renderOptions();
+        this.plantPanel.refresh();
+      });
+      chips.appendChild(c);
+    }
+    wrap.appendChild(chips);
+    wrap.appendChild(this.hint(mode === 'plant'
+      ? 'Tik om de gekozen bouwsteen te plaatsen (op zijn uiteindelijke breedte).'
+      : 'Kies de bouwstenen van de mix en teken de omtrek van het vak. Verhouding volgens de rol: structuur 30, vulling 60, accent 10.'));
     return wrap;
   }
 
@@ -1607,6 +1671,8 @@ class App {
       if (isRect(i)) return 'Rechthoek';
       if (i.type === 'shape') return { circle: 'Cirkel', polygon: 'Vorm', line: i.points.length === 2 ? 'Lijn' : 'Lijnstuk' }[i.kind] || 'Vorm';
       if (i.type === 'stencil') return STENCIL_MAP[i.symbol]?.name || 'Stencil';
+      if (i.type === 'plant') return 'Bouwsteen';
+      if (i.type === 'shape' && i.planting) return 'Plantvak';
       return { stroke: 'Penseelstreek', dim: i.kind === 'area' ? 'Oppervlakte' : 'Maatlijn', text: 'Tekst', image: 'Afbeelding' }[i.type] || 'Element';
     };
     let html = `<span class="count">${it ? typeName(it) : `${items.length} elementen`}</span>`;
@@ -1623,6 +1689,14 @@ class App {
       if (ang != null) html += field('angle', it.type === 'shape' && it.kind === 'line' ? 'Hoek' : 'Draaiing', String(displayAngle(ang)).replace('.', ','), '°', true);
       const area = closedArea(it);
       if (area != null && !isRect(it) && it.kind !== 'circle') html += `<span class="pinfo">${fmt(area, area < 100 ? 1 : 0)} m²</span>`;
+      const roles = this.store.doc.planting?.roles || [];
+      if (it.type === 'plant') {
+        html += `<select data-k="prole" title="Bouwsteen">${roles.map((r) => `<option value="${r.id}" ${r.id === it.role ? 'selected' : ''}>${escapeHtml(r.code)} – ${escapeHtml(describeRole(r))}</option>`).join('')}</select>`;
+      }
+      if (it.type === 'shape' && it.planting) {
+        const inMix = new Set(it.planting.mix.map((m) => m.role));
+        html += `<span class="pf">Mix</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}">${escapeHtml(r.code)}</button>`).join('')}`;
+      }
     }
     if (!it || itemAngle(it) == null) {
       // draaien met een exact aantal graden (om het midden van de selectie)
@@ -1675,6 +1749,7 @@ class App {
       });
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
+    for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
   }
 
   /** Eigenschap toepassen op de selectie (exacte maten, hoek, stijl). */
@@ -1727,6 +1802,19 @@ class App {
         case 'hatch':
           for (const i of items) if (i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle')) i.hatch = raw;
           break;
+        case 'prole':
+          for (const i of items) if (i.type === 'plant') i.role = raw;
+          break;
+        case 'mix': {
+          const roles = rolesMap(this.store.doc);
+          for (const i of items) {
+            if (!i.planting) continue;
+            const has = i.planting.mix.some((m) => m.role === raw);
+            if (has && i.planting.mix.length > 1) i.planting.mix = i.planting.mix.filter((m) => m.role !== raw);
+            else if (!has && roles[raw]) i.planting.mix.push({ role: raw, w: PLANT_ROLES[roles[raw].role]?.weight || 30 });
+          }
+          break;
+        }
       }
     }, 'property');
     this.requestRender();

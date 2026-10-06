@@ -25,6 +25,7 @@
     <span class="sep"></span>
     <button class="tb" id="btn-map" title="Kaart op schaal"><i data-icon="map"></i><span class="lbl">Kaart</span></button>
     <button class="tb" id="btn-import" title="Afbeelding of PDF als ondergrond"><i data-icon="image"></i><span class="lbl">Ondergrond</span></button>
+    <button class="tb" id="btn-planting" title="Beplantingsplan"><i data-icon="flower"></i><span class="lbl">Beplanting</span></button>
     <button class="tb" id="btn-sun" title="Zon en schaduw"><i data-icon="sun"></i><span class="lbl">Zon</span></button>
     <button class="tb" id="btn-export" title="Exporteren naar PDF"><i data-icon="pdf"></i><span class="lbl">PDF</span></button>
     <span class="sep"></span>
@@ -49,6 +50,7 @@
       <button class="tool" data-tool="dim" title="Maatvoering: lengte en oppervlakte (M)"><i data-icon="dim"></i></button>
       <button class="tool" data-tool="text" title="Tekst (T)"><i data-icon="text"></i></button>
       <button class="tool" data-tool="stencil" title="Stencils (S)"><i data-icon="tree"></i></button>
+      <button class="tool" data-tool="plant" title="Beplanten met bouwstenen (B)"><i data-icon="flower"></i></button>
     </div>
     <div class="group">
       <button class="guide-btn" data-guide="ruler" title="Super-liniaal (R)"><i data-icon="ruler"></i></button>
@@ -85,6 +87,8 @@
     <ul id="layer-list"></ul>
     <p class="hint">Bovenste laag ligt bovenop. "Papier" legt een vel trekpapier onder de laag.</p>
   </aside>
+
+  <aside id="plant-panel" class="side-panel" hidden></aside>
 
   <footer id="optionsbar"></footer>
 
@@ -203,6 +207,11 @@
     </label>
     <p class="hint">Gebaren: twee vingers tikken = ongedaan maken, drie vingers tikken = opnieuw. Tik op een liniaal, driehoek of gradenboog om de hoek, maat of diameter in te stellen.</p>
   </form>
+</dialog>
+
+<!-- Bouwsteen -->
+<dialog id="dlg-role">
+  <form method="dialog" class="dlg role-dlg"></form>
 </dialog>
 
 <!-- Invoer -->
