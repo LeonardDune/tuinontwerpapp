@@ -3,6 +3,7 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
+  plantCounts, isBed, isGroup,
 } from './planting.js';
 import { icon } from './icons.js';
 
@@ -33,12 +34,14 @@ export class PlantPanel {
     $('#layers-panel').hidden = true;
     this.el.hidden = false;
     $('#btn-planting').classList.add('on');
+    document.body.classList.add('side-open');
     this.render();
   }
 
   close() {
     this.el.hidden = true;
     $('#btn-planting').classList.remove('on');
+    document.body.classList.remove('side-open');
     if (this.month) this.setMonth(null);
   }
 
@@ -67,9 +70,23 @@ export class PlantPanel {
     return c;
   }
 
+  /** Plantvak waarop het overzicht betrekking heeft (geselecteerd vak of het vak van een groep). */
+  scopeBed() {
+    const sel = [...this.app.selection];
+    if (sel.length !== 1) return null;
+    const it = this.app.store.findItem(sel[0])?.item;
+    if (!it) return null;
+    if (isBed(it)) return it;
+    if (isGroup(it)) return this.app.store.findItem(it.bedId)?.item || null;
+    return null;
+  }
+
   render() {
     const p = this.ensure();
-    const yr = yearRound(this.doc);
+    const bed = this.scopeBed();
+    const yr = yearRound(this.doc, bed?.id || null);
+    const counts = plantCounts(this.doc, bed?.id || null);
+    const view = this.app.state.plantView || 'planten';
     const palette = schemePalette(p.scheme);
     const off = p.roles.filter((r) => !inScheme(r.color, p.scheme));
     const low = yr.total ? yr.months.filter((m) => m.score < 0.3) : [];
@@ -79,6 +96,15 @@ export class PlantPanel {
         <h2>Beplanting</h2>
         <button class="tb" data-act="close" title="Sluiten">${icon('close')}</button>
       </div>
+      <section>
+        <div class="row">
+          <div class="seg" title="Weergave van plantvakken en groepen">
+            <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}">Planten</button>
+            <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}">Groepen</button>
+          </div>
+          <small class="scope">${bed ? 'Overzicht: <b>dit plantvak</b>' : 'Overzicht: hele tuin'}</small>
+        </div>
+      </section>
       <section>
         <h3>Kleurenschema</h3>
         <div class="row">
@@ -117,7 +143,8 @@ export class PlantPanel {
       const txt = document.createElement('div');
       txt.className = 'rtxt';
       const a = areas[r.id];
-      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
+      const n = counts[r.id];
+      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
       li.appendChild(txt);
       const edit = document.createElement('button');
       edit.type = 'button';
@@ -174,6 +201,15 @@ export class PlantPanel {
 
     // gebeurtenissen
     el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
+    for (const b of el.querySelectorAll('[data-view]')) {
+      b.addEventListener('click', () => {
+        this.app.state.plantView = b.dataset.view;
+        this.app.persistSettings();
+        this.app.baseDirty = true;
+        this.app.requestRender();
+        this.render();
+      });
+    }
     el.querySelector('[data-k="scheme"]').addEventListener('change', (e) => this.mutate((pl) => { pl.scheme.type = e.target.value; }));
     el.querySelector('[data-k="base"]').addEventListener('change', (e) => this.mutate((pl) => { pl.scheme.base = e.target.value; }));
     for (const b of el.querySelectorAll('[data-add]')) {
@@ -341,7 +377,8 @@ export class PlantPanel {
         this.app.store.mutate((doc) => {
           doc.planting.roles = doc.planting.roles.filter((x) => x.id !== id);
           for (const l of doc.layers) {
-            l.items = l.items.filter((i) => i.role !== id);
+            l.items = l.items.filter((i) => i.type !== 'plant' || i.role !== id);
+            for (const i of l.items) if (i.type === 'stencil' && i.role === id) delete i.role;
             for (const i of l.items) if (i.planting?.mix) i.planting.mix = i.planting.mix.filter((m) => m.role !== id);
           }
         }, 'role-delete');

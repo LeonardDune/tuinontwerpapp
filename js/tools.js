@@ -1,6 +1,7 @@
 // Gereedschappen. Elk gereedschap krijgt genormaliseerde invoer:
 // e = { s: [x, y] scherm, w: [x, y] wereld, pressure, pointerType, time }
 
+import { isPlantStencil, ensureStencilRole } from './planting.js';
 import { BRUSHES } from './brushes.js';
 import { uid, paperToWorld } from './model.js';
 import { drawItem, hitItem, itemSnapPoints, transformItem } from './items.js';
@@ -1039,6 +1040,12 @@ export class StencilTool extends Tool {
     item.y = round4(item.y);
     const layerId = this.layer.id;
     this.app.store.mutate((doc) => {
+      // plantstencils horen bij het beplantingsplan: koppelen aan (of maken van) een bouwsteen
+      if (isPlantStencil(item.symbol)) {
+        if (!doc.planting) doc.planting = { scheme: { type: 'vrij', base: '#8e5bb5' }, roles: [] };
+        const r = ensureStencilRole(doc.planting.roles, item.symbol, STENCIL_MAP[item.symbol]?.name || item.symbol);
+        if (r) item.role = r.id;
+      }
       doc.layers.find((l) => l.id === layerId)?.items.push(item);
     }, 'stencil');
   }

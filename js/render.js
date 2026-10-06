@@ -1,7 +1,7 @@
 // Weergave van het document: lagen (met trekpapier en dekking), raster en schaalbalk.
 
 import { drawItem } from './items.js';
-import { rolesMap } from './planting.js';
+import { rolesMap, bedStats, isBed, isGroup } from './planting.js';
 import { niceStep, formatTick } from './units.js';
 
 let layerCanvas = null;
@@ -27,7 +27,7 @@ export function renderScene(ctx, opts) {
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
 
-  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, roles: rolesMap(doc) };
+  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', ...plantContext(doc) };
   const hide = opts.hideItems;
 
   for (const layer of doc.layers) {
@@ -67,6 +67,33 @@ export function renderScene(ctx, opts) {
     }
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+const statsCache = { key: null, value: null };
+
+/** Bouwstenen, plantvakken en groepen voor het tekenen (oppervlakken gecachet per documentversie). */
+export function plantContext(doc) {
+  const roles = rolesMap(doc);
+  const rolesKey = (doc.planting?.roles || []).map((r) => `${r.id}:${r.height}:${r.d || ''}`).join(',');
+  const bedsById = {}, groupsByBed = {};
+  let any = false;
+  for (const layer of doc.layers) {
+    for (const it of layer.items) {
+      if (isBed(it)) { bedsById[it.id] = it; any = true; } else if (isGroup(it)) (groupsByBed[it.bedId] ||= []).push(it);
+    }
+  }
+  const ctx = { roles, rolesKey, bedsById, groupsByBed, bedAreas: {}, groupAreas: {} };
+  if (!any) return ctx;
+  const key = JSON.stringify(doc.layers.map((l) => [l.visible, l.items.filter((it) => isBed(it) || isGroup(it)).map((it) => [it.id, it.points, it.bedId])]));
+  if (statsCache.key !== key) {
+    statsCache.key = key;
+    statsCache.value = bedStats(doc);
+  }
+  for (const st of statsCache.value) {
+    ctx.bedAreas[st.bed.id] = st.baseArea;
+    for (const gs of st.groups) ctx.groupAreas[gs.group.id] = gs.area;
+  }
+  return ctx;
 }
 
 /** Zichtbare rasterstap (meters) bij de huidige zoom. */

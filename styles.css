@@ -577,3 +577,12 @@ dialog:has(.dlg.wide) { max-width: min(860px, calc(100vw - 24px)); }
   #layers-panel, .side-panel { left: 10px; right: 10px; width: auto; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* beplanting: weergave en reikwijdte van het overzicht */
+.side-panel .scope { margin-left: auto; color: #5d6b63; font-size: 12px; }
+.side-panel .seg button { padding: 5px 10px; }
+@media (min-width: 701px) {
+  body.side-open .props-bar { left: calc(50% - 175px); max-width: calc(100% - 380px); }
+}
+/* melding niet over de eigenschappenbalk onderaan */
+#stage:has(#selection-bar:not([hidden]):not(.at-top)) #toast { bottom: auto; top: 14px; }

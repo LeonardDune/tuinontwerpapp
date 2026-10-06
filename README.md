@@ -60,7 +60,20 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
     & Kingsbury), bloeikleur en -maanden, blad, herfstkleur, wat er in de winter overblijft en standplaats.
   - *Kleurenschema*: monochroom, verwant, complementair, gesplitst complementair, drieklank, warm, koel of wit en zilver;
     bloeikleuren kies je uit het palet, afwijkingen worden gemarkeerd.
-  - *Beplanten*: losse bouwstenen op hun uiteindelijke breedte, of een plantvak met een mix in driehoeksverband.
+  - *Plantvakken*: de contouren waarbinnen beplanting komt. Teken ze vrij (wordt vloeiend afgerond), als rechthoek of
+    cirkel, of kies *Tik in ruimte*: tik in een vlak van het ontwerp (bijv. de border tussen pad en gazon) en het vak
+    volgt de lijnen eromheen. Een bestaande vorm zet je om met *Maak plantvak* in de eigenschappenbalk. Een vak heeft
+    een basismix (de matrix/vulling).
+  - *Groepen*: binnen een plantvak, begrensd door het vak, met een eigen bouwsteen of mix. Zelf tekenen (vrij,
+    rechthoek, cirkel) of laten voorstellen: *Stel groepen voor* legt structuurplanten (±30%) en accenten (±10%) in
+    langgerekte vlekken langs het vak; de vulling wordt de basis. *Opnieuw voorstellen* geeft een andere variant, zelf
+    getekende groepen blijven staan. Verplaats je een vak, dan gaan de groepen mee.
+  - *Solitairen*: losse bouwstenen op hun uiteindelijke breedte; die mogen overal staan.
+  - *Plantstencils* (bomen, heesters, haag, siergras, vaste plant, bodembedekker) horen bij het plan: ze krijgen
+    automatisch een bouwsteen, tellen mee in het jaarrond-overzicht en kleuren mee per maand. In de balk kies je een
+    andere bouwsteen (of geen).
+  - *Weergave*: *Planten* (symbolen in driehoeksverband) of *Groepen* (vlakken met code en geschat aantal planten).
+    Selecteer je een plantvak, dan gaat het overzicht in het paneel over dat vak; de balk toont oppervlak en aantal.
   - *Het hele jaar*: balk met per maand hoeveel er te zien is (en in welke kleuren); tik een maand om de hele tekening
     zo te zien. Kleurcirkel per maand. Adviezen over dode periodes, kleuren buiten het schema en afwisseling in rol,
     hoogte, groeivorm en bloeivorm.

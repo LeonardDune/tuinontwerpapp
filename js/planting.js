@@ -313,7 +313,11 @@ function formGlyph(g, form, r) {
   }
 }
 
-// ------------------------------------------------------------------ plantvakken
+// ------------------------------------------------------------------ plantvakken en groepen
+//
+// Plantvak: gesloten vorm (veelhoek of cirkel) met bed: true en een basis-mix (de matrix).
+// Groep: vorm met group: true en bedId, binnen het plantvak (wordt erop afgeknipt), met een eigen mix.
+// Solitair: los geplaatste bouwsteen (type 'plant') of een plantstencil met een gekoppelde bouwsteen.
 
 function rng(seed) {
   let s = 0;
@@ -322,33 +326,78 @@ function rng(seed) {
   return () => ((s = (s * 16807) % 2147483647) / 2147483647);
 }
 
+export function isBed(it) {
+  return it.type === 'shape' && !it.group && (it.bed || !!it.planting) && (it.kind === 'polygon' || it.kind === 'circle');
+}
+
+export function isGroup(it) {
+  return it.type === 'shape' && !!it.group;
+}
+
+/** Omtrek van een vlak als veelhoek (cirkel wordt een 64-hoek). */
+export function shapePolygon(it) {
+  if (it.kind === 'circle') {
+    const [c, e] = it.points;
+    const r = dist(c, e);
+    return Array.from({ length: 64 }, (_, i) => [c[0] + Math.cos((i / 64) * Math.PI * 2) * r, c[1] + Math.sin((i / 64) * Math.PI * 2) * r]);
+  }
+  return it.points;
+}
+
+/** Gesloten veelhoek vloeiend afronden (Chaikin), voor vrij getekende vakken en groepen. */
+export function smoothClosed(points, passes = 2) {
+  let pts = points;
+  for (let k = 0; k < passes; k++) {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    pts = out;
+  }
+  return pts;
+}
+
+export function roleSpacing(r) {
+  return Math.max(0.15, roleDiameter(r) * 0.85);
+}
+
+function cleanMix(mix, roles) {
+  return (mix || []).filter((m) => roles[m.role] && m.w > 0);
+}
+
 /**
- * Posities en bouwstenen in een plantvak (driehoeksverband, deterministisch).
- * mix: [{ role: id, w: gewicht }]
+ * Plantposities in een veelhoek (driehoeksverband, deterministisch), met de mix verdeeld.
+ * exclude: veelhoeken waarin geen punten komen (groepen binnen een plantvak).
  */
-export function vakLayout(item, rolesById) {
-  const mix = (item.planting?.mix || []).filter((m) => rolesById[m.role] && m.w > 0);
-  if (!mix.length) return [];
+export function layoutPoints(poly, mix, roles, seed, exclude = []) {
+  mix = cleanMix(mix, roles);
+  if (!mix.length || poly.length < 3) return [];
   const total = mix.reduce((s, m) => s + m.w, 0);
-  // plantafstand: gewogen gemiddelde diameter
-  const avgD = mix.reduce((s, m) => s + roleDiameter(rolesById[m.role]) * m.w, 0) / total;
-  const step = Math.max(0.15, avgD * 0.85);
-  const b = bbox(item.points);
-  const rnd = rng(item.id);
+  const step = mix.reduce((s, m) => s + roleSpacing(roles[m.role]) * m.w, 0) / total;
+  const b = bbox(poly);
+  const rnd = rng(seed);
   const out = [];
   const rowH = step * Math.sqrt(3) / 2;
   let row = 0;
   for (let y = b.minY + rowH / 2; y < b.maxY; y += rowH, row++) {
     for (let x = b.minX + (row % 2 ? step / 2 : 0) + step / 2; x < b.maxX; x += step) {
       const jx = x + (rnd() - 0.5) * step * 0.25, jy = y + (rnd() - 0.5) * step * 0.25;
-      if (!pointInPolygon([jx, jy], item.points)) continue;
-      let t = rnd() * total, pick = mix[0];
+      const t0 = rnd();
+      if (!pointInPolygon([jx, jy], poly)) continue;
+      if (exclude.some((e) => pointInPolygon([jx, jy], e))) continue;
+      let t = t0 * total, pick = mix[0];
       for (const m of mix) { t -= m.w; if (t <= 0) { pick = m; break; } }
-      out.push({ x: jx, y: jy, role: rolesById[pick.role] });
-      if (out.length > 3000) return out;
+      out.push({ x: jx, y: jy, role: roles[pick.role] });
+      if (out.length > 4000) return out;
     }
   }
   return out;
+}
+
+/** Oude naam (V2.1): posities in een vak zonder groepen. */
+export function vakLayout(item, rolesById) {
+  return layoutPoints(shapePolygon(item), item.planting?.mix, rolesById, item.id);
 }
 
 export function rolesMap(doc) {
@@ -357,32 +406,114 @@ export function rolesMap(doc) {
   return map;
 }
 
-/** Oppervlak per bouwsteen (m²) in de hele tekening. */
-export function roleAreas(doc) {
-  const roles = rolesMap(doc);
-  const areas = {};
+/** Alle plantvakken met hun groepen en (door bemonstering) de oppervlakken. */
+export function bedStats(doc) {
+  const beds = [], groups = [];
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
     for (const it of layer.items) {
-      if (it.type === 'plant' && roles[it.role]) {
-        areas[it.role] = (areas[it.role] || 0) + Math.PI * (it.d / 2) ** 2;
-      } else if (it.type === 'shape' && it.planting?.mix?.length) {
-        const A = polygonArea(it.points);
-        const mix = it.planting.mix.filter((m) => roles[m.role]);
-        const tot = mix.reduce((s, m) => s + m.w, 0) || 1;
-        for (const m of mix) areas[m.role] = (areas[m.role] || 0) + (A * m.w) / tot;
+      if (isBed(it)) beds.push(it);
+      else if (isGroup(it)) groups.push(it);
+    }
+  }
+  return beds.map((bed) => {
+    const poly = shapePolygon(bed);
+    const gs = groups.filter((g) => g.bedId === bed.id).map((g) => ({ group: g, poly: shapePolygon(g), area: 0 }));
+    const A = polygonArea(poly);
+    let baseArea = A;
+    if (gs.length) {
+      const b = bbox(poly);
+      const step = Math.max(0.05, Math.sqrt(A) / 60);
+      let base = 0;
+      for (let y = b.minY + step / 2; y < b.maxY; y += step) {
+        for (let x = b.minX + step / 2; x < b.maxX; x += step) {
+          if (!pointInPolygon([x, y], poly)) continue;
+          let hit = null;
+          for (let k = gs.length - 1; k >= 0; k--) if (pointInPolygon([x, y], gs[k].poly)) { hit = gs[k]; break; }
+          if (hit) hit.area += step * step; else base += step * step;
+        }
+      }
+      baseArea = base;
+    }
+    return { bed, poly, area: A, baseArea, groups: gs };
+  });
+}
+
+/** Aantal planten in een oppervlak bij een mix (driehoeksverband). */
+export function plantCount(area, mix, roles) {
+  mix = cleanMix(mix, roles);
+  const tot = mix.reduce((s, m) => s + m.w, 0);
+  if (!tot || !area) return 0;
+  let n = 0;
+  for (const m of mix) {
+    const sp = roleSpacing(roles[m.role]);
+    n += (area * m.w / tot) / (0.866 * sp * sp);
+  }
+  return Math.round(n);
+}
+
+/** Oppervlak per bouwsteen (m²); optioneel alleen voor één plantvak. */
+export function roleAreas(doc, bedId = null) {
+  const roles = rolesMap(doc);
+  const areas = {};
+  const add = (id, a) => { if (roles[id] && a > 0) areas[id] = (areas[id] || 0) + a; };
+  const addMix = (mix, A) => {
+    const m = cleanMix(mix, roles);
+    const tot = m.reduce((s, x) => s + x.w, 0);
+    for (const x of m) add(x.role, (A * x.w) / tot);
+  };
+  for (const st of bedStats(doc)) {
+    if (bedId && st.bed.id !== bedId) continue;
+    addMix(st.bed.planting?.mix, st.baseArea);
+    for (const g of st.groups) addMix(g.group.planting?.mix, g.area);
+  }
+  if (!bedId) {
+    for (const layer of doc.layers) {
+      if (!layer.visible) continue;
+      for (const it of layer.items) {
+        if (it.type === 'plant') add(it.role, Math.PI * (it.d / 2) ** 2);
+        else if (it.type === 'stencil' && it.role) add(it.role, Math.PI * (it.w / 2) * (it.h / 2));
       }
     }
   }
   return areas;
 }
 
+/** Geschat aantal planten per bouwsteen; optioneel alleen voor één plantvak. */
+export function plantCounts(doc, bedId = null) {
+  const roles = rolesMap(doc);
+  const counts = {};
+  const addMix = (mix, A) => {
+    const m = cleanMix(mix, roles);
+    const tot = m.reduce((s, x) => s + x.w, 0);
+    for (const x of m) {
+      const sp = roleSpacing(roles[x.role]);
+      counts[x.role] = (counts[x.role] || 0) + (A * x.w / tot) / (0.866 * sp * sp);
+    }
+  };
+  for (const st of bedStats(doc)) {
+    if (bedId && st.bed.id !== bedId) continue;
+    addMix(st.bed.planting?.mix, st.baseArea);
+    for (const g of st.groups) addMix(g.group.planting?.mix, g.area);
+  }
+  if (!bedId) {
+    for (const layer of doc.layers) {
+      if (!layer.visible) continue;
+      for (const it of layer.items) {
+        if ((it.type === 'plant' || it.type === 'stencil') && roles[it.role]) counts[it.role] = (counts[it.role] || 0) + 1;
+      }
+    }
+  }
+  for (const k of Object.keys(counts)) counts[k] = Math.round(counts[k]);
+  return counts;
+}
+
 /**
  * Jaarrond: per maand het aandeel "interessant" (0..1) en de kleuren die dan te zien zijn.
  */
-export function yearRound(doc) {
+export function yearRound(doc, bedId = null) {
   const roles = rolesMap(doc);
-  const areas = roleAreas(doc);
+  const areas = roleAreas(doc, bedId);
   const total = Object.values(areas).reduce((s, v) => s + v, 0);
   const months = [];
   for (let m = 1; m <= 12; m++) {
@@ -396,6 +527,105 @@ export function yearRound(doc) {
     months.push({ m, score: total ? score / total : 0, colors });
   }
   return { months, total, areas };
+}
+
+// ------------------------------------------------------------------ groepen voorstellen
+
+function principalAngle(poly) {
+  let cx = 0, cy = 0;
+  for (const p of poly) { cx += p[0]; cy += p[1]; }
+  cx /= poly.length; cy /= poly.length;
+  let xx = 0, yy = 0, xy = 0;
+  for (const p of poly) { const dx = p[0] - cx, dy = p[1] - cy; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+  return 0.5 * Math.atan2(2 * xy, xx - yy);
+}
+
+/**
+ * Stel groepen ("drifts") voor in een plantvak: structuurplanten ±30% en accenten ±10% in
+ * langgerekte vlekken langs de lengterichting van het vak; vullers vormen de basis.
+ * roleIds: welke bouwstenen meedoen (leeg = alle).
+ */
+export function suggestDrifts(bed, allRoles, roleIds, seed) {
+  const poly = shapePolygon(bed);
+  const A = polygonArea(poly);
+  // bomen (extra hoog) zijn solitairen, geen groepen in een border
+  const roles = (roleIds?.length ? allRoles.filter((r) => roleIds.includes(r.id)) : allRoles).filter((r) => r.height !== 'xhoog');
+  const rnd = rng(`${bed.id}-${seed}`);
+  const struct = roles.filter((r) => r.role === 'structuur');
+  const accent = roles.filter((r) => r.role === 'accent');
+  const fill = roles.filter((r) => r.role === 'vulling');
+  const theta = principalAngle(poly);
+  const b = bbox(poly);
+  const placed = [];
+  const groups = [];
+  const want = [
+    ...struct.map((r) => ({ r, area: (A * 0.3) / struct.length })),
+    ...accent.map((r) => ({ r, area: (A * 0.1) / accent.length })),
+  ];
+  for (const { r, area } of want) {
+    const plantA = Math.PI * (roleDiameter(r) / 2) ** 2;
+    const n = Math.max(1, Math.min(6, Math.round(area / (plantA * (r.role === 'accent' ? 3 : 6)))));
+    const each = area / n;
+    for (let k = 0; k < n; k++) {
+      const ratio = r.role === 'accent' ? 1.4 : 2.4;
+      const ry = Math.sqrt(each / (Math.PI * ratio)), rx = ry * ratio;
+      let best = null;
+      for (let tries = 0; tries < 80 && !best; tries++) {
+        const c = [b.minX + rnd() * (b.maxX - b.minX), b.minY + rnd() * (b.maxY - b.minY)];
+        if (!pointInPolygon(c, poly)) continue;
+        if (placed.some((q) => dist(q.c, c) < (q.rx + rx) * 0.75)) continue;
+        best = c;
+      }
+      if (!best) continue;
+      const ang = theta + (rnd() - 0.5) * 0.6;
+      const pts = [];
+      const m = 10;
+      for (let i = 0; i < m; i++) {
+        const a = (i / m) * Math.PI * 2;
+        const kk = 0.82 + rnd() * 0.36;
+        const lx = Math.cos(a) * rx * kk, ly = Math.sin(a) * ry * kk;
+        pts.push([best[0] + lx * Math.cos(ang) - ly * Math.sin(ang), best[1] + lx * Math.sin(ang) + ly * Math.cos(ang)]);
+      }
+      placed.push({ c: best, rx });
+      groups.push({ points: smoothClosed(pts, 2).map((p) => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]), mix: [{ role: r.id, w: 100 }] });
+    }
+  }
+  const baseMix = fill.length ? fill.map((r) => ({ role: r.id, w: ROLES.vulling.weight })) : (bed.planting?.mix || []);
+  return { groups, baseMix };
+}
+
+// ------------------------------------------------------------------ plantstencils
+
+/** Eigenschappen van een bouwsteen voor een plantstencil (null = geen plant). */
+const STENCIL_ROLE = {
+  loofboom: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
+  solitair: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'oranje', winter: 'silhouet', color: '#6f8f4a' },
+  naaldboom: { role: 'structuur', height: 'xhoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
+  fruitboom: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'knop', bloom: [4], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#f6f1e3' },
+  meerstammig: { role: 'structuur', height: 'xhoog', habit: 'ijl', form: 'blad', bloom: [], foliage: 'groen', autumn: 'rood', winter: 'silhouet', color: '#7a9a5a' },
+  bestaandeboom: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
+  heester: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
+  bloeiend: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'knop', bloom: [5, 6], foliage: 'groen', autumn: 'geen', winter: 'silhouet', color: '#d77fa1' },
+  haag: { role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
+  siergras: { role: 'structuur', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9, 10], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
+  vasteplant: { role: 'vulling', height: 'laag', habit: 'kussen', form: 'schijf', bloom: [6, 7], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#8e5bb5' },
+  bodembedekker: { role: 'vulling', height: 'bodem', habit: 'spreidend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geen', winter: 'groen', color: '#6b9c5a' },
+};
+
+export function isPlantStencil(symbol) {
+  return !!STENCIL_ROLE[symbol];
+}
+
+/** Zoek of maak de bouwsteen bij een plantstencil (muteert roles). */
+export function ensureStencilRole(roles, symbol, name) {
+  const tpl = STENCIL_ROLE[symbol];
+  if (!tpl) return null;
+  const found = roles.find((r) => r.fromStencil === symbol);
+  if (found) return found;
+  const r = newRole(roles, tpl.role);
+  Object.assign(r, tpl, { fromStencil: symbol, label: name, light: ['zon', 'halfschaduw'] });
+  roles.push(r);
+  return r;
 }
 
 export function plantOutline(it) {

@@ -75,7 +75,7 @@ export async function renderExport(doc, opts, viewBox) {
   cam.y = dh / 2 - ((box.minY + box.maxY) / 2) * cam.zoom;
   const exportDoc = { ...doc, scale: doc.scale };
   renderScene(dc.getContext('2d'), {
-    doc: exportDoc, cam, width: dw, height: dh, dpr: 1, background: '#ffffff', paperColor: '#ffffff',
+    doc: exportDoc, cam, width: dw, height: dh, dpr: 1, background: '#ffffff', paperColor: '#ffffff', plantView: opts.plantView,
   });
   g.drawImage(dc, Math.round(MARGIN * pxmm), Math.round(MARGIN * pxmm));
 

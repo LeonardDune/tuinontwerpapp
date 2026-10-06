@@ -4,7 +4,9 @@ import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern } from './patterns.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
-import { drawRoleSymbol, rolesMap, vakLayout, roleDiameter, plantOutline, hitPlant } from './planting.js';
+import {
+  drawRoleSymbol, rolesMap, layoutPoints, roleDiameter, plantOutline, hitPlant, shapePolygon, monthState, plantCount, isBed,
+} from './planting.js';
 import { paperToWorld } from './model.js';
 import { formatLength, formatArea } from './units.js';
 import {
@@ -35,7 +37,9 @@ export function drawItem(g, item, rc) {
     case 'dim':
       if (item.kind === 'area') return drawAreaLabel(g, item, rc);
       return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
-    case 'stencil': return drawStencil(g, item, paperToWorld(0.25, rc.scale));
+    case 'stencil':
+      if (item.role && rc.month) drawStencilMonth(g, item, rc);
+      return drawStencil(g, item, paperToWorld(0.25, rc.scale));
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
     case 'plant': return drawPlant(g, item, rc);
@@ -49,25 +53,156 @@ function drawPlant(g, item, rc) {
   drawRoleSymbol(g, r, item.x, item.y, item.d, rc.month || null, paperToWorld(0.2, rc.scale));
 }
 
-/** Plantvak: rand plus symbolen van de mix in driehoeksverband. */
-function drawVak(g, item, rc) {
+const layoutCache = new WeakMap();
+
+/** Plantposities van een vak of groep, gecachet zolang vorm, mix en bouwstenen gelijk blijven. */
+function cachedLayout(item, poly, rc, exclude, clip) {
   const roles = rc.roles || rolesMap(rc.doc);
+  const key = JSON.stringify([item.points, item.planting?.mix, exclude, clip ? clip.length : 0, rc.rolesKey || '']);
+  const hit = layoutCache.get(item);
+  if (hit && hit.key === key) return hit.pts;
+  let pts = layoutPoints(poly, item.planting?.mix, roles, item.id, exclude);
+  if (clip) pts = pts.filter((p) => pointInPolygon([p.x, p.y], clip));
+  layoutCache.set(item, { key, pts });
+  return pts;
+}
+
+/** Kleur van een mix in de gekozen maand (gewogen naar het grootste aandeel). */
+function mixColor(mix, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  let best = null, bw = -1;
+  for (const m of mix || []) {
+    const r = roles[m.role];
+    if (!r || m.w <= bw) continue;
+    const st = rc.month ? monthState(r, rc.month) : { color: r.color };
+    best = st.color || '#c9c2b0';
+    bw = m.w;
+  }
+  return best || '#9fb98a';
+}
+
+function mixCodes(mix, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  return (mix || []).filter((m) => roles[m.role]).map((m) => roles[m.role].code).join('+');
+}
+
+/** Plantvak: rand, basismix (zonder de groepen) als symbolen of als vlak met code en aantal. */
+function drawBed(g, item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  const poly = shapePolygon(item);
+  const groups = (rc.groupsByBed?.[item.id] || []).map((gr) => shapePolygon(gr));
+  const view = rc.plantView || 'planten';
+  const lw = paperToWorld(0.15, rc.scale);
   g.save();
   tracePath(g, item);
-  g.fillStyle = 'rgba(122, 154, 90, 0.10)';
-  g.fill();
-  g.save();
-  g.clip();
-  const lw = paperToWorld(0.15, rc.scale);
-  for (const p of vakLayout(item, roles)) {
-    drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
+  const mix = item.planting?.mix || [];
+  if (view === 'groepen' && mix.length) {
+    g.fillStyle = hexA(mixColor(mix, rc), 0.18);
+  } else {
+    g.fillStyle = 'rgba(122, 154, 90, 0.10)';
   }
-  g.restore();
+  g.fill();
+  if (view !== 'groepen') {
+    g.save();
+    g.clip();
+    for (const p of cachedLayout(item, poly, rc, groups)) {
+      drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
+    }
+    g.restore();
+  }
   tracePath(g, item);
   g.strokeStyle = item.color || '#3f7a2e';
   g.lineWidth = item.width || paperToWorld(0.3, rc.scale);
   g.setLineDash([g.lineWidth * 4, g.lineWidth * 2]);
   g.stroke();
+  g.restore();
+  if (view === 'groepen' && mix.length && rc.bedAreas?.[item.id] != null) {
+    const n = plantCount(rc.bedAreas[item.id], mix, roles);
+    drawLabel(g, `${mixCodes(mix, rc)} · ${n} st.`, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');
+  }
+}
+
+/** Punt in het vak buiten de groepen voor het label. */
+function labelPoint(poly, groups) {
+  const c = polygonCentroid(poly);
+  const free = (p) => pointInPolygon(p, poly) && !groups.some((q) => pointInPolygon(p, q));
+  if (free(c)) return c;
+  const b = bbox(poly);
+  const n = 12;
+  let best = c, bd = Infinity;
+  for (let i = 1; i < n; i++) {
+    for (let j = 1; j < n; j++) {
+      const p = [b.minX + ((b.maxX - b.minX) * i) / n, b.minY + ((b.maxY - b.minY) * j) / n];
+      if (!free(p)) continue;
+      const d = dist(p, c);
+      if (d < bd) { bd = d; best = p; }
+    }
+  }
+  return best;
+}
+
+/** Groep binnen een plantvak: begrensd door het vak, eigen mix. */
+function drawGroup(g, item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  const bed = rc.bedsById?.[item.bedId];
+  const bedPoly = bed ? shapePolygon(bed) : null;
+  const poly = shapePolygon(item);
+  const view = rc.plantView || 'planten';
+  const mix = item.planting?.mix || [];
+  const color = mixColor(mix, rc);
+  const lw = paperToWorld(0.15, rc.scale);
+  g.save();
+  if (bed) {
+    tracePath(g, bed);
+    g.clip();
+  }
+  tracePath(g, item);
+  g.fillStyle = hexA(color, view === 'groepen' ? 0.45 : 0.12);
+  g.fill();
+  if (view !== 'groepen') {
+    g.save();
+    g.clip();
+    // latere groepen in hetzelfde vak liggen erboven
+    const later = (rc.groupsByBed?.[item.bedId] || []);
+    const idx = later.indexOf(item);
+    const exclude = idx >= 0 ? later.slice(idx + 1).map((q) => shapePolygon(q)) : [];
+    for (const p of cachedLayout(item, poly, rc, exclude, bedPoly)) {
+      drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.75 });
+    }
+    g.restore();
+  }
+  tracePath(g, item);
+  g.strokeStyle = view === 'groepen' ? hexA('#2f4a25', 0.7) : hexA('#2f4a25', 0.45);
+  g.lineWidth = paperToWorld(0.2, rc.scale);
+  g.stroke();
+  g.restore();
+  if (view === 'groepen' && mix.length) {
+    const A = rc.groupAreas?.[item.id] ?? polygonArea(poly);
+    const n = plantCount(A, mix, roles);
+    drawLabel(g, `${mixCodes(mix, rc)} · ${n}`, polygonCentroid(poly), rc, false, 2.2, '#1d2b36');
+  }
+}
+
+/** Maandkleur van een plantstencil met bouwsteen: zachte waas over het stencil. */
+function drawStencilMonth(g, item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  const r = roles[item.role];
+  if (!r || !rc.month) return;
+  const st = monthState(r, rc.month);
+  g.save();
+  g.translate(item.x, item.y);
+  g.rotate(item.rot || 0);
+  g.beginPath();
+  g.ellipse(0, 0, item.w / 2, item.h / 2, 0, 0, Math.PI * 2);
+  if (st.color) {
+    g.fillStyle = hexA(st.color, st.kind === 'bloei' ? 0.45 : 0.25);
+    g.fill();
+  } else {
+    g.setLineDash([item.w / 30, item.w / 30]);
+    g.strokeStyle = 'rgba(90,90,90,0.4)';
+    g.lineWidth = paperToWorld(0.2, rc.scale);
+    g.stroke();
+  }
   g.restore();
 }
 
@@ -117,7 +252,8 @@ function tracePath(g, item) {
 
 function drawShape(g, item, rc) {
   if (item.points.length < 2) return;
-  if (item.planting && item.kind === 'polygon') return drawVak(g, item, rc);
+  if (item.group) return drawGroup(g, item, rc);
+  if (isBed(item)) return drawBed(g, item, rc);
   g.save();
   g.globalAlpha *= item.opacity ?? 1;
   tracePath(g, item);
@@ -371,12 +507,12 @@ export function hitItem(item, p, tol) {
       if (item.kind === 'circle') {
         const r = dist(item.points[0], item.points[1]);
         const d = dist(p, item.points[0]);
-        return Math.abs(d - r) <= t || ((item.fill || item.hatch) && d <= r);
+        return Math.abs(d - r) <= t || ((item.fill || item.hatch || item.group || isBed(item)) && d <= r);
       }
       const pts = item.points;
       const n = item.kind === 'polygon' ? pts.length : pts.length - 1;
       for (let i = 0; i < n; i++) if (distToSegment(p, pts[i], pts[(i + 1) % pts.length]) <= t) return true;
-      if (item.kind === 'polygon' && (item.fill || (item.hatch && item.hatch !== 'none'))) return pointInPolygon(p, pts);
+      if (item.kind === 'polygon' && (item.fill || (item.hatch && item.hatch !== 'none') || item.group || isBed(item))) return pointInPolygon(p, pts);
       return false;
     }
     case 'plant':

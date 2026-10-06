@@ -2,7 +2,7 @@
 
 import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
-import { renderScene, renderGrid, renderScaleBar } from './render.js';
+import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES } from './guides.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES } from './patterns.js';
@@ -20,9 +20,11 @@ import {
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
-import { PlantTool } from './planttool.js';
+import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { PlantPanel } from './plantpanel.js';
-import { rolesMap, describeRole, ROLES as PLANT_ROLES } from './planting.js';
+import {
+  rolesMap, describeRole, ROLES as PLANT_ROLES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
+} from './planting.js';
 import {
   isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
   selectionBox, displayAngle, fromDisplayAngle, closedArea,
@@ -166,6 +168,7 @@ class App {
       doc.manualDims = true;
     }
     doc.scale = doc.scale || 100;
+    migratePlanting(doc);
     this.store.load(doc);
     if (doc.view) this.cam.set(doc.view);
     else this.fitView(true);
@@ -301,7 +304,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView });
       if (this.settings.grid) renderGrid(this.baseCtx, cam, width, height, dpr, doc.grid);
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
@@ -311,7 +314,7 @@ class App {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.base, 0, 0);
 
-    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, roles: rolesMap(doc) };
+    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, plantView: this.state.plantView || 'planten', ...plantContext(doc) };
     ctx.save();
     cam.apply(ctx, dpr);
     this.tool.drawWorld(ctx, rc);
@@ -1048,6 +1051,7 @@ class App {
     this.selection.clear();
     for (const id of ids) this.selection.add(id);
     this.updateSelectionUI();
+    this.plantPanel?.refresh();
     this.requestRender();
   }
 
@@ -1277,13 +1281,43 @@ class App {
     return wrap;
   }
 
-  /** Optiebalk van het gereedschap Beplanten. */
+  /** Optiebalk van het gereedschap Beplanten: Plantvak | Groep | Solitair. */
   plantOptions() {
     const wrap = document.createElement('div');
     wrap.className = 'opt';
     wrap.style.gap = '12px';
-    const roles = this.store.doc.planting?.roles || [];
-    if (!roles.length) {
+    const doc = this.store.doc;
+    const roles = doc.planting?.roles || [];
+    let mode = this.state.plantMode || 'vak';
+    if (mode !== 'plant' && mode !== 'groep') mode = 'vak';
+    const beds = hasBeds(doc);
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.innerHTML = [['vak', 'Plantvak'], ['groep', 'Groep'], ['plant', 'Solitair']]
+      .map(([m, n]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${n}</button>`).join('');
+    for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantMode = b.dataset.m; this.persistSettings(); this.renderOptions(); });
+    wrap.appendChild(seg);
+    if (mode !== 'plant') {
+      const shape = this.state.plantShape || 'vrij';
+      const shapes = [['vrij', 'Vrij'], ['rechthoek', 'Rechthoek'], ['cirkel', 'Cirkel']];
+      if (mode === 'vak') shapes.push(['tik', 'Tik in ruimte']);
+      const seg2 = document.createElement('div');
+      seg2.className = 'seg';
+      const cur = shape === 'tik' && mode !== 'vak' ? 'vrij' : shape;
+      seg2.innerHTML = shapes.map(([m, n]) => `<button type="button" data-s="${m}" class="${cur === m ? 'on' : ''}">${n}</button>`).join('');
+      for (const b of seg2.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
+      wrap.appendChild(seg2);
+    }
+    if (mode === 'groep' && !beds) {
+      wrap.appendChild(this.hint('Groepen komen binnen een plantvak. Teken eerst een plantvak, of zet een solitair (die mag overal).'));
+      const b = document.createElement('button');
+      b.className = 'toggle';
+      b.textContent = 'Plantvak tekenen';
+      b.addEventListener('click', () => { this.state.plantMode = 'vak'; this.persistSettings(); this.renderOptions(); });
+      wrap.appendChild(b);
+      return wrap;
+    }
+    if (!roles.length && mode !== 'vak') {
       wrap.appendChild(this.hint('Nog geen bouwstenen. Open het paneel Beplanting en maak er een paar aan.'));
       const b = document.createElement('button');
       b.className = 'toggle';
@@ -1292,40 +1326,42 @@ class App {
       wrap.appendChild(b);
       return wrap;
     }
-    const mode = this.state.plantMode || 'plant';
-    const seg = document.createElement('div');
-    seg.className = 'seg';
-    seg.innerHTML = `<button type="button" data-m="plant" class="${mode === 'plant' ? 'on' : ''}">Losse plant</button><button type="button" data-m="vak" class="${mode === 'vak' ? 'on' : ''}">Plantvak</button>`;
-    for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.state.plantMode = b.dataset.m; this.persistSettings(); this.renderOptions(); });
-    wrap.appendChild(seg);
-    const chips = document.createElement('div');
-    chips.className = 'chips';
-    const cur = this.state.plantRole || roles[0].id;
-    const mix = new Set(this.state.plantMix || []);
-    for (const r of roles) {
-      const c = document.createElement('button');
-      c.type = 'button';
-      const on = mode === 'plant' ? r.id === cur : mix.has(r.id);
-      c.className = 'chip' + (on ? ' on' : '');
-      c.title = describeRole(r);
-      c.appendChild(this.plantPanel.symbol(r, 22));
-      c.append(` ${r.code}`);
-      c.addEventListener('click', () => {
-        if (mode === 'plant') this.state.plantRole = r.id;
-        else {
-          if (mix.has(r.id)) mix.delete(r.id); else mix.add(r.id);
-          this.state.plantMix = [...mix];
-        }
-        this.persistSettings();
-        this.renderOptions();
-        this.plantPanel.refresh();
-      });
-      chips.appendChild(c);
+    if (roles.length) {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      const cur = this.state.plantRole || roles[0].id;
+      const mix = new Set(this.state.plantMix || []);
+      for (const r of roles) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        const on = mode === 'plant' ? r.id === cur : mix.has(r.id);
+        c.className = 'chip' + (on ? ' on' : '');
+        c.title = describeRole(r);
+        c.appendChild(this.plantPanel.symbol(r, 22));
+        c.append(` ${r.code}`);
+        c.addEventListener('click', () => {
+          if (mode === 'plant') this.state.plantRole = r.id;
+          else {
+            if (mix.has(r.id)) mix.delete(r.id); else mix.add(r.id);
+            this.state.plantMix = [...mix];
+          }
+          this.persistSettings();
+          this.renderOptions();
+          this.plantPanel.refresh();
+        });
+        chips.appendChild(c);
+      }
+      wrap.appendChild(chips);
     }
-    wrap.appendChild(chips);
-    wrap.appendChild(this.hint(mode === 'plant'
-      ? 'Tik om de gekozen bouwsteen te plaatsen (op zijn uiteindelijke breedte).'
-      : 'Kies de bouwstenen van de mix en teken de omtrek van het vak. Verhouding volgens de rol: structuur 30, vulling 60, accent 10.'));
+    const shape = this.state.plantShape || 'vrij';
+    const hints = {
+      plant: 'Tik om de gekozen bouwsteen als solitair te plaatsen (op zijn uiteindelijke breedte). Solitairen mogen overal staan.',
+      groep: 'Teken een groep binnen een plantvak; het vak begrenst de groep. Kies de bouwsteen(en) van de groep hierboven.',
+      vak: shape === 'tik'
+        ? 'Tik in een vlak van het ontwerp (bijv. een border tussen pad en gazon): het plantvak volgt de lijnen eromheen.'
+        : 'Teken de contour van een plantvak. De gekozen bouwstenen vormen de basis (matrix); groepen kun je daarna tekenen of laten voorstellen.',
+    };
+    wrap.appendChild(this.hint(hints[mode]));
     return wrap;
   }
 
@@ -1668,11 +1704,12 @@ class App {
     const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('nl-NL', { maximumFractionDigits: d });
     const field = (key, label, value, unit, steps = false) => `<label class="pf">${label}${steps ? `<button type="button" class="step" data-step="${key}:-1" title="−15°">−</button>` : ''}<input data-k="${key}" inputmode="decimal" value="${value}">${steps ? `<button type="button" class="step" data-step="${key}:1" title="+15°">+</button>` : ''}<span>${unit}</span></label>`;
     const typeName = (i) => {
+      if (isGroup(i)) return 'Groep';
+      if (isBed(i)) return 'Plantvak';
       if (isRect(i)) return 'Rechthoek';
       if (i.type === 'shape') return { circle: 'Cirkel', polygon: 'Vorm', line: i.points.length === 2 ? 'Lijn' : 'Lijnstuk' }[i.kind] || 'Vorm';
       if (i.type === 'stencil') return STENCIL_MAP[i.symbol]?.name || 'Stencil';
       if (i.type === 'plant') return 'Bouwsteen';
-      if (i.type === 'shape' && i.planting) return 'Plantvak';
       return { stroke: 'Penseelstreek', dim: i.kind === 'area' ? 'Oppervlakte' : 'Maatlijn', text: 'Tekst', image: 'Afbeelding' }[i.type] || 'Element';
     };
     let html = `<span class="count">${it ? typeName(it) : `${items.length} elementen`}</span>`;
@@ -1688,14 +1725,28 @@ class App {
       if (size.len != null) html += field('len', 'Lengte', fmt(size.len), 'm');
       if (ang != null) html += field('angle', it.type === 'shape' && it.kind === 'line' ? 'Hoek' : 'Draaiing', String(displayAngle(ang)).replace('.', ','), '°', true);
       const area = closedArea(it);
-      if (area != null && !isRect(it) && it.kind !== 'circle') html += `<span class="pinfo">${fmt(area, area < 100 ? 1 : 0)} m²</span>`;
+      if (area != null && !isRect(it) && it.kind !== 'circle' && !isBed(it) && !isGroup(it)) html += `<span class="pinfo">${fmt(area, area < 100 ? 1 : 0)} m²</span>`;
       const roles = this.store.doc.planting?.roles || [];
-      if (it.type === 'plant') {
-        html += `<select data-k="prole" title="Bouwsteen">${roles.map((r) => `<option value="${r.id}" ${r.id === it.role ? 'selected' : ''}>${escapeHtml(r.code)} – ${escapeHtml(describeRole(r))}</option>`).join('')}</select>`;
-      }
-      if (it.type === 'shape' && it.planting) {
-        const inMix = new Set(it.planting.mix.map((m) => m.role));
-        html += `<span class="pf">Mix</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}">${escapeHtml(r.code)}</button>`).join('')}`;
+      const roleSelect = (cur, empty) => `<select data-k="prole" title="Bouwsteen">${empty ? `<option value="">Geen bouwsteen</option>` : ''}${roles.map((r) => `<option value="${r.id}" ${r.id === cur ? 'selected' : ''}>${escapeHtml(r.code)} – ${escapeHtml(describeRole(r))}</option>`).join('')}</select>`;
+      if (it.type === 'plant') html += roleSelect(it.role, false);
+      if (it.type === 'stencil' && (it.role || isPlantStencil(it.symbol))) html += roleSelect(it.role, true);
+      if (isBed(it) || isGroup(it)) {
+        const mix = it.planting?.mix || [];
+        const inMix = new Set(mix.map((m) => m.role));
+        html += `<span class="pf">${isBed(it) ? 'Basis' : 'Mix'}</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}">${escapeHtml(r.code)}</button>`).join('')}`;
+        const st = this.planStats(it);
+        if (st) {
+          const m2 = (v) => fmt(v, v < 100 ? 1 : 0);
+          const txt = st.groups ? `${m2(st.total)} m², basis ${m2(st.area)} m²` : `${m2(st.area)} m²`;
+          html += `<span class="pinfo" title="Geschat aantal planten (driehoeksverband)${st.groups ? ' in de basis, buiten de groepen' : ''}">${txt} · ${st.count} st.</span>`;
+        }
+        if (isBed(it)) {
+          const hasGroups = (st?.groups || 0) > 0;
+          html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
+          if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
+        }
+      } else if (it.type === 'shape' && (it.kind === 'polygon' || it.kind === 'circle') && it.points.length >= (it.kind === 'circle' ? 2 : 3)) {
+        html += `<button type="button" class="tgl" data-plan="makebed" title="Een plantvak maken met deze omtrek">Maak plantvak</button>`;
       }
     }
     if (!it || itemAngle(it) == null) {
@@ -1750,6 +1801,76 @@ class App {
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
+    for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
+  }
+
+  /** Oppervlak en geschat aantal planten van een plantvak (basis, zonder groepen) of groep. */
+  planStats(it) {
+    const doc = this.store.doc;
+    const roles = rolesMap(doc);
+    for (const st of bedStats(doc)) {
+      if (st.bed.id === it.id) return { area: st.baseArea, total: st.area, count: plantCount(st.baseArea, it.planting?.mix, roles), groups: st.groups.length };
+      const g = st.groups.find((x) => x.group.id === it.id);
+      if (g) return { area: g.area, count: plantCount(g.area, it.planting?.mix, roles) };
+    }
+    return null;
+  }
+
+  /** Acties van de eigenschappenbalk voor de beplanting. */
+  planAction(action) {
+    if (this.selection.size !== 1) return;
+    const f = this.store.findItem([...this.selection][0]);
+    if (!f) return;
+    const it = f.item;
+    const doc = this.store.doc;
+    if (action === 'makebed') {
+      const ids = this.state.plantMix || [];
+      const roles = rolesMap(doc);
+      const mix = ids.filter((id) => roles[id]).map((id) => ({ role: id, w: PLANT_ROLES[roles[id].role]?.weight || 30 }));
+      const bed = newBed(it.points.map((p) => [p[0], p[1]]), it.kind, mix, doc.scale, isRect(it) ? { rect: true } : {});
+      this.store.mutate(() => {
+        const idx = f.layer.items.indexOf(f.item);
+        f.layer.items.splice(idx + 1, 0, bed);
+      }, 'make-bed');
+      this.setSelection(new Set([bed.id]));
+      this.toast('Plantvak gemaakt. Kies de basis-bouwstenen of laat groepen voorstellen.');
+      return;
+    }
+    if (!isBed(it)) return;
+    if (action === 'cleargroups') {
+      this.store.mutate(() => {
+        for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id));
+      }, 'clear-groups');
+      return;
+    }
+    if (action === 'suggest') {
+      const roles = doc.planting?.roles || [];
+      if (!roles.length) {
+        this.toast('Maak eerst bouwstenen in het paneel Beplanting (structuur, vulling, accent).');
+        this.plantPanel.open();
+        return;
+      }
+      // de bouwstenen van het vak; als daar geen structuur of accent in zit: alle bouwstenen
+      const ids = (it.planting?.mix || []).map((m) => m.role);
+      const byId = rolesMap(doc);
+      const chosen = ids.some((id) => byId[id] && byId[id].role !== 'vulling') ? ids : [];
+      const seed = (it.planting?.seed || 0) + 1;
+      const res = suggestDrifts(it, roles, chosen, seed);
+      if (!res.groups.length) {
+        this.toast('Geen groepen voor te stellen: voeg structuur- of accent-bouwstenen toe.');
+        return;
+      }
+      this.store.mutate(() => {
+        // eerdere voorstellen vervangen, zelf getekende groepen blijven
+        for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id && i.auto));
+        const bed = this.store.findItem(it.id).item;
+        bed.planting = { ...(bed.planting || {}), mix: res.baseMix, seed };
+        const idx = f.layer.items.indexOf(bed);
+        const groups = res.groups.map((g) => newGroup(g.points, 'polygon', g.mix, bed.id, doc.scale, { auto: true }));
+        f.layer.items.splice(idx + 1, 0, ...groups);
+      }, 'suggest-groups');
+      this.toast(`${res.groups.length} groepen voorgesteld. Nogmaals tikken geeft een nieuwe variant.`);
+    }
   }
 
   /** Eigenschap toepassen op de selectie (exacte maten, hoek, stijl). */
@@ -1803,14 +1924,17 @@ class App {
           for (const i of items) if (i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle')) i.hatch = raw;
           break;
         case 'prole':
-          for (const i of items) if (i.type === 'plant') i.role = raw;
+          for (const i of items) {
+            if (i.type === 'plant' && raw) i.role = raw;
+            else if (i.type === 'stencil') { if (raw) i.role = raw; else delete i.role; }
+          }
           break;
         case 'mix': {
           const roles = rolesMap(this.store.doc);
           for (const i of items) {
             if (!i.planting) continue;
             const has = i.planting.mix.some((m) => m.role === raw);
-            if (has && i.planting.mix.length > 1) i.planting.mix = i.planting.mix.filter((m) => m.role !== raw);
+            if (has && (i.planting.mix.length > 1 || isBed(i))) i.planting.mix = i.planting.mix.filter((m) => m.role !== raw);
             else if (!has && roles[raw]) i.planting.mix.push({ role: raw, w: PLANT_ROLES[roles[raw].role]?.weight || 30 });
           }
           break;
@@ -1847,7 +1971,8 @@ class App {
     switch (action) {
       case 'delete':
         this.store.mutate(() => {
-          for (const l of this.store.doc.layers) l.items = l.items.filter((i) => !this.selection.has(i.id));
+          const beds = new Set(found.filter(({ item }) => isBed(item)).map(({ item }) => item.id));
+          for (const l of this.store.doc.layers) l.items = l.items.filter((i) => !this.selection.has(i.id) && !(isGroup(i) && beds.has(i.bedId)));
         }, 'delete');
         this.setSelection(new Set());
         break;
@@ -2306,6 +2431,7 @@ class App {
       titleBlock: $('#exp-titleblock').checked,
       title: $('#exp-title').value.trim(),
       subtitle: $('#exp-subtitle').value.trim(),
+      plantView: this.state.plantView || 'planten',
     });
     const viewBox = () => {
       const pts = [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map((p) => this.cam.toWorld(p));
@@ -2359,6 +2485,20 @@ class App {
 }
 
 // ---------------------------------------------------------------- bestanden
+
+/** Oudere tekeningen: plantvakken krijgen bed:true, plantstencils een bouwsteen. */
+function migratePlanting(doc) {
+  for (const l of doc.layers || []) {
+    for (const i of l.items) {
+      if (i.type === 'shape' && i.planting && !i.group && !i.bed) i.bed = true;
+      if (i.type === 'stencil' && !i.role && !i.noRole && isPlantStencil(i.symbol)) {
+        if (!doc.planting) doc.planting = { scheme: { type: 'vrij', base: '#8e5bb5' }, roles: [] };
+        const r = ensureStencilRole(doc.planting.roles, i.symbol, STENCIL_MAP[i.symbol]?.name || i.symbol);
+        if (r) i.role = r.id;
+      }
+    }
+  }
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

@@ -4,6 +4,7 @@
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
 import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
+import { isBed, isGroup } from './planting.js';
 import { formatLength } from './units.js';
 import {
   dist, pointInPolygon, distToSegment, snapAngle, matTranslate, matMul, matScale, matRotate, angleOf,
@@ -253,7 +254,15 @@ export class SelectTool extends Tool {
     this.moved = false;
     this.drag = { ...h, startW: e.w, startS: e.s };
     const items = this.selectedItems();
-    this.orig = new Map(items.map(({ item }) => [item.id, clone(item)]));
+    // groepen van een geselecteerd plantvak bewegen mee
+    const bedIds = new Set(items.filter(({ item }) => isBed(item)).map(({ item }) => item.id));
+    this.followers = [];
+    if (bedIds.size && ['move', 'rotate', 'scale'].includes(h.kind)) {
+      for (const layer of app.store.doc.layers) {
+        for (const item of layer.items) if (isGroup(item) && bedIds.has(item.bedId) && !this.selection.has(item.id)) this.followers.push({ item, layer });
+      }
+    }
+    this.orig = new Map([...items, ...this.followers].map(({ item }) => [item.id, clone(item)]));
     const it = items.length === 1 ? items[0].item : null;
     if (h.kind === 'frame') this.drag.frame = itemFrame(it);
     if (h.kind === 'rotate') {
@@ -319,7 +328,7 @@ export class SelectTool extends Tool {
       }
       this.restore();
       const m = matTranslate(dx, dy);
-      for (const { item } of this.selectedItems()) transformItem(item, m, 1, 0);
+      for (const { item } of [...this.selectedItems(), ...this.followers]) transformItem(item, m, 1, 0);
     } else if (d.kind === 'rotate') {
       const c = d.pivot;
       let r = angleOf(c, e.w) - angleOf(c, d.startW);
@@ -334,13 +343,13 @@ export class SelectTool extends Tool {
       }
       this.restore();
       const m = matMul(matTranslate(c[0], c[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
-      for (const { item } of this.selectedItems()) transformItem(item, m, 1, r);
+      for (const { item } of [...this.selectedItems(), ...this.followers]) transformItem(item, m, 1, r);
     } else if (d.kind === 'scale') {
       const o = d.opposite;
       const s = Math.max(0.02, dist(o, e.w) / Math.max(1e-9, dist(o, d.startW)));
       this.restore();
       const m = matMul(matTranslate(o[0], o[1]), matMul(matScale(s), matTranslate(-o[0], -o[1])));
-      for (const { item } of this.selectedItems()) transformItem(item, m, s, 0);
+      for (const { item } of [...this.selectedItems(), ...this.followers]) transformItem(item, m, s, 0);
       this.liveInfo = `${Math.round(s * 100)}%`;
     } else if (d.kind === 'frame') {
       const f = d.frame;
