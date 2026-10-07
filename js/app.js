@@ -5,10 +5,10 @@ import { Camera } from './camera.js';
 import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { BRUSHES, strokePath } from './brushes.js';
-import { HATCHES } from './patterns.js';
+import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, formatAngle, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -1455,7 +1455,7 @@ class App {
   hatchSelect() {
     const wrap = document.createElement('div');
     wrap.className = 'opt';
-    wrap.innerHTML = `<span class="opt-label">Arcering</span><select>${Object.entries(HATCHES).map(([k, h]) => `<option value="${k}">${h.name}</option>`).join('')}</select>`;
+    wrap.innerHTML = `<span class="opt-label">Materiaal</span><select>${hatchOptions(this.state.hatch)}</select>`;
     const sel = $('select', wrap);
     sel.value = this.state.hatch;
     sel.addEventListener('change', () => { this.state.hatch = sel.value; this.persistSettings(); });
@@ -1835,7 +1835,8 @@ class App {
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
-      html += `<select data-k="hatch" title="Arcering">${Object.entries(HATCHES).map(([k, h]) => `<option value="${k}" ${(closed[0].hatch || 'none') === k ? 'selected' : ''}>${h.name}</option>`).join('')}</select>`;
+      html += `<select data-k="hatch" title="Materiaal / arcering">${hatchOptions(closed[0].hatch || 'none')}</select>`;
+      if (it && it.hatch && it.hatch !== 'none' && HATCHES[it.hatch]?.size) html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
     }
     html += '<span class="sepv"></span>';
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
@@ -2004,6 +2005,11 @@ class App {
           const closed = items.filter((i) => i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'));
           const on = !closed[0]?.fill;
           for (const i of closed) { i.fill = on ? i.color : null; if (on && i.fillAlpha == null) i.fillAlpha = 0.3; }
+          break;
+        }
+        case 'hatchRot': {
+          const v = num(raw);
+          if (Number.isFinite(v)) for (const i of items) if (i.type === 'shape') i.hatchRot = fromDisplayAngle(v);
           break;
         }
         case 'hatch':

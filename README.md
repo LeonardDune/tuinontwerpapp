@@ -30,6 +30,12 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.
+- **Bestrating en materialen** (keuzelijst *Materiaal* bij vlakken, op ware grootte): tegels 60×60, 50×50, 30×30 en
+  60×40 halfsteens; grootformaat keramisch 80×80, 100×100, 90×60 en 120×60 (halfsteens) en houtlook 120×30; gebakken
+  tegels 20×20; klinkers halfsteens, visgraat en met brede voeg (waterdoorlatend); kinderkopjes/kasseien; cirkelverband
+  (rond terras of om een boom); natuursteen in Romaans verband en flagstones; grastegels. Halfverharding: grind, split,
+  schelpen, boomschors/houtsnippers. Verder vlonder, gras, beplanting en water. Elk materiaal krijgt een zachte eigen
+  kleur. De tegels volgen de richting van de eerste zijde van de vorm; met *Legrichting* stel je die exact in.
 - **Plattegrond van het huis**: het gereedschap *Muur* tekent muren met een dikte (10, 20, 30 of 40 cm of zelf
   invullen) als ketting van punten; tik op het eerste punt om rond te sluiten. Muren zijn gearceerd en hebben nette
   verstekhoeken. Bij *Stencils › Huis: deuren en ramen* staan binnendeur, buitendeur, dubbele deur, openslaande
@@ -52,7 +58,7 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Stencils**: bomen (kroondiameter), heesters, hagen, grassen, vaste planten, meubilair, schuur, pergola, kas, vijver,
   trampoline, auto en noordpijl, allemaal op ware grootte en met een instelbare maat.
 - **Vormen**: lijn, rechthoek, cirkel, veelhoek en vlak (bijvoorbeeld gazon of border) met arceringen op ware grootte:
-  gras, grind, tegels, klinkers, vlonder, water en beplanting. Tijdens het tekenen zie je de maat in een tijdelijk label.
+  materialen (zie hieronder). Tijdens het tekenen zie je de maat in een tijdelijk label.
 - **Maatvoering** (apart gereedschap): *Lengte*: tik begin- en eindpunt aan of sleep; snapt aan eindpunten, randen en het
   raster. Sleep het midden van een maatlijn om hem opzij te leggen. *Oppervlakte*: tik in een vlak of vorm voor de m².
   Afronding en labelgrootte op papier hangen af van de tekenschaal (1:10 tot 1:5000); op het scherm blijven labels leesbaar.

@@ -1,7 +1,7 @@
 // Tekenen, raken, begrenzen en transformeren van items.
 
 import { BRUSHES, strokePath, grainPattern } from './brushes.js';
-import { hatchPattern } from './patterns.js';
+import { hatchPattern, HATCHES } from './patterns.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
 import {
@@ -265,7 +265,17 @@ function drawShape(g, item, rc) {
     g.fill();
   }
   if (closed && item.hatch && item.hatch !== 'none') {
-    const pat = hatchPattern(g, item.hatch, item.hatchColor || item.color);
+    const hd = HATCHES[item.hatch];
+    if (hd?.bg && !item.fill) {
+      // zachte ondergrondkleur van het materiaal (klinkerrood, grind, gras …)
+      g.save();
+      g.globalAlpha *= 0.45;
+      g.fillStyle = hd.bg;
+      g.fill();
+      g.restore();
+    }
+    const pat = hd?.radial ? null : hatchPattern(g, item.hatch, item.hatchColor || item.color, hatchAngle(item), item.points[0]);
+    if (hd?.radial) drawRadialPaving(g, item, hd.size, rc);
     if (pat) {
       g.save();
       g.globalAlpha *= 0.75;
@@ -314,6 +324,47 @@ function drawWall(g, item, rc) {
   g.lineCap = 'square';
   g.stroke();
   g.restore();
+}
+
+/** Cirkelverband: ringen van keien rond het middelpunt (cirkel) of zwaartepunt (vorm), met verspringende voegen. */
+function drawRadialPaving(g, item, size, rc) {
+  const pts = item.points;
+  const c = item.kind === 'circle' ? pts[0] : polygonCentroid(pts);
+  const R = item.kind === 'circle' ? dist(pts[0], pts[1]) : Math.max(...pts.map((p) => dist(p, c)));
+  if (R / size > 400) return;
+  g.save();
+  tracePath(g, item);
+  g.clip();
+  g.strokeStyle = item.hatchColor || item.color;
+  g.globalAlpha *= 0.75;
+  g.lineWidth = Math.max(paperToWorld(0.1, rc.scale), 0.6 / (rc.zoom * (rc.dpr || 1)));
+  g.beginPath();
+  g.arc(c[0], c[1], size * 0.6, 0, Math.PI * 2);
+  for (let k = 1; k * size <= R + size; k++) {
+    const r0 = size * 0.6 + (k - 1) * size, r1 = r0 + size;
+    g.moveTo(c[0] + r1, c[1]);
+    g.arc(c[0], c[1], r1, 0, Math.PI * 2);
+    const n = Math.max(6, Math.round((Math.PI * 2 * (r0 + r1) / 2) / (size * 1.1)));
+    const off = (k % 2) * 0.5;
+    for (let i = 0; i < n; i++) {
+      const a = ((i + off) / n) * Math.PI * 2;
+      g.moveTo(c[0] + Math.cos(a) * r0, c[1] + Math.sin(a) * r0);
+      g.lineTo(c[0] + Math.cos(a) * r1, c[1] + Math.sin(a) * r1);
+    }
+  }
+  g.stroke();
+  g.restore();
+  tracePath(g, item); // het pad van de vorm terugzetten voor de omtrek
+}
+
+/** Legrichting van bestrating: zelf ingesteld, anders langs de eerste zijde van de vorm. */
+export function hatchAngle(item) {
+  if (item.hatchRot != null) return item.hatchRot;
+  if (item.kind === 'polygon' && item.points.length >= 2) {
+    const [a, b] = item.points;
+    return Math.atan2(b[1] - a[1], b[0] - a[0]);
+  }
+  return 0;
 }
 
 function drawShapeDims(g, item, rc) {
@@ -593,6 +644,7 @@ export function transformItem(item, m, s, r) {
     case 'shape':
       item.points = item.points.map(tp);
       if (item.width) item.width *= s;
+      if (item.hatchRot != null) item.hatchRot += r;
       break;
     case 'dim':
       if (item.kind === 'area') break;
