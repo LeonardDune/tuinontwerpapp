@@ -127,9 +127,10 @@ export class SelectTool extends Tool {
       if (d < r && d < bd + (g.shape === 'plus' ? -6 : 0)) { bd = d; best = g; }
     }
     if (best) return best;
-    // binnen het kader verplaatsen geldt alleen voor elementen met een kader (rechthoek, stencil, tekst);
-    // bij lijnen, vormen en muren telt alleen het element zelf (anders blokkeert een muur rond het huis alles)
-    if (h.frame && pointInPolygon(s, h.outline)) return { kind: 'move' };
+    // binnen het kader verplaatsen; bij muren alleen op de muur zelf (het kader van een muur rond het huis
+    // beslaat het hele huis, dan zou je er nooit meer binnen kunnen tikken)
+    const walls = !h.frame && this.selectedItems().some(({ item }) => item.wall);
+    if (!walls && pointInPolygon(s, h.outline)) return { kind: 'move' };
     // ook direct op een geselecteerd element (bij dunne lijnen ligt het kader er vlak omheen)
     const w = this.app.cam.toWorld(s);
     if (this.selectedItems().some(({ item }) => hitItem(item, w, 10 / this.app.cam.zoom))) return { kind: 'move' };
