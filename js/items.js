@@ -32,6 +32,19 @@ function hexA(color, a) {
  * rc: { doc, scale, zoom }  — zoom = px per meter (voor schermafhankelijke details)
  */
 export function drawItem(g, item, rc) {
+  const op = item.opacity ?? 1;
+  if (op < 1 && item.type !== 'stroke') {
+    // doorzichtigheid per element (penseelstreken regelen dat zelf, samen met de penseeldekking)
+    g.save();
+    g.globalAlpha *= op;
+    drawItemInner(g, item, rc);
+    g.restore();
+    return;
+  }
+  drawItemInner(g, item, rc);
+}
+
+function drawItemInner(g, item, rc) {
   switch (item.type) {
     case 'stroke': return drawStroke(g, item, rc);
     case 'shape': return drawShape(g, item, rc);
@@ -257,7 +270,6 @@ function drawShape(g, item, rc) {
   if (item.group) return drawGroup(g, item, rc);
   if (isBed(item)) return drawBed(g, item, rc);
   g.save();
-  g.globalAlpha *= item.opacity ?? 1;
   tracePath(g, item);
   const closed = item.kind === 'polygon' || item.kind === 'circle';
   if (closed && item.fill) {
@@ -522,7 +534,6 @@ function drawImage(g, item, rc) {
   g.save();
   g.translate(item.x, item.y);
   g.rotate(item.rot || 0);
-  g.globalAlpha *= item.opacity ?? 1;
   if (img) {
     g.imageSmoothingQuality = 'high';
     g.drawImage(img, -item.w / 2, -item.h / 2, item.w, item.h);

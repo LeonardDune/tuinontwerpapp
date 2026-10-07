@@ -8,7 +8,14 @@ function rng(seed) {
   return () => ((s = (s * 16807) % 2147483647) / 2147483647);
 }
 
+// eigen vulkleur en -sterkte van het stencil dat nu getekend wordt (zie drawStencil)
+const fillOverride = { line: null, color: null, alpha: null };
+
 function hexA(color, a) {
+  if (fillOverride.line && color === fillOverride.line) {
+    if (fillOverride.color) color = fillOverride.color;
+    if (fillOverride.alpha != null) a = fillOverride.alpha;
+  }
   const c = color.replace('#', '');
   const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${a})`;
@@ -628,12 +635,19 @@ export function drawStencil(g, item, lw, paper) {
     // dichte ondergrond in papierkleur: een stencil ligt bovenop wat eronder getekend is
     g.fillStyle = paper || '#fbfaf6';
     g.beginPath();
-    if (def.round) g.ellipse(0, 0, item.w / 2, item.h / 2, 0, 0, Math.PI * 2);
+    if (def.round) g.ellipse(0, 0, item.w * 0.43, item.h * 0.43, 0, 0, Math.PI * 2); // binnen de (golvende) kroonrand
     else g.rect(-item.w / 2, -item.h / 2, item.w, item.h);
     g.fill();
   }
   g.strokeStyle = c;
   g.fillStyle = c;
-  def.draw(g, item.w, item.h, c, lw, paper);
+  fillOverride.line = item.fillColor || item.fillAlpha != null ? c : null;
+  fillOverride.color = item.fillColor || null;
+  fillOverride.alpha = item.fillAlpha ?? null;
+  try {
+    def.draw(g, item.w, item.h, c, lw, paper);
+  } finally {
+    fillOverride.line = null;
+  }
   g.restore();
 }

@@ -34,7 +34,10 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   vormen, cirkels en muurvlakken, en "loodrecht op" een bestaande lijn. Tijdens het tekenen van een lijn, rechthoek,
   veelhoek of muur klikt de richting vast als die evenwijdig of loodrecht aan een bestaande lijn loopt; die lijn licht
   dan blauw op met ∥ of ⊥ en een korte tekst (midden, snijpunt, evenwijdig …).
-- **Stencils dekken af** wat eronder ligt; zet *Doorzichtig* aan in de balk om de ondergrond te laten zien.
+- **Kleur en doorzichtigheid per element**: met het schuifje *Dekking* (10–100%) maak je elk element (stencil, vorm,
+  lijn, tekst, afbeelding, plant) meer of minder doorzichtig. Stencils hebben een eigen lijnkleur (*Kleur*), vulkleur
+  (*Vulling*) en vulsterkte (*Sterkte*); bij gevulde vormen stel je vulkleur en -sterkte ook in. Stencils dekken
+  standaard af wat eronder ligt.
 - **Bestrating en materialen** (keuzelijst *Materiaal* bij vlakken, op ware grootte): tegels 60×60, 50×50, 30×30 en
   60×40 halfsteens; grootformaat keramisch 80×80, 100×100, 90×60 en 120×60 (halfsteens) en houtlook 120×30; gebakken
   tegels 20×20; klinkers halfsteens, visgraat en met brede voeg (waterdoorlatend); kinderkopjes/kasseien; cirkelverband

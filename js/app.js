@@ -1824,7 +1824,7 @@ class App {
     }
     html += '<span class="sepv"></span>';
     const colored = items.find((i) => i.color);
-    if (colored) html += `<label class="pf" title="Kleur"><input type="color" data-k="color" value="${colored.color.length === 7 ? colored.color : '#1d2b36'}"></label>`;
+    if (colored) html += `<label class="pf" title="Lijnkleur">Kleur<input type="color" data-k="color" value="${colored.color.length === 7 ? colored.color : '#1d2b36'}"></label>`;
     const walls = shapes.filter((i) => i.wall);
     if (walls.length) html += field('wallT', 'Dikte', fmt(walls[0].width), 'm');
     if (shapes.length > walls.length) {
@@ -1833,7 +1833,19 @@ class App {
       html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
     }
     const stencils = items.filter((i) => i.type === 'stencil' && !STENCIL_MAP[i.symbol]?.opening);
-    if (stencils.length) html += `<button type="button" class="tgl ${stencils[0].see ? 'on' : ''}" data-act="see" title="Laat zien wat eronder ligt">Doorzichtig</button>`;
+    const range = (key, label, val, title) => `<label class="pf prange" title="${title}">${label}<input type="range" data-k="${key}" min="${key === 'opacity' ? 10 : 0}" max="100" step="5" value="${val}"><span>${val}%</span></label>`;
+    if (stencils.length) {
+      const st = stencils[0];
+      const fc = st.fillColor || st.color || STENCIL_MAP[st.symbol]?.color || '#5a8f3c';
+      html += `<label class="pf" title="Vulkleur">Vulling<input type="color" data-k="fillColor" value="${fc.length === 7 ? fc : '#5a8f3c'}"></label>`;
+      html += range('fillAlpha', 'Sterkte', Math.round((st.fillAlpha ?? 0.25) * 100), 'Hoe sterk de vulkleur is');
+    }
+    const filled = items.filter((i) => i.type === 'shape' && !i.wall && i.fill && (i.kind === 'polygon' || i.kind === 'circle'));
+    if (filled.length) {
+      html += `<label class="pf" title="Vulkleur">Vulling<input type="color" data-k="fillColor" value="${filled[0].fill.length === 7 ? filled[0].fill : '#7a9a5a'}"></label>`;
+      html += range('fillAlpha', 'Sterkte', Math.round((filled[0].fillAlpha ?? 0.35) * 100), 'Hoe sterk de vulkleur is');
+    }
+    html += range('opacity', 'Dekking', Math.round((items[0].opacity ?? 1) * 100), 'Doorzichtigheid van het element');
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
@@ -1854,7 +1866,12 @@ class App {
       if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
       else b.addEventListener('click', () => this.selectionAction(b.dataset.sel));
     }
-    for (const inp of bar.querySelectorAll('input[data-k], select[data-k]')) {
+    for (const inp of bar.querySelectorAll('input[type=range][data-k]')) {
+      const out = inp.nextElementSibling;
+      inp.addEventListener('input', () => { if (out) out.textContent = `${inp.value}%`; this.applyProperty(inp.dataset.k, inp.value, { live: true }); });
+      inp.addEventListener('change', () => this.applyProperty(inp.dataset.k, inp.value, { commit: true }));
+    }
+    for (const inp of bar.querySelectorAll('input[data-k]:not([type=range]), select[data-k]')) {
       inp.addEventListener('change', () => this.applyProperty(inp.dataset.k, inp.value));
       if (inp.tagName === 'INPUT') inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
     }
@@ -1947,7 +1964,7 @@ class App {
   }
 
   /** Eigenschap toepassen op de selectie (exacte maten, hoek, stijl). */
-  applyProperty(k, raw) {
+  applyProperty(k, raw, opts = {}) {
     const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
     if (!found.length) return;
     const items = found.map((f) => f.item);
@@ -1955,7 +1972,7 @@ class App {
     const num = (v) => parseFloat(String(v).replace(',', '.'));
     const len = (v) => parseLength(v);
     const sc = this.store.doc.scale;
-    this.store.mutate(() => {
+    const run = () => {
       switch (k) {
         case 'w': if (it && len(raw) > 0) setFrameSize(it, len(raw), null); break;
         case 'h': if (it && len(raw) > 0) setFrameSize(it, null, len(raw)); break;
@@ -2000,6 +2017,25 @@ class App {
           const v = len(raw);
           if (v > 0.01) for (const i of items) if (i.wall) { i.width = v; invalidateItem(i); }
           syncOpenings(this.store.doc, new Set(items.filter((i) => i.wall).map((i) => i.id)));
+          break;
+        }
+        case 'opacity': {
+          const v = num(raw) / 100;
+          if (v > 0) for (const i of items) { if (v >= 0.999) delete i.opacity; else i.opacity = Math.round(v * 100) / 100; }
+          break;
+        }
+        case 'fillColor':
+          for (const i of items) {
+            if (i.type === 'stencil') i.fillColor = raw;
+            else if (i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle')) { i.fill = raw; if (i.fillAlpha == null) i.fillAlpha = 0.3; }
+          }
+          break;
+        case 'fillAlpha': {
+          const v = Math.max(0, Math.min(1, num(raw) / 100));
+          for (const i of items) {
+            if (i.type === 'stencil') i.fillAlpha = v;
+            else if (i.type === 'shape' && i.fill) i.fillAlpha = v;
+          }
           break;
         }
         case 'see': {
@@ -2048,7 +2084,21 @@ class App {
         const moved = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !(i.wallId && wallIds.has(i.wallId)));
         if (wallIds.size || moved.length) syncOpenings(this.store.doc, wallIds, moved, 30 / this.cam.zoom);
       }
-    }, 'property');
+    };
+    if (opts.live) {
+      // schuifje: tussenstanden live tonen, bij loslaten één undo-stap
+      this.store.begin();
+      run();
+      for (const i of items) invalidateItem(i);
+      this.store.touch();
+      return;
+    }
+    if (this.store.tx && opts.commit) {
+      run();
+      this.store.commit('property');
+    } else {
+      this.store.mutate(run, 'property');
+    }
     this.requestRender();
   }
 
