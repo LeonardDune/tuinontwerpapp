@@ -95,6 +95,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Ondergrond importeren**: een foto of PDF. Je geeft de werkelijke breedte op of de schaal van de PDF (bijv. 1:100),
   of je kalibreert achteraf met de Schaal-tool.
 - **Lagen als trekpapier**: per laag de zichtbaarheid, vergrendeling, dekking en hoeveel "papier" eronder ligt.
+  Met *Hele laag selecteren* (of Ctrl/Cmd+A voor de actieve laag) verschuif, draai of schaal je een laag in zijn
+  geheel: slepen, de ronde greep of een hoekgreep, of exact met *Draai* (graden) en *Schaal* (procent) in de balk.
 - **Exporteren naar PDF of PNG** op A4 t/m A1 op een echte schaal (of passend), met een titelblok, schaalbalk en noordpijl.
 - Ongedaan maken en opnieuw, automatisch opslaan, meerdere tekeningen, een back-up als bestand, en werkt offline (PWA).
 

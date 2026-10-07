@@ -17,7 +17,7 @@ import { hydrateIcons, icon } from './icons.js';
 import {
   DrawTool, EraserTool, ShapeTool, WallTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
-import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
+import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
 import { syncOpenings } from './walls.js';
@@ -1015,6 +1015,7 @@ class App {
     if (mod && k === 'c') { this.copySelection(); return; }
     if (mod && k === 'v') { this.pasteClipboard(); return; }
     if (mod && k === 'd') { e.preventDefault(); this.selectionAction('duplicate'); return; }
+    if (mod && k === 'a') { e.preventDefault(); this.selectLayer(this.store.doc.activeLayer); return; }
     if (mod && k === 's') { e.preventDefault(); this.saveNow(); return; }
     if (mod) return;
     if (k === 'delete' || k === 'backspace') { this.selectionAction('delete'); return; }
@@ -1656,7 +1657,8 @@ class App {
         <div class="row2">
           <span>Dekking</span><input type="range" data-a="opacity" min="0" max="100" value="${Math.round(layer.opacity * 100)}">
           <span>Papier</span><input type="range" data-a="paper" min="0" max="90" value="${Math.round(layer.paper * 100)}">
-        </div>`;
+        </div>
+        <div class="row3"><button data-a="select" title="Alles op deze laag selecteren om de laag te verschuiven, draaien of schalen">${icon('select', 16)}<span>Hele laag selecteren</span></button></div>`;
       $('.name', li).textContent = `${layer.name} (${layer.items.length})`;
       $('.name', li).addEventListener('click', () => this.setActiveLayer(layer.id));
       $('.name', li).addEventListener('dblclick', () => this.renameLayer(layer.id));
@@ -1675,6 +1677,19 @@ class App {
       list.appendChild(li);
     }
 
+  }
+
+  /** Alles op een laag selecteren, zodat de laag in zijn geheel te verschuiven, draaien of schalen is. */
+  selectLayer(id) {
+    const layer = this.store.layerById(id);
+    if (!layer) return;
+    if (layer.locked) { this.toast(`"${layer.name}" is vergrendeld. Ontgrendel de laag eerst.`); return; }
+    if (!layer.visible) { this.toast(`"${layer.name}" is verborgen. Maak de laag eerst zichtbaar.`); return; }
+    if (!layer.items.length) { this.toast(`"${layer.name}" is leeg.`); return; }
+    if (this.state.tool !== 'lasso') this.setTool('lasso');
+    this.setActiveLayer(id);
+    this.setSelection(new Set(layer.items.map((i) => i.id)));
+    this.toast('Hele laag geselecteerd: slepen = verschuiven, ronde greep = draaien, hoekgreep = schalen. Exacte waarden in de balk onderaan.', 5000);
   }
 
   addLayer() {
@@ -1700,6 +1715,9 @@ class App {
     const idx = doc.layers.findIndex((l) => l.id === id);
     if (idx < 0) return;
     switch (action) {
+      case 'select':
+        this.selectLayer(id);
+        break;
       case 'vis':
         this.store.mutate(() => { doc.layers[idx].visible = !doc.layers[idx].visible; }, 'layer');
         break;
@@ -1797,6 +1815,7 @@ class App {
       // draaien met een exact aantal graden (om het midden van de selectie)
       html += field('rotby', 'Draai', '0', '°', true);
     }
+    if (!it) html += field('scaleby', 'Schaal', '100', '%');
     const shapes = items.filter((i) => i.type === 'shape' || i.type === 'stroke');
     if (items.some((i) => i.type === 'stencil' || i.type === 'shape')) {
       const hs = [...new Set(items.filter((i) => i.type === 'stencil' || i.type === 'shape').map((i) => itemHeight(i)))];
@@ -1945,6 +1964,15 @@ class App {
           rotateItems(items, fromDisplayAngle(v), [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]);
           break;
         }
+        case 'scaleby': {
+          const f = num(raw) / 100;
+          if (!(f > 0) || Math.abs(f - 1) < 1e-9) break;
+          const b = selectionBox(items);
+          const c = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
+          const m = matMul(matTranslate(c[0], c[1]), matMul(matScale(f), matTranslate(-c[0], -c[1])));
+          for (const i of items) transformItem(i, m, f, 0);
+          break;
+        }
         case 'height': {
           const v = len(raw);
           if (v >= 0) for (const i of items) if (i.type === 'stencil' || i.type === 'shape') i.height = v;
@@ -1998,7 +2026,7 @@ class App {
           break;
         }
       }
-      if (['len', 'angle', 'rotby', 'diam'].includes(k)) {
+      if (['len', 'angle', 'rotby', 'diam', 'scaleby'].includes(k)) {
         // deuren en ramen blijven in hun muur
         const wallIds = new Set(items.filter((i) => i.wall).map((i) => i.id));
         const moved = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !(i.wallId && wallIds.has(i.wallId)));
