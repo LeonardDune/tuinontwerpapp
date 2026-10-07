@@ -44,6 +44,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   (rond terras of om een boom); natuursteen in Romaans verband en flagstones; grastegels. Halfverharding: grind, split,
   schelpen, boomschors/houtsnippers. Verder vlonder, gras, beplanting en water. Elk materiaal krijgt een zachte eigen
   kleur. De tegels volgen de richting van de eerste zijde van de vorm; met *Legrichting* stel je die exact in.
+  Met *Materiaal* en *Voeg* kies je de kleur van de tegels of klinkers en van de voegen; bij klinkers met brede voeg
+  is de voeg een gekleurd vlak (standaard groen, bijvoorbeeld zand- of splitkleurig te maken).
 - **Plattegrond van het huis**: het gereedschap *Muur* tekent muren met een dikte (10, 20, 30 of 40 cm of zelf
   invullen) als ketting van punten; tik op het eerste punt om rond te sluiten. Muren zijn gearceerd en hebben nette
   verstekhoeken. Bij *Stencils › Huis: deuren en ramen* staan binnendeur, buitendeur, dubbele deur, openslaande

@@ -278,19 +278,20 @@ function drawShape(g, item, rc) {
   }
   if (closed && item.hatch && item.hatch !== 'none') {
     const hd = HATCHES[item.hatch];
-    if (hd?.bg && !item.fill) {
-      // zachte ondergrondkleur van het materiaal (klinkerrood, grind, gras …)
+    if ((hd?.bg || item.matColor) && !item.fill) {
+      // kleur van het materiaal (klinkerrood, grind, gras …): standaard zacht, zelf gekozen kleur voller
       g.save();
-      g.globalAlpha *= 0.45;
-      g.fillStyle = hd.bg;
+      g.globalAlpha *= item.matColor ? 0.85 : 0.45;
+      g.fillStyle = item.matColor || hd.bg;
       g.fill();
       g.restore();
     }
-    const pat = hd?.radial ? null : hatchPattern(g, item.hatch, item.hatchColor || item.color, hatchAngle(item), item.points[0]);
+    const joint = item.hatchColor || hd?.joint || item.color;
+    const pat = hd?.radial ? null : hatchPattern(g, item.hatch, joint, hatchAngle(item), item.points[0]);
     if (hd?.radial) drawRadialPaving(g, item, hd.size, rc);
     if (pat) {
       g.save();
-      g.globalAlpha *= 0.75;
+      g.globalAlpha *= hd?.joint ? 1 : 0.75; // een gevulde voeg in volle kleur
       g.fillStyle = pat;
       g.fill();
       g.restore();

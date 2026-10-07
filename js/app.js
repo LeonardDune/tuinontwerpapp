@@ -1851,7 +1851,13 @@ class App {
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
       html += `<select data-k="hatch" title="Materiaal / arcering">${hatchOptions(closed[0].hatch || 'none')}</select>`;
-      if (it && it.hatch && it.hatch !== 'none' && HATCHES[it.hatch]?.size) html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
+      if (it && it.hatch && it.hatch !== 'none' && HATCHES[it.hatch]?.size) {
+        const hd = HATCHES[it.hatch];
+        const hex = (c, d) => (c && c.length === 7 ? c : d);
+        html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
+        if (hd.bg) html += `<label class="pf" title="Kleur van de tegels, klinkers of het materiaal">Materiaal<input type="color" data-k="matColor" value="${hex(it.matColor || hd.bg, '#b06a52')}"></label>`;
+        html += `<label class="pf" title="Kleur van de voegen en lijnen">Voeg<input type="color" data-k="hatchColor" value="${hex(it.hatchColor || hd.joint || it.color, '#333333')}"></label>`;
+      }
     }
     html += '<span class="sepv"></span>';
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
@@ -2053,6 +2059,12 @@ class App {
           for (const i of closed) { i.fill = on ? i.color : null; if (on && i.fillAlpha == null) i.fillAlpha = 0.3; }
           break;
         }
+        case 'matColor':
+          for (const i of items) if (i.type === 'shape' && i.hatch) i.matColor = raw;
+          break;
+        case 'hatchColor':
+          for (const i of items) if (i.type === 'shape' && i.hatch) i.hatchColor = raw;
+          break;
         case 'hatchRot': {
           const v = num(raw);
           if (Number.isFinite(v)) for (const i of items) if (i.type === 'shape') i.hatchRot = fromDisplayAngle(v);

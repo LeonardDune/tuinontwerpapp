@@ -47,6 +47,33 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const hr = await page.evaluate(() => window.app.store.findItem('keramiek120').item.hatchRot);
   assert(Math.abs(hr + Math.PI / 4) < 1e-9, 'legrichting exact in te stellen (45°)');
 
+  console.log('Voegkleur en materiaalkleur');
+  await page.evaluate(() => window.app.setSelection(new Set(['bredevoeg'])));
+  assert(await page.locator('#selection-bar input[data-k="hatchColor"]').count() === 1 && await page.locator('#selection-bar input[data-k="matColor"]').count() === 1, 'balk heeft Voeg en Materiaal');
+  const setColor = (k, v) => page.evaluate(({ k, v }) => { const i = document.querySelector(`#selection-bar input[data-k="${k}"]`); i.value = v; i.dispatchEvent(new Event('change', { bubbles: true })); }, { k, v });
+  await setColor('hatchColor', '#e8d9a8');
+  await setColor('matColor', '#5a2a1e');
+  const it = await page.evaluate(() => JSON.parse(JSON.stringify(window.app.store.findItem('bredevoeg').item)));
+  assert(it.hatchColor === '#e8d9a8' && it.matColor === '#5a2a1e', 'zandkleurige voeg en donkere klinkers ingesteld');
+  const counts = await page.evaluate(async (it) => {
+    const { drawItem } = await import('./js/items.js');
+    const c = document.createElement('canvas'); c.width = c.height = 300;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 300, 300);
+    const x0 = it.points[0][0], y0 = it.points[0][1];
+    g.setTransform(300, 0, 0, 300, -x0 * 300 - 30, -y0 * 300 - 30); // 300 px per meter, stukje van 1 × 1 m
+    drawItem(g, it, { doc: window.app.store.doc, scale: 100, zoom: 300, dpr: 1, minPx: 0 });
+    const d = g.getImageData(0, 0, 300, 300).data;
+    let light = 0, dark = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 200 && d[i + 1] > 185 && d[i + 2] > 140 && d[i + 2] < 200) light++;
+      if (d[i] < 120 && d[i + 1] < 80) dark++;
+    }
+    return { light, dark, n: d.length / 4 };
+  }, it);
+  assert(counts.light > counts.n * 0.05 && counts.dark > counts.n * 0.4, `voeg (licht) en klinkers (donker) beide te zien (${Math.round(counts.light / counts.n * 100)}% voeg, ${Math.round(counts.dark / counts.n * 100)}% klinker)`);
+  await page.screenshot({ path: path.join(OUT, 'brede-voeg.png') });
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle bestratings-tests geslaagd.');

@@ -17,7 +17,7 @@ export const HATCHES = {
   tegels20: { name: 'Gebakken tegels 20×20', size: 0.4, bg: '#b9785e', group: 'Bestrating' },
   klinkers: { name: 'Klinkers, halfsteens', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
   visgraat: { name: 'Klinkers, visgraat', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
-  bredevoeg: { name: 'Klinkers met brede voeg (waterdoorlatend)', size: 0.44, bg: '#b06a52', group: 'Bestrating' },
+  bredevoeg: { name: 'Klinkers met brede voeg (waterdoorlatend)', size: 0.48, bg: '#b06a52', joint: '#8fae6a', group: 'Bestrating' },
   cirkel: { name: 'Cirkelverband (rond terras, om een boom)', size: 0.12, bg: '#a29d94', group: 'Bestrating', radial: true },
   kinderkopjes: { name: 'Kinderkopjes / kasseien', size: 0.6, bg: '#a29d94', group: 'Bestrating' },
   romaans: { name: 'Natuursteen, Romaans verband', size: 1.2, bg: '#d4cbbb', group: 'Bestrating' },
@@ -184,17 +184,18 @@ function makeTile(kind, color) {
       break;
     }
     case 'bredevoeg': {
-      // klinkers 20×10 halfsteens met een voeg van 1 cm: elke klinker los getekend
-      const u = T / 4.4; // 10 cm + 1 cm voeg ≈ T/4
-      const bw = 2 * u * 0.95, bh = u * 0.9;
-      g.lineWidth = 1.1;
+      // klinkers 22×10 halfsteens met een brede voeg van 2 cm: de voeg is een gekleurd vlak (gras, split, zand),
+      // de klinkers zelf blijven open zodat de materiaalkleur eronder zichtbaar is
+      const cm = T / 48; // patroontegel = 48 cm
+      g.fillStyle = color;
+      g.fillRect(0, 0, T, T);
+      g.globalCompositeOperation = 'destination-out';
       for (let r = 0; r < 4; r++) {
-        const y = r * (T / 4) + (T / 4 - bh) / 2;
-        const off = r % 2 ? T / 4 : 0;
-        for (let x = off - T / 2; x < T; x += T / 2) {
-          g.strokeRect(x + (T / 2 - bw) / 2, y, bw, bh);
-        }
+        const y = r * 12 * cm + cm;
+        const off = r % 2 ? 12 * cm : 0;
+        for (let x = off - 24 * cm; x < T; x += 24 * cm) g.fillRect(x + cm, y, 22 * cm, 10 * cm);
       }
+      g.globalCompositeOperation = 'source-over';
       break;
     }
     case 'visgraat': {

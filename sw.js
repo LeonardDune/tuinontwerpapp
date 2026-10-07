@@ -1,5 +1,5 @@
 // Service worker: de app werkt offline. Kaarttegels en adreszoeken gaan altijd via het netwerk.
-const VERSION = 'tuinontwerp-v23';
+const VERSION = 'tuinontwerp-v24';
 const SHELL = [
   './',
   'index.html',
