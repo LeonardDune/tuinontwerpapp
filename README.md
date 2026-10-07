@@ -36,6 +36,10 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   tuindeuren, schuifdeur, raam en schuifpui, in de gangbare bovenaanzicht-symbolen. Ze klikken in de dichtstbijzijnde
   muur (richting en dikte van de muur) en maken daar een opening; een deur draait open naar de kant waar je tikt.
   *Spiegelen* in de balk zet het scharnier aan de andere kant; de muurdikte pas je aan met *Dikte*.
+  Muren sluiten netjes op elkaar aan: een binnenwand stopt op de binnenkant van de buitenmuur (naadloos), twee muren
+  die in een hoek samenkomen krijgen verstek. Deuren en ramen zijn aan hun muur gekoppeld: ze gaan mee als je de muur
+  verplaatst, draait, een hoekpunt versleept of de dikte wijzigt, en verdwijnen met de muur. Versleep je een deur, dan
+  schuift hij langs de muur (of klikt in een andere muur).
 - **Selecteren en bewerken**: tik op een element (ook midden in een lege rechthoek) of omcirkel er meerdere.
   - Slepen verplaatst; punten klikken vast op eindpunten van andere elementen.
   - De ronde greep draait; de hoek klikt per 15°, en in de balk typ je een exacte hoek (bijv. 37,5°) of gebruik je −/+.

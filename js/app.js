@@ -20,6 +20,7 @@ import {
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
+import { syncOpenings } from './walls.js';
 import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { PlantPanel } from './plantpanel.js';
 import {
@@ -1964,6 +1965,7 @@ class App {
         case 'wallT': {
           const v = len(raw);
           if (v > 0.01) for (const i of items) if (i.wall) { i.width = v; invalidateItem(i); }
+          syncOpenings(this.store.doc, new Set(items.filter((i) => i.wall).map((i) => i.id)));
           break;
         }
         case 'mirror':
@@ -1994,6 +1996,12 @@ class App {
           }
           break;
         }
+      }
+      if (['len', 'angle', 'rotby', 'diam'].includes(k)) {
+        // deuren en ramen blijven in hun muur
+        const wallIds = new Set(items.filter((i) => i.wall).map((i) => i.id));
+        const moved = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !(i.wallId && wallIds.has(i.wallId)));
+        if (wallIds.size || moved.length) syncOpenings(this.store.doc, wallIds, moved, 30 / this.cam.zoom);
       }
     }, 'property');
     this.requestRender();
@@ -2027,18 +2035,29 @@ class App {
       case 'delete':
         this.store.mutate(() => {
           const beds = new Set(found.filter(({ item }) => isBed(item)).map(({ item }) => item.id));
-          for (const l of this.store.doc.layers) l.items = l.items.filter((i) => !this.selection.has(i.id) && !(isGroup(i) && beds.has(i.bedId)));
+          const walls = new Set(found.filter(({ item }) => item.wall).map(({ item }) => item.id));
+          for (const l of this.store.doc.layers) {
+            l.items = l.items.filter((i) => !this.selection.has(i.id) && !(isGroup(i) && beds.has(i.bedId)) && !(i.type === 'stencil' && i.wallId && walls.has(i.wallId)));
+          }
         }, 'delete');
         this.setSelection(new Set());
         break;
       case 'duplicate': {
         const off = 16 / this.cam.zoom;
+        const idMap = {};
         const clones = found.map(({ item }) => {
           const c = JSON.parse(JSON.stringify(item));
           c.id = uid();
+          idMap[item.id] = c.id;
           transformItem(c, matTranslate(off, off), 1, 0);
           return c;
         });
+        // gekoppelde deuren/ramen: mee naar de gekopieerde muur, anders los
+        for (const c of clones) {
+          if (!c.wallId) continue;
+          if (idMap[c.wallId]) c.wallId = idMap[c.wallId];
+          else { delete c.wallId; delete c.wallSeg; delete c.wallT; delete c.wallSide; }
+        }
         this.store.mutate(() => { layer.items.push(...clones); }, 'duplicate');
         this.setSelection(new Set(clones.map((c) => c.id)));
         break;

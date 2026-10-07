@@ -76,13 +76,15 @@ export function plantContext(doc) {
   const roles = rolesMap(doc);
   const rolesKey = (doc.planting?.roles || []).map((r) => `${r.id}:${r.height}:${r.d || ''}`).join(',');
   const bedsById = {}, groupsByBed = {};
+  const walls = [];
   let any = false;
   for (const layer of doc.layers) {
     for (const it of layer.items) {
+      if (it.wall && it.type === 'shape' && layer.visible) walls.push(it);
       if (isBed(it)) { bedsById[it.id] = it; any = true; } else if (isGroup(it)) (groupsByBed[it.bedId] ||= []).push(it);
     }
   }
-  const ctx = { roles, rolesKey, bedsById, groupsByBed, bedAreas: {}, groupAreas: {} };
+  const ctx = { roles, rolesKey, bedsById, groupsByBed, bedAreas: {}, groupAreas: {}, walls };
   if (!any) return ctx;
   const key = JSON.stringify(doc.layers.map((l) => [l.visible, l.items.filter((it) => isBed(it) || isGroup(it)).map((it) => [it.id, it.points, it.bedId])]));
   if (statsCache.key !== key) {

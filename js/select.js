@@ -5,6 +5,7 @@ import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
 import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { isBed, isGroup } from './planting.js';
+import { isWall, isOpening, syncOpenings } from './walls.js';
 import { formatLength } from './units.js';
 import {
   dist, pointInPolygon, distToSegment, snapAngle, matTranslate, matMul, matScale, matRotate, angleOf,
@@ -64,10 +65,15 @@ export class SelectTool extends Tool {
       const round = it.type === 'stencil' && STENCIL_MAP[it.symbol]?.round && it.w === it.h;
       const uniform = round || it.type === 'image';
       outline = [[0, 0], [f.w, 0], [f.w, f.h], [0, f.h]].map(([x, y]) => S(frameToWorld(f, x, y)));
-      for (const [hx, hy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+      const opening = isOpening(it);
+      if (opening) {
+        // deur/raam: de muur bepaalt de diepte, alleen de breedte is te verslepen
+        for (const [hx, hy] of [[1, 0.5], [0, 0.5]]) list.push({ kind: 'frame', hx, hy, s: S(frameToWorld(f, f.w * hx, f.h * hy)), shape: 'round' });
+      }
+      for (const [hx, hy] of opening ? [] : [[0, 0], [1, 0], [1, 1], [0, 1]]) {
         list.push({ kind: 'frame', hx, hy, uniform, s: S(frameToWorld(f, f.w * hx, f.h * hy)), shape: 'square' });
       }
-      if (!uniform) {
+      if (!uniform && !opening) {
         for (const [hx, hy] of [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]) {
           list.push({ kind: 'frame', hx, hy, s: S(frameToWorld(f, f.w * hx, f.h * hy)), shape: 'round' });
         }
@@ -394,7 +400,16 @@ export class SelectTool extends Tool {
       invalidate(it);
       this.liveInfo = `Ø ${formatLength(dist(it.points[0], snap.p) * 2, app.store.doc.scale)}`;
     }
+    this.syncWalls();
     app.store.touch();
+  }
+
+  /** Deuren en ramen blijven in hun muur: meebewegen met de muur, of opnieuw inklikken na verslepen. */
+  syncWalls() {
+    const sel = this.selectedItems().map(({ item }) => item);
+    const wallIds = new Set(sel.filter(isWall).map((w) => w.id));
+    const moved = sel.filter((o) => isOpening(o) && !(o.wallId && wallIds.has(o.wallId)));
+    if (wallIds.size || moved.length) syncOpenings(this.app.store.doc, wallIds, moved, 30 / this.app.cam.zoom);
   }
 
   deleteVertex(i) {
@@ -409,6 +424,7 @@ export class SelectTool extends Tool {
       it.points.splice(i, 1);
       if (it.rect) delete it.rect;
       invalidate(it);
+      if (isWall(it)) syncOpenings(this.app.store.doc, new Set([it.id]));
     }, 'vertex-delete');
   }
 

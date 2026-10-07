@@ -2,6 +2,7 @@
 // e = { s: [x, y] scherm, w: [x, y] wereld, pressure, pointerType, time }
 
 import { isPlantStencil, ensureStencilRole } from './planting.js';
+import { nearestWallSeg, wallSegments, linkOpening } from './walls.js';
 import { BRUSHES } from './brushes.js';
 import { uid, paperToWorld } from './model.js';
 import { drawItem, hitItem, itemSnapPoints, transformItem } from './items.js';
@@ -1026,17 +1027,19 @@ export class StencilTool extends Tool {
     if (def.opening) this.toWall(e.w);
   }
 
-  /** Deur/raam: in de dichtstbijzijnde muur leggen (richting en dikte van de muur). */
+  /** Deur/raam: in de dichtstbijzijnde muur leggen en eraan koppelen (richting en dikte van de muur). */
   toWall(w) {
-    const ws = nearestWall(this.app, w);
-    this.onWall = !!ws;
-    if (!ws) { this.item.x = w[0]; this.item.y = w[1]; return; }
+    const res = nearestWallSeg(this.app.store.doc, w, 40 / this.app.cam.zoom);
+    this.onWall = !!res;
+    if (!res) {
+      this.item.x = w[0]; this.item.y = w[1];
+      delete this.item.wallId; delete this.item.wallSeg; delete this.item.wallT; delete this.item.wallSide;
+      return;
+    }
     // de deur draait open naar de kant van de muur waar je tikt
-    const side = (w[0] - ws.p[0]) * -Math.sin(ws.ang) + (w[1] - ws.p[1]) * Math.cos(ws.ang);
-    this.item.x = ws.p[0];
-    this.item.y = ws.p[1];
-    this.item.rot = side >= 0 ? ws.ang : ws.ang + Math.PI;
-    this.item.h = ws.t;
+    const [a, b] = wallSegments(res.wall)[res.seg];
+    const side = (b[0] - a[0]) * (w[1] - a[1]) - (b[1] - a[1]) * (w[0] - a[0]);
+    linkOpening(this.item, res, side);
   }
 
   move(e) {
@@ -1103,30 +1106,6 @@ export class WallTool extends ShapeTool {
     if (!this.poly || this.poly.length < 2) return;
     drawItem(g, { type: 'shape', kind: 'line', points: this.poly, wall: true, color: '#2f2f2f', width: this.thickness() }, rc);
   }
-}
-
-/** Dichtstbijzijnde muur bij wereldpunt w (binnen maxPx op het scherm): punt op de hartlijn, richting en dikte. */
-export function nearestWall(app, w, maxPx = 40) {
-  let best = null, bd = maxPx / app.cam.zoom;
-  for (const layer of app.store.doc.layers) {
-    if (!layer.visible) continue;
-    for (const it of layer.items) {
-      if (it.type !== 'shape' || !it.wall) continue;
-      const pts = it.points;
-      const n = it.kind === 'polygon' ? pts.length : pts.length - 1;
-      for (let i = 0; i < n; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
-        const d = distToSegment(w, a, b);
-        if (d - it.width / 2 < bd) {
-          bd = Math.max(0, d - it.width / 2);
-          const [q, t] = projectOnLine(w, a, b);
-          const tc = Math.max(0, Math.min(1, t));
-          best = { p: t === tc ? q : [a[0] + (b[0] - a[0]) * tc, a[1] + (b[1] - a[1]) * tc], ang: Math.atan2(b[1] - a[1], b[0] - a[0]), t: it.width };
-        }
-      }
-    }
-  }
-  return best;
 }
 
 // ------------------------------------------------------------- schaal instellen
