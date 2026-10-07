@@ -27,7 +27,7 @@ export function renderScene(ctx, opts) {
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
 
-  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', ...plantContext(doc) };
+  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', paper: opts.paperColor || opts.background || '#fbfaf6', ...plantContext(doc) };
   const hide = opts.hideItems;
 
   for (const layer of doc.layers) {

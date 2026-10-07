@@ -1023,10 +1023,28 @@ export class StencilTool extends Tool {
     const hh = this.app.state.stencilHeights?.[def.id];
     if (hh != null) this.item.height = hh;
     this.startS = e.s;
+    if (def.opening) this.toWall(e.w);
+  }
+
+  /** Deur/raam: in de dichtstbijzijnde muur leggen (richting en dikte van de muur). */
+  toWall(w) {
+    const ws = nearestWall(this.app, w);
+    this.onWall = !!ws;
+    if (!ws) { this.item.x = w[0]; this.item.y = w[1]; return; }
+    // de deur draait open naar de kant van de muur waar je tikt
+    const side = (w[0] - ws.p[0]) * -Math.sin(ws.ang) + (w[1] - ws.p[1]) * Math.cos(ws.ang);
+    this.item.x = ws.p[0];
+    this.item.y = ws.p[1];
+    this.item.rot = side >= 0 ? ws.ang : ws.ang + Math.PI;
+    this.item.h = ws.t;
   }
 
   move(e) {
     if (!this.item) return;
+    if (STENCIL_MAP[this.item.symbol]?.opening) {
+      this.toWall(e.w);
+      return;
+    }
     if (dist(e.s, this.startS) > 18) {
       this.item.rot = snapAngle(angleOf([this.item.x, this.item.y], e.w), 15 * DEG, 4 * DEG);
     }
@@ -1055,6 +1073,60 @@ export class StencilTool extends Tool {
   drawWorld(g, rc) {
     if (this.item) drawItem(g, this.item, rc);
   }
+}
+
+// ------------------------------------------------------------- muren
+
+/** Muur: veelhoek-ketting (tik of sleep punten; tik op het eerste punt om rond te sluiten) met een dikte. */
+export class WallTool extends ShapeTool {
+  constructor(app) {
+    super(app, 'polygon');
+  }
+
+  thickness() {
+    return this.app.state.wallThickness || 0.3;
+  }
+
+  finish(closed) {
+    if (!this.poly) return;
+    const pts = this.poly.filter((p, i, arr) => i === 0 || dist(p, arr[i - 1]) > 1e-6);
+    this.poly = null;
+    this.app.updatePolygonUI(false);
+    if (pts.length < 2 || (closed && pts.length < 3)) { this.app.requestRender(); return; }
+    this.commitItem({
+      type: 'shape', id: uid(), kind: closed ? 'polygon' : 'line', points: pts.map(roundPt),
+      wall: true, color: '#2f2f2f', width: this.thickness(),
+    });
+  }
+
+  drawWorld(g, rc) {
+    if (!this.poly || this.poly.length < 2) return;
+    drawItem(g, { type: 'shape', kind: 'line', points: this.poly, wall: true, color: '#2f2f2f', width: this.thickness() }, rc);
+  }
+}
+
+/** Dichtstbijzijnde muur bij wereldpunt w (binnen maxPx op het scherm): punt op de hartlijn, richting en dikte. */
+export function nearestWall(app, w, maxPx = 40) {
+  let best = null, bd = maxPx / app.cam.zoom;
+  for (const layer of app.store.doc.layers) {
+    if (!layer.visible) continue;
+    for (const it of layer.items) {
+      if (it.type !== 'shape' || !it.wall) continue;
+      const pts = it.points;
+      const n = it.kind === 'polygon' ? pts.length : pts.length - 1;
+      for (let i = 0; i < n; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const d = distToSegment(w, a, b);
+        if (d - it.width / 2 < bd) {
+          bd = Math.max(0, d - it.width / 2);
+          const [q, t] = projectOnLine(w, a, b);
+          const tc = Math.max(0, Math.min(1, t));
+          best = { p: t === tc ? q : [a[0] + (b[0] - a[0]) * tc, a[1] + (b[1] - a[1]) * tc], ang: Math.atan2(b[1] - a[1], b[0] - a[0]), t: it.width };
+        }
+      }
+    }
+  }
+  return best;
 }
 
 // ------------------------------------------------------------- schaal instellen

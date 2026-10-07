@@ -15,7 +15,7 @@ import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
 import {
-  DrawTool, EraserTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
+  DrawTool, EraserTool, ShapeTool, WallTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
@@ -71,10 +71,11 @@ const DEFAULT_STATE = {
   stencilHeights: {},
   shapeHeight: 0,
   stencilOwnColor: false,
+  wallThickness: 0.3,
 };
 
 // Gereedschappen waarvan de invoer langs een liniaal/driehoek/gradenboog wordt geleid
-const GUIDE_TOOLS = new Set(['draw', 'eraser', 'line', 'rect', 'circle', 'polygon', 'area', 'dim', 'calibrate']);
+const GUIDE_TOOLS = new Set(['draw', 'eraser', 'line', 'rect', 'circle', 'polygon', 'wall', 'area', 'dim', 'calibrate']);
 
 class App {
   constructor() {
@@ -104,6 +105,7 @@ class App {
       rect: new ShapeTool(this, 'rect'),
       circle: new ShapeTool(this, 'circle'),
       polygon: new ShapeTool(this, 'polygon'),
+      wall: new WallTool(this),
       area: new ShapeTool(this, 'area'),
       dim: new DimTool(this),
       text: new TextTool(this),
@@ -596,7 +598,7 @@ class App {
       if (!this.mode) {
         this.sun.hoverAt(this.makeEvent(e, s));
         this.tool.hover(this.makeEvent(e, s));
-        if (this.state.tool === 'polygon' && this.tool.poly) this.tool.move(this.makeEvent(e, s));
+        if ((this.state.tool === 'polygon' || this.state.tool === 'wall') && this.tool.poly) this.tool.move(this.makeEvent(e, s));
         if (this.tool.cur !== undefined || this.tool.poly) this.requestRender();
       }
       return;
@@ -1020,8 +1022,8 @@ class App {
       this.requestRender();
       return;
     }
-    if (k === 'enter' && this.state.tool === 'polygon') { this.tool.finishPolygon(); return; }
-    const map = { p: 'draw', b: 'plant', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area' };
+    if (k === 'enter' && (this.state.tool === 'polygon' || this.state.tool === 'wall')) { this.tool.finishPolygon(); return; }
+    const map = { p: 'draw', b: 'plant', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area', w: 'wall' };
     if (map[k]) { this.setTool(map[k]); return; }
     if (k === 'r') { this.toggleGuide('ruler'); return; }
     if (k === 'g') { this.settings.grid = !this.settings.grid; this.persistSettings(); this.syncSettingsUI(); this.baseDirty = true; this.requestRender(); return; }
@@ -1115,7 +1117,7 @@ class App {
     // selectiebalk
     for (const b of $$('#polygon-bar [data-poly]')) {
       b.addEventListener('click', () => {
-        const t = this.tools.polygon;
+        const t = this.state.tool === 'wall' ? this.tools.wall : this.tools.polygon;
         if (b.dataset.poly === 'close') t.closePolygon();
         else if (b.dataset.poly === 'finish') t.finishPolygon();
         else t.cancel();
@@ -1244,6 +1246,17 @@ class App {
       add(this.hint('Gumt op de actieve laag. Afbeeldingen en kaarten worden niet gegumd (gebruik de lasso).'));
     } else if (t === 'lasso') {
       add(this.hint('Tik op een element of omcirkel er meerdere. Slepen = verplaatsen · ronde greep = draaien (klikt per 15°) · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Exacte maten en hoeken in de balk onderaan.'));
+    } else if (t === 'wall') {
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      const cur = this.state.wallThickness || 0.3;
+      seg.innerHTML = [0.1, 0.2, 0.3, 0.4].map((v) => `<button type="button" data-t="${v}" class="${Math.abs(cur - v) < 1e-6 ? 'on' : ''}">${Math.round(v * 100)} cm</button>`).join('');
+      for (const b of seg.querySelectorAll('button')) {
+        b.addEventListener('click', () => { this.state.wallThickness = Number(b.dataset.t); this.persistSettings(); this.renderOptions(); this.requestRender(); });
+      }
+      add(seg);
+      add(this.numberField('Dikte (m)', cur, (v) => { if (v > 0.01) this.state.wallThickness = v; this.renderOptions(); }, 'Muurdikte in meters, bijv. 0,3 voor een buitenmuur of 0,1 voor een binnenwand'));
+      add(this.hint('Tik of sleep de punten van de muur (hartlijn); tik op het eerste punt om rond te sluiten, dubbeltik of Enter om te stoppen. Deuren en ramen vind je bij Stencils › Huis; ze klikken in de muur.'));
     } else if (['line', 'rect', 'circle', 'polygon'].includes(t)) {
       if (t === 'rect') {
         const seg = document.createElement('div');
@@ -1732,6 +1745,7 @@ class App {
     const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('nl-NL', { maximumFractionDigits: d });
     const field = (key, label, value, unit, steps = false) => `<label class="pf">${label}${steps ? `<button type="button" class="step" data-step="${key}:-1" title="−15°">−</button>` : ''}<input data-k="${key}" inputmode="decimal" value="${value}">${steps ? `<button type="button" class="step" data-step="${key}:1" title="+15°">+</button>` : ''}<span>${unit}</span></label>`;
     const typeName = (i) => {
+      if (i.wall) return 'Muur';
       if (isGroup(i)) return 'Groep';
       if (isBed(i)) return 'Plantvak';
       if (isRect(i)) return 'Rechthoek';
@@ -1773,7 +1787,7 @@ class App {
           html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
           if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
         }
-      } else if (it.type === 'shape' && (it.kind === 'polygon' || it.kind === 'circle') && it.points.length >= (it.kind === 'circle' ? 2 : 3)) {
+      } else if (it.type === 'shape' && !it.wall && (it.kind === 'polygon' || it.kind === 'circle') && it.points.length >= (it.kind === 'circle' ? 2 : 3)) {
         html += `<button type="button" class="tgl" data-plan="makebed" title="Een plantvak maken met deze omtrek">Maak plantvak</button>`;
       }
     }
@@ -1789,11 +1803,15 @@ class App {
     html += '<span class="sepv"></span>';
     const colored = items.find((i) => i.color);
     if (colored) html += `<label class="pf" title="Kleur"><input type="color" data-k="color" value="${colored.color.length === 7 ? colored.color : '#1d2b36'}"></label>`;
-    if (shapes.length) {
-      const w = shapes[0].width ? Math.round((shapes[0].width / sc) * 1000 * 100) / 100 : 0.35;
+    const walls = shapes.filter((i) => i.wall);
+    if (walls.length) html += field('wallT', 'Dikte', fmt(walls[0].width), 'm');
+    if (shapes.length > walls.length) {
+      const sh = shapes.find((i) => !i.wall);
+      const w = sh.width ? Math.round((sh.width / sc) * 1000 * 100) / 100 : 0.35;
       html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
     }
-    const closed = items.filter((i) => i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'));
+    if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
+    const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
       html += `<select data-k="hatch" title="Arcering">${Object.entries(HATCHES).map(([k, h]) => `<option value="${k}" ${(closed[0].hatch || 'none') === k ? 'selected' : ''}>${h.name}</option>`).join('')}</select>`;
@@ -1828,6 +1846,7 @@ class App {
       });
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
+    bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
   }
@@ -1939,9 +1958,17 @@ class App {
           break;
         case 'lw': {
           const mm = num(raw);
-          if (mm > 0) for (const i of items) if (i.type === 'shape' || i.type === 'stroke') { i.width = paperToWorld(mm, sc); invalidateItem(i); }
+          if (mm > 0) for (const i of items) if ((i.type === 'shape' && !i.wall) || i.type === 'stroke') { i.width = paperToWorld(mm, sc); invalidateItem(i); }
           break;
         }
+        case 'wallT': {
+          const v = len(raw);
+          if (v > 0.01) for (const i of items) if (i.wall) { i.width = v; invalidateItem(i); }
+          break;
+        }
+        case 'mirror':
+          for (const i of items) if (i.type === 'stencil') i.mirror = !i.mirror;
+          break;
         case 'fill': {
           const closed = items.filter((i) => i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'));
           const on = !closed[0]?.fill;

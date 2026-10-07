@@ -81,7 +81,7 @@ function chair(g, x, y, s, rot) {
   g.restore();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Meubilair', 'Bouw & water', 'Overig'];
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -359,6 +359,72 @@ export const STENCILS = [
     },
   },
 
+  // --- Huis: deuren, ramen en puien (bovenaanzicht; h = muurdikte, ze klikken in een muur) ---
+  {
+    id: 'deur', name: 'Binnendeur', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 0.93, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); doorLeaf(g, -w / 2, h / 2, w, 1, lw); },
+  },
+  {
+    id: 'buitendeur', name: 'Buitendeur', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 1.0, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      // dorpel
+      g.lineWidth = lw * 0.6;
+      g.beginPath(); g.moveTo(-w / 2, h / 2); g.lineTo(w / 2, h / 2); g.stroke();
+      doorLeaf(g, -w / 2, h / 2, w, 1, lw);
+    },
+  },
+  {
+    id: 'dubbeledeur', name: 'Dubbele deur', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 1.6, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      doorLeaf(g, -w / 2, h / 2, w / 2, 1, lw);
+      doorLeaf(g, w / 2, h / 2, w / 2, -1, lw);
+    },
+  },
+  {
+    id: 'openslaand', name: 'Openslaande tuindeuren', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 1.8, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      glass(g, -w / 2, w / 2, 0, h, lw);
+      doorLeaf(g, -w / 2, h / 2, w / 2, 1, lw);
+      doorLeaf(g, w / 2, h / 2, w / 2, -1, lw);
+    },
+  },
+  {
+    id: 'schuifdeur', name: 'Schuifdeur', cat: 'Huis: deuren en ramen', opening: true, w: 1.0, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      g.lineWidth = lw * 1.6;
+      g.beginPath();
+      g.moveTo(-w / 2, -h * 0.1); g.lineTo(w * 0.08, -h * 0.1);
+      g.moveTo(-w * 0.08, h * 0.1); g.lineTo(w / 2, h * 0.1);
+      g.stroke();
+      arrow(g, -w * 0.3, w * 0.1, h / 2 + Math.min(0.15, w * 0.12), lw);
+    },
+  },
+  {
+    id: 'raam', name: 'Raam', cat: 'Huis: deuren en ramen', opening: true, w: 1.2, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      g.lineWidth = lw * 0.6;
+      g.beginPath();
+      g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, -h / 2);
+      g.moveTo(-w / 2, h / 2); g.lineTo(w / 2, h / 2);
+      g.stroke();
+      glass(g, -w / 2, w / 2, 0, h, lw);
+    },
+  },
+  {
+    id: 'schuifpui', name: 'Schuifpui', cat: 'Huis: deuren en ramen', opening: true, w: 3.0, h: 0.3, color: '#2f2f2f',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper);
+      glass(g, -w / 2, w * 0.04, -h * 0.12, h, lw);
+      glass(g, -w * 0.04, w / 2, h * 0.12, h, lw);
+      arrow(g, w * 0.05, w * 0.35, h / 2 + Math.min(0.18, w * 0.06), lw);
+    },
+  },
+
   // --- Bouw & water ---
   {
     id: 'schuur', name: 'Schuur / berging', cat: 'Bouw & water', round: false, w: 3, h: 2.5, color: '#6b4f3a',
@@ -495,19 +561,71 @@ export const STENCILS = [
 
 export const STENCIL_MAP = Object.fromEntries(STENCILS.map((s) => [s.id, s]));
 
-/** Teken een stencil-item (wereldcoördinaten). */
-export function drawStencil(g, item, lw) {
+// ---- hulpjes voor deuren en ramen
+
+/** Muur ter plekke van de opening wegvlakken (papierkleur) en de dagkanten tekenen. */
+function openingMask(g, w, h, lw, paper) {
+  g.save();
+  g.fillStyle = paper || '#fbfaf6';
+  g.fillRect(-w / 2, -h / 2 - lw, w, h + lw * 2);
+  g.lineWidth = lw * 1.4;
+  g.beginPath();
+  g.moveTo(-w / 2, -h / 2); g.lineTo(-w / 2, h / 2);
+  g.moveTo(w / 2, -h / 2); g.lineTo(w / 2, h / 2);
+  g.stroke();
+  g.restore();
+}
+
+/** Deurblad met draaicirkel: scharnier (hx, hy), breedte r, dir +1 = draait naar rechts open. */
+function doorLeaf(g, hx, hy, r, dir, lw) {
+  g.save();
+  g.lineWidth = lw * 1.3;
+  g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx, hy + r); g.stroke();
+  g.lineWidth = lw * 0.6;
+  g.beginPath();
+  if (dir > 0) g.arc(hx, hy, r, 0, Math.PI / 2);
+  else g.arc(hx, hy, r, Math.PI / 2, Math.PI);
+  g.stroke();
+  g.restore();
+}
+
+/** Glas: dubbele dunne lijn over de opening. */
+function glass(g, x0, x1, y, h, lw) {
+  const d = Math.min(h * 0.08, 0.025);
+  g.save();
+  g.lineWidth = lw * 0.6;
+  g.beginPath();
+  g.moveTo(x0, y - d); g.lineTo(x1, y - d);
+  g.moveTo(x0, y + d); g.lineTo(x1, y + d);
+  g.stroke();
+  g.restore();
+}
+
+function arrow(g, x0, x1, y, lw) {
+  const k = Math.abs(x1 - x0) * 0.18;
+  g.save();
+  g.lineWidth = lw * 0.6;
+  g.beginPath();
+  g.moveTo(x0, y); g.lineTo(x1, y);
+  g.moveTo(x1 - k, y - k * 0.6); g.lineTo(x1, y); g.lineTo(x1 - k, y + k * 0.6);
+  g.stroke();
+  g.restore();
+}
+
+/** Teken een stencil-item (wereldcoördinaten). paper: achtergrondkleur (voor openingen in muren). */
+export function drawStencil(g, item, lw, paper) {
   const def = STENCIL_MAP[item.symbol];
   if (!def) return;
   g.save();
   g.translate(item.x, item.y);
   g.rotate(item.rot || 0);
+  if (item.mirror) g.scale(-1, 1);
   g.lineWidth = lw;
   g.lineJoin = 'round';
   g.lineCap = 'round';
   const c = item.color || def.color;
   g.strokeStyle = c;
   g.fillStyle = c;
-  def.draw(g, item.w, item.h, c, lw);
+  def.draw(g, item.w, item.h, c, lw, paper);
   g.restore();
 }

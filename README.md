@@ -30,6 +30,12 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.
+- **Plattegrond van het huis**: het gereedschap *Muur* tekent muren met een dikte (10, 20, 30 of 40 cm of zelf
+  invullen) als ketting van punten; tik op het eerste punt om rond te sluiten. Muren zijn gearceerd en hebben nette
+  verstekhoeken. Bij *Stencils › Huis: deuren en ramen* staan binnendeur, buitendeur, dubbele deur, openslaande
+  tuindeuren, schuifdeur, raam en schuifpui, in de gangbare bovenaanzicht-symbolen. Ze klikken in de dichtstbijzijnde
+  muur (richting en dikte van de muur) en maken daar een opening; een deur draait open naar de kant waar je tikt.
+  *Spiegelen* in de balk zet het scharnier aan de andere kant; de muurdikte pas je aan met *Dikte*.
 - **Selecteren en bewerken**: tik op een element (ook midden in een lege rechthoek) of omcirkel er meerdere.
   - Slepen verplaatst; punten klikken vast op eindpunten van andere elementen.
   - De ronde greep draait; de hoek klikt per 15°, en in de balk typ je een exacte hoek (bijv. 37,5°) of gebruik je −/+.

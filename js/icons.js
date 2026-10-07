@@ -14,6 +14,7 @@ const P = {
   line: '<path d="M5 19 19 5"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/>',
   rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
   circle: '<circle cx="12" cy="12" r="8"/><path d="M12 12h8"/>',
+  wall: '<path d="M3 8h18v8H3Z"/><path d="M6 16l5-8M11 16l5-8M16 16l4-6.4" opacity=".6"/>',
   polygon: '<path d="m12 3 8.5 6.2-3.2 10H6.7l-3.2-10Z"/>',
   area: '<path d="M4 15c0-5 3-10 9-10 4 0 7 2.5 7 6 0 6-6 9-10 9-3.5 0-6-2-6-5Z"/><path d="M8 15l3-3M10 18l6-6M14 17l3-3M7 12l4-4" opacity=".6"/>',
   dim: '<path d="M4 8v8M20 8v8M4 12h16"/><path d="m3 13 2-2M19 13l2-2"/>',

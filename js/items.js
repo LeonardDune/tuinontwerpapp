@@ -39,7 +39,7 @@ export function drawItem(g, item, rc) {
       return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
     case 'stencil':
       if (item.role && rc.month) drawStencilMonth(g, item, rc);
-      return drawStencil(g, item, paperToWorld(0.25, rc.scale));
+      return drawStencil(g, item, paperToWorld(0.25, rc.scale), rc.paper);
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
     case 'plant': return drawPlant(g, item, rc);
@@ -252,6 +252,7 @@ function tracePath(g, item) {
 
 function drawShape(g, item, rc) {
   if (item.points.length < 2) return;
+  if (item.wall) return drawWall(g, item, rc);
   if (item.group) return drawGroup(g, item, rc);
   if (isBed(item)) return drawBed(g, item, rc);
   g.save();
@@ -282,6 +283,63 @@ function drawShape(g, item, rc) {
   }
   g.restore();
   if (item.dims) drawShapeDims(g, item, rc);
+}
+
+/** Omtrek van een muur: de hartlijn naar beide kanten verschoven met de halve dikte (verstekhoeken). */
+export function wallOutline(pts, closed, t) {
+  const n = pts.length;
+  const h = t / 2;
+  const left = [], right = [];
+  const nrm = (a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    return [-dy / l, dx / l];
+  };
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const prev = closed ? pts[(i - 1 + n) % n] : pts[i - 1];
+    const next = closed ? pts[(i + 1) % n] : pts[i + 1];
+    let off;
+    if (!prev) off = nrm(p, next).map((v) => v * h);
+    else if (!next) off = nrm(prev, p).map((v) => v * h);
+    else {
+      const n1 = nrm(prev, p), n2 = nrm(p, next);
+      let mx = n1[0] + n2[0], my = n1[1] + n2[1];
+      const ml = Math.hypot(mx, my) || 1;
+      mx /= ml; my /= ml;
+      const k = 1 / Math.max(0.25, mx * n1[0] + my * n1[1]);
+      off = [mx * h * k, my * h * k];
+    }
+    left.push([p[0] + off[0], p[1] + off[1]]);
+    right.push([p[0] - off[0], p[1] - off[1]]);
+  }
+  return closed ? [left, right] : [[...left, ...right.reverse()]];
+}
+
+/** Muur: gevuld en gearceerd vlak met de dikte van de muur (item.width), dunne buitenlijn. */
+function drawWall(g, item, rc) {
+  const closed = item.kind === 'polygon';
+  const rings = wallOutline(item.points, closed, item.width);
+  g.save();
+  g.beginPath();
+  for (const r of rings) {
+    r.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.closePath();
+  }
+  g.fillStyle = '#dcd7cf';
+  g.fill('evenodd');
+  const pat = hatchPattern(g, 'arcering', item.color || '#2f2f2f');
+  if (pat) {
+    g.save();
+    g.globalAlpha *= 0.55;
+    g.fillStyle = pat;
+    g.fill('evenodd');
+    g.restore();
+  }
+  g.strokeStyle = item.color || '#2f2f2f';
+  g.lineWidth = paperToWorld(0.3, rc.scale);
+  g.lineJoin = 'miter';
+  g.stroke();
+  g.restore();
 }
 
 function drawShapeDims(g, item, rc) {
