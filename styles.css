@@ -586,3 +586,11 @@ dialog:has(.dlg.wide) { max-width: min(860px, calc(100vw - 24px)); }
 }
 /* melding niet over de eigenschappenbalk onderaan */
 #stage:has(#selection-bar:not([hidden]):not(.at-top)) #toast { bottom: auto; top: 14px; }
+
+/* lage schermen (iPad liggend, laptop): gereedschap in twee kolommen zodat alles in beeld blijft */
+@media (max-height: 880px) and (min-width: 600px) {
+  #toolbar { gap: 4px; padding: 6px 5px; }
+  #toolbar .group { display: grid; grid-template-columns: repeat(2, 44px); gap: 2px; padding-bottom: 4px; }
+  #toolbar .tool, #toolbar .guide-btn { width: 44px; height: 42px; }
+  #toolbar .guide-lock { grid-column: 1 / -1; width: auto; }
+}

@@ -88,7 +88,7 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 | Actie | iPad | Laptop |
 | --- | --- | --- |
 | Tekenen | Apple Pencil | Linkermuisknop / trackpad |
-| Verschuiven | Eén vinger (zodra de Pencil is herkend) | Spatie + slepen, middelste muisknop of twee vingers scrollen |
+| Verschuiven | Twee vingers slepen, of één vinger zodra de Pencil is herkend; of het handje (bovenaan) | Handje (H), spatie + slepen, rechter- of middelste muisknop slepen, of twee vingers scrollen op het trackpad |
 | Zoomen / draaien | Knijpen en draaien met twee vingers | Knijpen op het trackpad, ⌘/Ctrl + scrollen, muiswiel |
 | Ongedaan maken / opnieuw | Tik met twee / drie vingers | ⌘Z / ⇧⌘Z |
 | Langs een hulpmiddel tekenen | Teken langs of óp de rand, met Pencil of vinger (ook terwijl een vinger het vasthoudt) | Teken langs de rand |
