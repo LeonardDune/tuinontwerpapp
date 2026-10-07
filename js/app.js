@@ -172,6 +172,7 @@ class App {
     }
     doc.scale = doc.scale || 100;
     migratePlanting(doc);
+    migrateOpenings(doc);
     this.store.load(doc);
     // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen en hechten aan deze tekening
     for (const g of this.guides.values()) g.world = null;
@@ -2572,6 +2573,13 @@ function migratePlanting(doc) {
       }
     }
   }
+}
+
+/** Deuren en ramen van vóór de koppeling: alsnog aan de muur koppelen waar ze in liggen. */
+function migrateOpenings(doc) {
+  const loose = [];
+  for (const l of doc.layers || []) for (const i of l.items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !i.wallId) loose.push(i);
+  if (loose.length) syncOpenings(doc, new Set(), loose, 0.05);
 }
 
 function escapeHtml(s) {

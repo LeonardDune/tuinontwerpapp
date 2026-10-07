@@ -148,6 +148,47 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(left === 0 && !(await dPos()), 'muur verwijderd: zijn deuren en ramen gaan mee');
   await page.click('#btn-undo');
 
+  console.log('Selecteren met tikken (zoals op de iPad)');
+  const sel = () => page.evaluate(() => [...window.app.selection]);
+  const tri = await page.evaluate(() => {
+    const a = window.app; a.setSelection(new Set()); a.setTool('lasso');
+    a.store.mutate((d) => { d.layers[0].items = d.layers[0].items.filter((i) => !['h1', 'h2'].includes(i.id)); });
+    const it = a.store.doc.layers[0].items;
+    const w = it.find((i) => i.wall && i.kind === 'polygon');
+    const d = it.find((i) => i.symbol === 'buitendeur');
+    return { w: w.points, wid: w.id, d: { x: d.x, y: d.y, rot: d.rot, w: d.w, h: d.h, id: d.id } };
+  });
+  const wy = tri.w[0][1];
+  await tap(8, wy); // op de muur
+  assert((await sel())[0] === tri.wid, 'tik op de muur selecteert de muur');
+  // tik op het deurblad (buiten de muur, in de draaicirkel) terwijl de muur geselecteerd is
+  const leaf = await page.evaluate((d) => { const l = [d.w * 0.25, d.h / 2 + d.w * 0.4]; const c = Math.cos(d.rot), s = Math.sin(d.rot); return [d.x + l[0] * c - l[1] * s, d.y + l[0] * s + l[1] * c]; }, tri.d);
+  await tap(leaf[0], leaf[1]);
+  assert((await sel())[0] === tri.d.id, 'daarna tik op het deurblad selecteert de tuindeur');
+  await tap(3, 3); // midden in de kamer
+  assert((await sel()).length === 0, 'tik midden in de kamer: niets geselecteerd (niet de muur)');
+  await tap(8, wy);
+  await tap(3, 3);
+  assert((await sel()).length === 0, 'geselecteerde muur: tik in de kamer heft de selectie op');
+
+  console.log('Oude tekening: losse deur wordt bij openen aan de muur gekoppeld');
+  const mig = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Oud huis');
+    d.layers[0].items.push({ type: 'shape', id: 'mw', kind: 'line', wall: true, points: [[0, 0], [8, 0]], color: '#2f2f2f', width: 0.3 });
+    d.layers[0].items.push({ type: 'stencil', id: 'od', symbol: 'openslaand', x: 3, y: 0, w: 1.8, h: 0.3, rot: Math.PI, color: '#2f2f2f' });
+    a.openDoc(d);
+    const door = a.store.findItem('od').item;
+    const linked = door.wallId === 'mw';
+    a.setSelection(new Set(['mw']));
+    a.applyProperty('rotby', '90');
+    const w = a.store.findItem('mw').item;
+    const dd = a.store.findItem('od').item;
+    const { distToSegment } = await import('./js/geom.js');
+    return { linked, on: distToSegment([dd.x, dd.y], w.points[0], w.points[1]), moved: Math.hypot(dd.x - 3, dd.y) };
+  });
+  assert(mig.linked && mig.on < 1e-6 && mig.moved > 1, 'oude tuindeur gekoppeld en gaat mee als de muur draait');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle huis-tests geslaagd.');

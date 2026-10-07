@@ -553,6 +553,12 @@ export function hitItem(item, p, tol) {
       if (item.kind === 'area') return false;
       return distToSegment(p, item.a, item.b) <= tol * 1.5;
     case 'stencil':
+      if (STENCIL_MAP[item.symbol]?.swing) {
+        // deur: ook het deurblad en de draaicirkel (buiten de muur) zijn aan te tikken
+        const l = rotate([p[0] - item.x, p[1] - item.y], -(item.rot || 0));
+        if (Math.abs(l[0]) <= item.w / 2 + tol && l[1] >= -item.h / 2 - tol && l[1] <= item.h / 2 + item.w + tol) return true;
+      }
+    // fall through
     case 'image':
     case 'text':
       return pointInPolygon(p, itemOutline(item)) || itemOutline(item).some((q, i, arr) => distToSegment(p, q, arr[(i + 1) % arr.length]) <= tol);

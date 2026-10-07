@@ -127,7 +127,9 @@ export class SelectTool extends Tool {
       if (d < r && d < bd + (g.shape === 'plus' ? -6 : 0)) { bd = d; best = g; }
     }
     if (best) return best;
-    if (pointInPolygon(s, h.outline)) return { kind: 'move' };
+    // binnen het kader verplaatsen geldt alleen voor elementen met een kader (rechthoek, stencil, tekst);
+    // bij lijnen, vormen en muren telt alleen het element zelf (anders blokkeert een muur rond het huis alles)
+    if (h.frame && pointInPolygon(s, h.outline)) return { kind: 'move' };
     // ook direct op een geselecteerd element (bij dunne lijnen ligt het kader er vlak omheen)
     const w = this.app.cam.toWorld(s);
     if (this.selectedItems().some(({ item }) => hitItem(item, w, 10 / this.app.cam.zoom))) return { kind: 'move' };
@@ -180,6 +182,15 @@ export class SelectTool extends Tool {
       if (this.moved) this.app.store.commit('edit');
       else this.app.store.cancel();
       if (!this.moved) this.lastTap = { kind: this.drag.kind, i: this.drag.i, t: e.time };
+      if (!this.moved && this.drag.kind === 'move') {
+        // tik zonder slepen: wat ligt er bovenop? Dat selecteren (of niets, op een lege plek)
+        const hit = this.pickAt(e.w);
+        if (!hit) this.app.setSelection(new Set());
+        else if (!this.selection.has(hit.item.id)) {
+          if (hit.layer.id !== this.app.store.doc.activeLayer) this.app.setActiveLayer(hit.layer.id);
+          this.app.setSelection(new Set([hit.item.id]));
+        }
+      }
     }
     this.mode = null;
     this.path = null;
@@ -209,7 +220,7 @@ export class SelectTool extends Tool {
         for (let i = layer.items.length - 1; i >= 0; i--) {
           const it = layer.items[i];
           if (pass === 0 && edgeHit(it, w, tol)) return { layer, item: it };
-          if (pass === 1 && it.type === 'shape') {
+          if (pass === 1 && it.type === 'shape' && !it.wall) {
             if (it.kind === 'polygon' && pointInPolygon(w, it.points)) return { layer, item: it };
             if (it.kind === 'circle' && dist(w, it.points[0]) <= dist(it.points[0], it.points[1])) return { layer, item: it };
           }
