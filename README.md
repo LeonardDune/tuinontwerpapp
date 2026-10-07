@@ -22,6 +22,9 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
   snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
+- **Hulpmiddelen bewegen mee met de tekening**: zoom, verschuif of draai je de tekening, dan gaan liniaal, driehoek en
+  gradenboog mee. De rand waarlangs je net tekende (of die precies op een lijn ligt) blijft op die lijn liggen; de
+  liniaal en driehoek houden hun grootte op het scherm. Is een hulpmiddel buiten beeld geraakt, dan haalt de knop het terug.
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.

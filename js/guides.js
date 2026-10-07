@@ -1,6 +1,7 @@
-// Tekenhulpmiddelen in schermruimte: super-liniaal, tekendriehoeken en gradenboog.
-// Ze liggen "op tafel": de tekening schuift eronder door. Een streek die bij een
-// rand begint, wordt exact langs die rand getrokken.
+// Tekenhulpmiddelen: super-liniaal, tekendriehoek en gradenboog. Ze houden hun grootte op het
+// scherm, maar bewegen mee met de tekening bij zoomen, verschuiven en draaien: het ankerpunt
+// (de rand waarlangs getekend werd, of die op een lijn ligt) blijft op dezelfde plek in de tekening.
+// Een streek die bij een rand begint, wordt exact langs die rand getrokken.
 
 import { rotate, pointInPolygon, distToSegment, projectOnLine, dist, DEG, normAngle, sideOf } from './geom.js';
 import { niceStep, formatTick, formatAngle, formatLength } from './units.js';
@@ -25,6 +26,7 @@ export class Guide {
     this.size = params.size ?? (type === 'tri45' ? 330 : 380);
     this.worldR = params.worldR ?? null;
     this.zoom = null;
+    this.anchor = params.anchor ?? null; // lokaal punt dat aan de tekening vastzit
     this.build();
   }
 
@@ -95,6 +97,16 @@ export class Guide {
 
   toLocal(p) {
     return rotate([p[0] - this.x, p[1] - this.y], -this.rot);
+  }
+
+  /** Camera veranderd van prev naar cam: het lokale punt anchor blijft op dezelfde plek in de tekening. */
+  follow(prev, cam, anchor) {
+    const W = prev.toWorld(this.toScreen(anchor));
+    const Q = cam.toScreen(W);
+    this.rot += cam.rot - prev.rot;
+    const r = rotate(anchor, this.rot);
+    this.x = Q[0] - r[0];
+    this.y = Q[1] - r[1];
   }
 
   screenPoly() {
@@ -351,7 +363,7 @@ export class Guide {
   }
 
   toJSON() {
-    return { type: this.type, x: this.x, y: this.y, rot: this.rot, angle: this.angle, size: this.size, worldR: this.worldR };
+    return { type: this.type, x: this.x, y: this.y, rot: this.rot, angle: this.angle, size: this.size, worldR: this.worldR, anchor: this.anchor };
   }
 }
 
@@ -372,6 +384,8 @@ class LineSnap {
   constructor(guide, a, b) {
     this.kind = 'line';
     this.guide = guide;
+    this.la = a;
+    this.lb = b;
     this.a = guide.toScreen(a);
     this.b = guide.toScreen(b);
   }

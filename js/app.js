@@ -17,7 +17,7 @@ import { hydrateIcons, icon } from './icons.js';
 import {
   DrawTool, EraserTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
-import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
+import { dist, DEG, normAngle, matTranslate, rotate, projectOnLine } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
 import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
@@ -29,7 +29,7 @@ import {
   isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
   selectionBox, displayAngle, fromDisplayAngle, closedArea,
 } from './edit.js';
-import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
+import { collectSegments, bestAlignment, currentAlignments, guideEdgesWorld, signedOffset } from './parallel.js';
 import { fetchBuildings, DEFAULT_BUILDING_HEIGHT } from './buildings.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
@@ -170,6 +170,7 @@ class App {
     doc.scale = doc.scale || 100;
     migratePlanting(doc);
     this.store.load(doc);
+    this.camPrev = null; // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen
     if (doc.view) this.cam.set(doc.view);
     else this.fitView(true);
     this.settings.lastDoc = doc.id;
@@ -269,6 +270,7 @@ class App {
         this.cam.x += (this.width - oldW) / 2;
         this.cam.y += (this.height - oldH) / 2;
       }
+      this.followGuides();
       for (const g of this.guides.values()) {
         g.x = Math.min(Math.max(g.x, 40), this.width - 40);
         g.y = Math.min(Math.max(g.y, 40), this.height - 40);
@@ -290,11 +292,13 @@ class App {
   }
 
   cameraChanged() {
+    this.followGuides();
     this.baseDirty = true;
     this.requestRender();
     this.updateStatus();
     clearTimeout(this.viewTimer);
     this.viewTimer = setTimeout(() => {
+      if (this.guides.size) this.persistSettings();
       this.store.doc.view = this.cam.toJSON();
       this.scheduleSave();
     }, 1500);
@@ -559,6 +563,7 @@ class App {
       if (guideHit) {
         const { g, hit } = guideHit;
         this.mode = 'guide';
+        g.anchor = null;
         this.guideDrag = {
           guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, size: g.size, worldR: g.worldR, moved: false, id: e.pointerId,
         };
@@ -580,6 +585,12 @@ class App {
     this.mode = 'tool';
     this.toolPointer = e.pointerId;
     this.activeGuideSnap = guidesTool ? this.guideSnapAt(s, locked) : null;
+    const gs = this.activeGuideSnap;
+    if (gs && gs.kind === 'line' && gs.guide.type !== 'protractor') {
+      // langs deze rand getekend: die rand blijft bij zoomen en verschuiven op de lijn
+      const [q, t] = projectOnLine(gs.guide.toLocal(s), gs.la, gs.lb);
+      gs.guide.anchor = t <= 0 ? gs.la : t >= 1 ? gs.lb : q;
+    }
     this.guideAnchored = false;
     this.tool.down(this.makeEvent(e, s));
     this.guideAnchored = true;
@@ -780,6 +791,48 @@ class App {
     g.y += s1[1] - s0[1];
   }
 
+  /** Hulpmiddelen bewegen mee met de tekening (grootte op het scherm blijft gelijk). */
+  followGuides() {
+    const now = this.cam.toJSON();
+    const prevJ = this.camPrev;
+    this.camPrev = now;
+    if (!prevJ || !this.guides.size) return;
+    if (prevJ.x === now.x && prevJ.y === now.y && prevJ.zoom === now.zoom && prevJ.rot === now.rot) return;
+    const prev = new Camera();
+    prev.set(prevJ);
+    for (const g of this.guides.values()) {
+      g.sync(prev);
+      g.follow(prev, this.cam, this.guideAnchor(g, prev));
+      g.sync(this.cam);
+    }
+  }
+
+  /** Welk punt van het hulpmiddel zit aan de tekening vast? */
+  guideAnchor(g, cam) {
+    if (g.type === 'protractor') return [0, 0]; // straal in meters: het middelpunt houdt alles op zijn plek
+    if (g.anchor) return g.anchor;
+    // een rand die precies op een lijn van de tekening ligt
+    const tol = 3 / cam.zoom;
+    let best = null;
+    const edges = guideEdgesWorld(g, cam);
+    for (const seg of collectSegments(this.store.doc, 24 / cam.zoom)) {
+      for (const edge of edges) {
+        let da = normAngle(edge.angle - seg.angle);
+        if (da > Math.PI / 2) da -= Math.PI;
+        if (da < -Math.PI / 2) da += Math.PI;
+        if (Math.abs(da) > 0.3 * DEG || Math.abs(signedOffset(edge, seg)) > tol) continue;
+      const mid = [(seg.a[0] + seg.b[0]) / 2, (seg.a[1] + seg.b[1]) / 2];
+      const [q, t] = projectOnLine(mid, edge.a, edge.b);
+      const tt = Math.max(0, Math.min(1, t));
+      const p = [edge.a[0] + (edge.b[0] - edge.a[0]) * tt, edge.a[1] + (edge.b[1] - edge.a[1]) * tt];
+        const d = dist(q, p);
+        if (!best || d < best.d) best = { d, p };
+      }
+    }
+    g.anchor = best ? g.toLocal(cam.toScreen(best.p)) : [0, 0];
+    return g.anchor;
+  }
+
   /** Rechte lijnen in de tekening (gecachet per documentwijziging en zoomniveau). */
   segments() {
     const key = Math.round(Math.log2(this.cam.zoom) * 2);
@@ -820,6 +873,7 @@ class App {
   }
 
   startGuide2(g) {
+    g.anchor = null;
     const pts = [...this.pointers.values()].slice(0, 2);
     this.mode = 'guide2';
     this.nav = null;
@@ -1135,6 +1189,16 @@ class App {
   }
 
   toggleGuide(type) {
+    const cur = this.guides.get(type);
+    if (cur && (cur.x < 0 || cur.y < 0 || cur.x > this.width || cur.y > this.height)) {
+      // buiten beeld geraakt (beweegt mee met de tekening): terughalen in plaats van weghalen
+      cur.x = this.width / 2;
+      cur.y = this.height / 2;
+      cur.anchor = null;
+      this.persistSettings();
+      this.requestRender();
+      return;
+    }
     if (this.guides.has(type)) {
       if (this.guideBarFor === this.guides.get(type)) this.showGuideBar(null);
       this.guides.delete(type);
