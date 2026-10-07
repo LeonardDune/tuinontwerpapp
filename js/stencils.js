@@ -624,6 +624,14 @@ export function drawStencil(g, item, lw, paper) {
   g.lineJoin = 'round';
   g.lineCap = 'round';
   const c = item.color || def.color;
+  if (!item.see && !def.opening && !def.fixedPaper) {
+    // dichte ondergrond in papierkleur: een stencil ligt bovenop wat eronder getekend is
+    g.fillStyle = paper || '#fbfaf6';
+    g.beginPath();
+    if (def.round) g.ellipse(0, 0, item.w / 2, item.h / 2, 0, 0, Math.PI * 2);
+    else g.rect(-item.w / 2, -item.h / 2, item.w, item.h);
+    g.fill();
+  }
   g.strokeStyle = c;
   g.fillStyle = c;
   def.draw(g, item.w, item.h, c, lw, paper);

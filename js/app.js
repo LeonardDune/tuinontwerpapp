@@ -198,6 +198,7 @@ class App {
 
   onStoreChange(evt) {
     this.segCache = null;
+    this.docVersion = (this.docVersion || 0) + 1;
     this.baseDirty = true;
     this.requestRender();
     if (evt.type === 'load') return;
@@ -1831,6 +1832,8 @@ class App {
       const w = sh.width ? Math.round((sh.width / sc) * 1000 * 100) / 100 : 0.35;
       html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
     }
+    const stencils = items.filter((i) => i.type === 'stencil' && !STENCIL_MAP[i.symbol]?.opening);
+    if (stencils.length) html += `<button type="button" class="tgl ${stencils[0].see ? 'on' : ''}" data-act="see" title="Laat zien wat eronder ligt">Doorzichtig</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
@@ -1869,6 +1872,7 @@ class App {
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
+    bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
   }
@@ -1996,6 +2000,12 @@ class App {
           const v = len(raw);
           if (v > 0.01) for (const i of items) if (i.wall) { i.width = v; invalidateItem(i); }
           syncOpenings(this.store.doc, new Set(items.filter((i) => i.wall).map((i) => i.id)));
+          break;
+        }
+        case 'see': {
+          const st = items.filter((i) => i.type === 'stencil');
+          const on = !st[0]?.see;
+          for (const i of st) { if (on) i.see = true; else delete i.see; }
           break;
         }
         case 'mirror':

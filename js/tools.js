@@ -2,17 +2,18 @@
 // e = { s: [x, y] scherm, w: [x, y] wereld, pressure, pointerType, time }
 
 import { isPlantStencil, ensureStencilRole } from './planting.js';
+import { snapPoint, drawSnapMarker } from './snap.js';
+
+export { snapPoint, drawSnapMarker };
 import { nearestWallSeg, wallSegments, linkOpening } from './walls.js';
 import { BRUSHES } from './brushes.js';
 import { uid, paperToWorld } from './model.js';
-import { drawItem, hitItem, itemSnapPoints, transformItem } from './items.js';
+import { drawItem, hitItem, transformItem } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
-import { gridStepFor } from './render.js';
 import { formatLength, formatAngle, parseLength, formatArea } from './units.js';
-import { collectSegments } from './parallel.js';
 import {
   dist, angleOf, DEG, snapAngle, pointInPolygon, matMul, matTranslate, matScale,
-  simplify, distToSegment, clamp, projectOnLine, polygonArea,
+  simplify, distToSegment, clamp, polygonArea,
 } from './geom.js';
 
 const round4 = (v) => Math.round(v * 10000) / 10000;
@@ -20,68 +21,9 @@ const roundPt = (p) => p.map((v, i) => (i < 2 ? round4(v) : Math.round(v * 100) 
 
 // ------------------------------------------------------------------ snappen
 
-export function snapPoint(app, w, from = null, exclude = null) {
-  const { cam, settings, store } = app;
-  if (settings.snap) {
-    let best = null, bd = 12 / cam.zoom;
-    for (const layer of store.doc.layers) {
-      if (!layer.visible) continue;
-      for (const item of layer.items) {
-        if (exclude && exclude.has(item.id)) continue;
-        for (const p of itemSnapPoints(item)) {
-          const d = dist(p, w);
-          if (d < bd) { bd = d; best = p; }
-        }
-      }
-    }
-    if (best) return { p: [best[0], best[1]], kind: 'point' };
-    // op een rand van een lijn of vorm
-    let edge = null, ed = 9 / cam.zoom;
-    for (const seg of collectSegments(store.doc, 0)) {
-      if (exclude && exclude.has(seg.item.id)) continue;
-      const d = distToSegment(w, seg.a, seg.b);
-      if (d < ed) {
-        const [q, t] = projectOnLine(w, seg.a, seg.b);
-        if (t >= 0 && t <= 1) { ed = d; edge = q; }
-      }
-    }
-    if (edge) return { p: edge, kind: 'edge' };
-  }
-  if (from && settings.angleSnap) {
-    const ang = angleOf(from, w);
-    const sn = snapAngle(ang, 15 * DEG, 4 * DEG);
-    if (sn !== ang) {
-      const len = dist(from, w);
-      return { p: [from[0] + Math.cos(sn) * len, from[1] + Math.sin(sn) * len], kind: 'angle' };
-    }
-  }
-  if (settings.snap && settings.grid) {
-    const step = gridStepFor(cam.zoom, store.doc.grid);
-    const g = [Math.round(w[0] / step) * step, Math.round(w[1] / step) * step];
-    if (dist(g, w) < 8 / cam.zoom) return { p: g, kind: 'grid' };
-  }
-  return { p: w, kind: null };
-}
-
 /** Snappen, behalve als de invoer al langs een hulpmiddel (liniaal e.d.) is geleid. */
 function pick(app, e, from = null) {
   return e.guided ? { p: e.w, kind: null } : snapPoint(app, e.w, from);
-}
-
-export function drawSnapMarker(ctx, app, snap) {
-  if (!snap || !snap.kind || snap.kind === 'angle') return;
-  const s = app.cam.toScreen(snap.p);
-  ctx.save();
-  ctx.strokeStyle = snap.kind === 'point' ? '#d35400' : '#2f5d3a';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  if (snap.kind === 'point') ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
-  else if (snap.kind === 'edge') {
-    ctx.moveTo(s[0] - 6, s[1] - 6); ctx.lineTo(s[0] + 6, s[1] + 6);
-    ctx.moveTo(s[0] + 6, s[1] - 6); ctx.lineTo(s[0] - 6, s[1] + 6);
-  } else ctx.rect(s[0] - 5, s[1] - 5, 10, 10);
-  ctx.stroke();
-  ctx.restore();
 }
 
 export function drawBubble(ctx, text, x, y) {

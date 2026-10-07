@@ -30,6 +30,11 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.
+- **Snappen aan de tekening**: nieuwe punten klikken vast op eindpunten, middens, snijpunten, de rand van lijnen,
+  vormen, cirkels en muurvlakken, en "loodrecht op" een bestaande lijn. Tijdens het tekenen van een lijn, rechthoek,
+  veelhoek of muur klikt de richting vast als die evenwijdig of loodrecht aan een bestaande lijn loopt; die lijn licht
+  dan blauw op met ∥ of ⊥ en een korte tekst (midden, snijpunt, evenwijdig …).
+- **Stencils dekken af** wat eronder ligt; zet *Doorzichtig* aan in de balk om de ondergrond te laten zien.
 - **Bestrating en materialen** (keuzelijst *Materiaal* bij vlakken, op ware grootte): tegels 60×60, 50×50, 30×30 en
   60×40 halfsteens; grootformaat keramisch 80×80, 100×100, 90×60 en 120×60 (halfsteens) en houtlook 120×30; gebakken
   tegels 20×20; klinkers halfsteens, visgraat en met brede voeg (waterdoorlatend); kinderkopjes/kasseien; cirkelverband
