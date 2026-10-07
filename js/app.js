@@ -3,7 +3,7 @@
 import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
 import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
-import { Guide, GUIDE_TYPES } from './guides.js';
+import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stencils.js';
@@ -17,7 +17,7 @@ import { hydrateIcons, icon } from './icons.js';
 import {
   DrawTool, EraserTool, ShapeTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
-import { dist, DEG, normAngle, matTranslate, rotate, projectOnLine } from './geom.js';
+import { dist, DEG, normAngle, matTranslate, rotate } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
 import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
@@ -29,7 +29,7 @@ import {
   isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
   selectionBox, displayAngle, fromDisplayAngle, closedArea,
 } from './edit.js';
-import { collectSegments, bestAlignment, currentAlignments, guideEdgesWorld, signedOffset } from './parallel.js';
+import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
 import { fetchBuildings, DEFAULT_BUILDING_HEIGHT } from './buildings.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
@@ -170,7 +170,8 @@ class App {
     doc.scale = doc.scale || 100;
     migratePlanting(doc);
     this.store.load(doc);
-    this.camPrev = null; // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen
+    // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen en hechten aan deze tekening
+    for (const g of this.guides.values()) g.world = null;
     if (doc.view) this.cam.set(doc.view);
     else this.fitView(true);
     this.settings.lastDoc = doc.id;
@@ -270,11 +271,8 @@ class App {
         this.cam.x += (this.width - oldW) / 2;
         this.cam.y += (this.height - oldH) / 2;
       }
-      this.followGuides();
-      for (const g of this.guides.values()) {
-        g.x = Math.min(Math.max(g.x, 40), this.width - 40);
-        g.y = Math.min(Math.max(g.y, 40), this.height - 40);
-      }
+      setGuideView(this.width, this.height);
+      for (const g of this.guides.values()) g.sync(this.cam);
       this.baseDirty = true;
       this.render();
     };
@@ -292,7 +290,8 @@ class App {
   }
 
   cameraChanged() {
-    this.followGuides();
+    // hulpmiddelen liggen vast op de tekening: schermpositie opnieuw afleiden
+    for (const g of this.guides.values()) g.sync(this.cam);
     this.baseDirty = true;
     this.requestRender();
     this.updateStatus();
@@ -563,7 +562,6 @@ class App {
       if (guideHit) {
         const { g, hit } = guideHit;
         this.mode = 'guide';
-        g.anchor = null;
         this.guideDrag = {
           guide: g, kind: hit, startS: s, x: g.x, y: g.y, rot: g.rot, size: g.size, worldR: g.worldR, moved: false, id: e.pointerId,
         };
@@ -585,12 +583,6 @@ class App {
     this.mode = 'tool';
     this.toolPointer = e.pointerId;
     this.activeGuideSnap = guidesTool ? this.guideSnapAt(s, locked) : null;
-    const gs = this.activeGuideSnap;
-    if (gs && gs.kind === 'line' && gs.guide.type !== 'protractor') {
-      // langs deze rand getekend: die rand blijft bij zoomen en verschuiven op de lijn
-      const [q, t] = projectOnLine(gs.guide.toLocal(s), gs.la, gs.lb);
-      gs.guide.anchor = t <= 0 ? gs.la : t >= 1 ? gs.lb : q;
-    }
     this.guideAnchored = false;
     this.tool.down(this.makeEvent(e, s));
     this.guideAnchored = true;
@@ -763,15 +755,25 @@ class App {
       g.build();
       if (this.guideBarFor === g) this.updateGuideBarValues();
     } else {
-      const c = [g.x, g.y];
+      if (!d.pivot) d.pivot = this.guidePivot(g);
+      const c = d.pivot;
       const a0 = Math.atan2(d.startS[1] - c[1], d.startS[0] - c[0]);
       const a1 = Math.atan2(s[1] - c[1], s[0] - c[0]);
-      g.rot = this.snapGuideRot(d.rot + a1 - a0, g);
+      const rot = this.snapGuideRot(d.rot + a1 - a0, g);
+      const o = rotate([d.x - c[0], d.y - c[1]], rot - d.rot);
+      g.rot = rot;
+      g.x = c[0] + o[0];
+      g.y = c[1] + o[1];
       if (this.guideBarFor === g) this.updateGuideBarValues();
     }
     if (d.kind === 'move' && g.type !== 'protractor') this.snapGuideOffset(g);
     this.alignGuide = g;
     this.requestRender();
+  }
+
+  /** Draaipunt op het scherm: bij de liniaal het midden van het zichtbare deel van de rand. */
+  guidePivot(g) {
+    return g.type === 'ruler' ? g.toScreen([(g.t0 + g.t1) / 2, 0]) : [g.x, g.y];
   }
 
   /** Evenwijdig liggende liniaal: afstand tot de dichtstbijzijnde lijn op ronde maten laten klikken. */
@@ -789,48 +791,6 @@ class App {
     const s0 = this.cam.toScreen([0, 0]), s1 = this.cam.toScreen(n);
     g.x += s1[0] - s0[0];
     g.y += s1[1] - s0[1];
-  }
-
-  /** Hulpmiddelen bewegen mee met de tekening (grootte op het scherm blijft gelijk). */
-  followGuides() {
-    const now = this.cam.toJSON();
-    const prevJ = this.camPrev;
-    this.camPrev = now;
-    if (!prevJ || !this.guides.size) return;
-    if (prevJ.x === now.x && prevJ.y === now.y && prevJ.zoom === now.zoom && prevJ.rot === now.rot) return;
-    const prev = new Camera();
-    prev.set(prevJ);
-    for (const g of this.guides.values()) {
-      g.sync(prev);
-      g.follow(prev, this.cam, this.guideAnchor(g, prev));
-      g.sync(this.cam);
-    }
-  }
-
-  /** Welk punt van het hulpmiddel zit aan de tekening vast? */
-  guideAnchor(g, cam) {
-    if (g.type === 'protractor') return [0, 0]; // straal in meters: het middelpunt houdt alles op zijn plek
-    if (g.anchor) return g.anchor;
-    // een rand die precies op een lijn van de tekening ligt
-    const tol = 3 / cam.zoom;
-    let best = null;
-    const edges = guideEdgesWorld(g, cam);
-    for (const seg of collectSegments(this.store.doc, 24 / cam.zoom)) {
-      for (const edge of edges) {
-        let da = normAngle(edge.angle - seg.angle);
-        if (da > Math.PI / 2) da -= Math.PI;
-        if (da < -Math.PI / 2) da += Math.PI;
-        if (Math.abs(da) > 0.3 * DEG || Math.abs(signedOffset(edge, seg)) > tol) continue;
-      const mid = [(seg.a[0] + seg.b[0]) / 2, (seg.a[1] + seg.b[1]) / 2];
-      const [q, t] = projectOnLine(mid, edge.a, edge.b);
-      const tt = Math.max(0, Math.min(1, t));
-      const p = [edge.a[0] + (edge.b[0] - edge.a[0]) * tt, edge.a[1] + (edge.b[1] - edge.a[1]) * tt];
-        const d = dist(q, p);
-        if (!best || d < best.d) best = { d, p };
-      }
-    }
-    g.anchor = best ? g.toLocal(cam.toScreen(best.p)) : [0, 0];
-    return g.anchor;
   }
 
   /** Rechte lijnen in de tekening (gecachet per documentwijziging en zoomniveau). */
@@ -873,7 +833,6 @@ class App {
   }
 
   startGuide2(g) {
-    g.anchor = null;
     const pts = [...this.pointers.values()].slice(0, 2);
     this.mode = 'guide2';
     this.nav = null;
@@ -1002,7 +961,12 @@ class App {
           g.x += corner[0] - c[0];
           g.y += corner[1] - c[1];
         } else {
-          g.rot = this.cam.rot - v * DEG;
+          const c = this.guidePivot(g);
+          const rot = this.cam.rot - v * DEG;
+          const o = rotate([g.x - c[0], g.y - c[1]], rot - g.rot);
+          g.rot = rot;
+          g.x = c[0] + o[0];
+          g.y = c[1] + o[1];
           this.alignGuide = g;
           this.lingerAlign();
         }
@@ -1190,11 +1154,11 @@ class App {
 
   toggleGuide(type) {
     const cur = this.guides.get(type);
-    if (cur && (cur.x < 0 || cur.y < 0 || cur.x > this.width || cur.y > this.height)) {
-      // buiten beeld geraakt (beweegt mee met de tekening): terughalen in plaats van weghalen
+    if (cur && !cur.isVisible()) {
+      // buiten beeld geraakt (ligt vast op de tekening): terughalen in plaats van weghalen
       cur.x = this.width / 2;
       cur.y = this.height / 2;
-      cur.anchor = null;
+      cur.sync(this.cam);
       this.persistSettings();
       this.requestRender();
       return;

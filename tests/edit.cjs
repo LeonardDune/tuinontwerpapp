@@ -34,8 +34,8 @@ const close = (a, b, t = 1e-3) => Math.abs(a - b) < t;
 
   console.log('Rechthoek langs een liniaal');
   await page.evaluate(() => { const a = window.app; a.toggleGuide('ruler'); const g = a.guides.get('ruler'); g.x = 600; g.y = 250; g.rot = -30 * Math.PI / 180; a.render(); });
-  const edge = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.edges[1].map((p) => g.toScreen(p)); }); // onderrand
-  const m = [(edge[0][0] + edge[1][0]) / 2, (edge[0][1] + edge[1][1]) / 2];
+  const edge = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.edges[0].map((p) => g.toScreen(p)); }); // tekenrand
+  const m = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.toScreen([0, 0]); }); void edge;
   await tool('rect');
   await drag([[m[0] - 60, m[1] + 30], [m[0] + 80, m[1] + 140]]);
   let it = await last();

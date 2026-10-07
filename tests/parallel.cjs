@@ -24,11 +24,11 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const box = await page.locator('#canvas').boundingBox();
   const X = (x) => box.x + x, Y = (y) => box.y + y;
   // draai via de greep tot ~-28° (2° naast de lijn)
-  const g0 = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return { x: g.x, y: g.y, L: g.L }; });
-  const r = g0.L / 2 - 30;
-  await page.mouse.move(X(g0.x + r), Y(g0.y));
+  const g0 = await page.evaluate(() => { const a = window.app; const g = a.guides.get('ruler'); const p = a.guidePivot(g); const q = g.toScreen(g.grips.rotate[1]); return { x: p[0], y: p[1], r: Math.hypot(q[0] - p[0], q[1] - p[1]), a0: Math.atan2(q[1] - p[1], q[0] - p[0]) }; });
+  const r = g0.r;
+  await page.mouse.move(X(g0.x + Math.cos(g0.a0) * r), Y(g0.y + Math.sin(g0.a0) * r));
   await page.mouse.down();
-  for (let k = 1; k <= 10; k++) { const a = (-28 * k / 10) * Math.PI / 180; await page.mouse.move(X(g0.x + Math.cos(a) * r), Y(g0.y + Math.sin(a) * r)); }
+  for (let k = 1; k <= 10; k++) { const a = g0.a0 + (-28 * k / 10) * Math.PI / 180; await page.mouse.move(X(g0.x + Math.cos(a) * r), Y(g0.y + Math.sin(a) * r)); }
   const mid = await page.evaluate(() => window.app.guides.get('ruler').rot * 180 / Math.PI);
   await page.screenshot({ path: path.join(OUT, 'parallel-draaien.png') });
   await page.mouse.up();
@@ -36,7 +36,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   // verschuif loodrecht op de lijn tot ongeveer 1,5 m: liniaal ligt aan de bovenkant; schuif 'm in stapjes
   const al = await page.evaluate(async () => { const { currentAlignments } = await import('./js/parallel.js'); const a = window.app; return currentAlignments(a.guides.get('ruler'), a.cam, a.segments()).map((x) => x.offset); });
   assert(al.length >= 1, 'evenwijdige lijn wordt herkend');
-  const start = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return [g.x, g.y]; });
+  const start = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.toScreen([(g.t0 + g.t1) / 2, -g.H / 2]); });
   // normaal op de lijn in scherm (lijn -30°): n = (sin30, cos30) wijst naar rechtsonder (weg van liniaal richting lijn)
   const n = [Math.sin(30 * Math.PI / 180), Math.cos(30 * Math.PI / 180)];
   await page.mouse.move(X(start[0]), Y(start[1]));

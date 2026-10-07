@@ -10,8 +10,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   drukgevoelig; met muis of vinger wordt de druk uit de snelheid afgeleid. De dikte stel je in als millimeters op papier.
   Lijnen worden vloeiend: een stabilisator filtert trillingen weg (instelbaar met *Gladheid*) en bochten worden als
   vloeiende krommen getekend.
-- **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs de rand voor een exact rechte lijn die
-  automatisch een maat krijgt. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
+- **Super-liniaal**: een liniaal met verdeling in werkelijke meters. Teken langs (of op) de rand voor een exact rechte
+  lijn. Verplaatsen door te slepen, draaien met de ronde greep of twee vingers (snapt per 15°).
   Tik op een hulpmiddel voor een balk waarin je de draaiing exact invoert.
 - **Evenwijdig tekenen**: draai je de liniaal of driehoek in de buurt van een bestaande lijn, dan klikt hij precies
   evenwijdig (bij de liniaal ook haaks). De lijnen waarmee hij uitgelijnd is lichten op (∥ / ⊥), met de afstand tot de
@@ -22,9 +22,11 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
   snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
-- **Hulpmiddelen bewegen mee met de tekening**: zoom, verschuif of draai je de tekening, dan gaan liniaal, driehoek en
-  gradenboog mee. De rand waarlangs je net tekende (of die precies op een lijn ligt) blijft op die lijn liggen; de
-  liniaal en driehoek houden hun grootte op het scherm. Is een hulpmiddel buiten beeld geraakt, dan haalt de knop het terug.
+- **Hulpmiddelen liggen vast op de tekening**: zoom, verschuif of draai je de tekening, dan blijven liniaal, driehoek
+  en gradenboog exact op dezelfde plek ten opzichte van de tekening (een liniaal op 1,5 m van een muur blijft op 1,5 m).
+  De liniaal heeft één tekenrand die over het hele scherm doorloopt, dus ook ver ingezoomd teken je een hele muur in één
+  streek; de maat loopt vanaf het nulpunt (het streepje "0") naar beide kanten. Bij de driehoek ligt de rechte hoek vast,
+  de gradenboog blijft op schaal. Is een hulpmiddel buiten beeld geraakt, dan haalt de knop het terug.
 - **Tekenmodus en verplaatsmodus** voor de hulpmiddelen (slotknop in de werkbalk). In de tekenmodus liggen ze vast en
   teken je er met elk tekengereedschap langs of op (pen, lijn, veelhoek, vlak, maatlijn, gum); verplaatsen gaat dan met
   twee vingers. In de verplaatsmodus sleep je ze en gebruik je de grepen voor draaien, grootte en hoek.

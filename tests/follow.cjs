@@ -1,5 +1,5 @@
-// Hulpmiddelen bewegen mee met de tekening: na zoomen, verschuiven en draaien ligt de rand
-// waarlangs getekend werd nog precies op de getekende lijn.
+// Hulpmiddelen liggen vast op de tekening: bij zoomen, verschuiven en draaien blijft de afstand
+// tot de tekening exact gelijk, en de liniaal loopt over het hele scherm door.
 const { chromium } = require('playwright');
 const path = require('path');
 const BASE = process.env.BASE || 'http://localhost:8123/';
@@ -16,76 +16,88 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.waitForFunction(() => window.app);
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
-    a.openDoc(newDoc('Meebewegen'), true);
+    const d = newDoc('Vast op de tekening');
+    // muur van 20 m, licht schuin
+    d.layers[0].items.push({ type: 'shape', id: 'muur', kind: 'line', points: [[-10, 2], [10, -1]], color: '#1d2b36', width: 0.04 });
+    a.openDoc(d, true);
     a.cam.zoom = 40; a.cam.rot = 0; a.cam.x = 600; a.cam.y = 430; a.cameraChanged();
     a.settings.snap = false; a.settings.grid = false; a.settings.pencilOnly = false;
     a.guides.clear(); a.toggleGuide('ruler'); a.setGuidesLocked(true);
-    const g = a.guides.get('ruler'); g.x = 600; g.y = 380; g.rot = -0.3; a.render();
+    // liniaal evenwijdig aan de muur, tekenrand 1,5 m eronder
+    const ang = Math.atan2(-3, 20);
+    const n = [-Math.sin(ang), Math.cos(ang)];
+    const g = a.guides.get('ruler');
+    const p = a.cam.toScreen([n[0] * 1.5 + 0.0, 0.5 + n[1] * 1.5]);
+    g.x = p[0]; g.y = p[1]; g.rot = ang; a.render();
     a.setTool('line');
   });
   const box = await page.locator('#canvas').boundingBox();
   const X = (x) => box.x + x, Y = (y) => box.y + y;
 
-  // afstand (px) van een rand van de liniaal tot de getekende lijn, en de hoek ertussen
-  const check = () => page.evaluate(() => {
-    const a = window.app; const g = a.guides.get('ruler');
-    const it = a.store.doc.layers[0].items.find((i) => i.type === 'shape');
-    const [p, q] = it.points.map((w) => a.cam.toScreen(w));
-    const lineD = (s) => { const dx = q[0] - p[0], dy = q[1] - p[1]; return Math.abs((s[0] - p[0]) * dy - (s[1] - p[1]) * dx) / Math.hypot(dx, dy); };
-    let best = Infinity;
-    for (const [e0, e1] of g.edges) best = Math.min(best, Math.max(lineD(g.toScreen(e0)), lineD(g.toScreen(e1))));
-    const onScreen = g.x > 0 && g.y > 0 && g.x < a.width && g.y < a.height;
-    return { d: best, onScreen, L: g.L };
+  // afstand (m) en hoekverschil van de tekenrand tot de muur, in de tekening gemeten
+  const state = () => page.evaluate(() => {
+    const a = window.app; const g = a.guides.get('ruler'); g.sync(a.cam);
+    const [e0, e1] = g.edges[0].map((p) => a.cam.toWorld(g.toScreen(p)));
+    const [p, q] = [[-10, 2], [10, -1]];
+    const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy);
+    const off = (s) => ((s[0] - p[0]) * dy - (s[1] - p[1]) * dx) / L;
+    const vis = g.edges[0].map((pt) => g.toScreen(pt));
+    return { off0: off(e0), off1: off(e1), lenPx: Math.hypot(vis[1][0] - vis[0][0], vis[1][1] - vis[0][1]), w: a.width };
   });
+  const s0 = await state();
+  console.log(`    begin: rand op ${s0.off0.toFixed(4)} m van de muur`);
+  assert(Math.abs(s0.off0 - s0.off1) < 1e-6, 'liniaal ligt evenwijdig aan de muur');
 
-  console.log('Lijn langs de liniaal');
-  const e = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.edges[1].map((p) => g.toScreen(p)); });
-  const at = (t) => [e[0][0] + (e[1][0] - e[0][0]) * t, e[0][1] + (e[1][1] - e[0][1]) * t + 6];
-  await page.mouse.move(X(at(0.2)[0]), Y(at(0.2)[1])); await page.mouse.down();
-  await page.mouse.move(X(at(0.7)[0]), Y(at(0.7)[1]), { steps: 10 }); await page.mouse.up();
-  let c = await check();
-  assert(c.d < 0.5, `lijn getekend langs de rand (${c.d.toFixed(3)} px)`);
+  console.log('Zoomen (scrollwiel met ctrl, op verschillende plekken)');
+  const offs = [];
+  for (const [x, y, dy] of [[200, 200, -60], [900, 600, -60], [500, 400, 80], [1000, 150, -100], [300, 700, 120]]) {
+    await page.mouse.move(X(x), Y(y));
+    await page.keyboard.down('Control');
+    for (let k = 0; k < 4; k++) await page.mouse.wheel(0, dy / 4);
+    await page.keyboard.up('Control');
+    offs.push((await state()).off0);
+  }
+  const drift = Math.max(...offs.map((o) => Math.abs(o - s0.off0)));
+  assert(drift < 1e-6, `afstand tot de muur blijft exact gelijk na 5 keer zoomen (afwijking ${drift.toExponential(1)} m)`);
 
-  console.log('Zoomen met het scrollwiel (ctrl)');
-  await page.mouse.move(X(300), Y(600));
-  await page.keyboard.down('Control');
-  for (let k = 0; k < 6; k++) await page.mouse.wheel(0, -20);
-  await page.keyboard.up('Control');
-  await page.evaluate(() => { const a = window.app; a.cam.zoomAt(300, 600, 2.5); a.cameraChanged(); });
-  c = await check();
-  assert(c.d < 0.01 && c.L === 760, `na inzoomen ligt de rand nog op de lijn (${c.d.toFixed(4)} px), liniaal even groot op het scherm`);
-  await page.screenshot({ path: path.join(OUT, 'meebewegen-zoom.png') });
-
-  console.log('Verschuiven en draaien met twee vingers');
+  console.log('Knijpen, schuiven en draaien met twee vingers');
   const cdp = await ctx.newCDPSession(page);
   const tp = (pts) => pts.map(([x, y], i) => ({ x: X(x), y: Y(y), id: i }));
+  await page.evaluate(() => { window.app.settings.rotateGesture = true; });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: tp([[200, 650], [420, 700]]) });
   for (let k = 1; k <= 10; k++) {
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: tp([[200 + k * 8, 650 - k * 4], [420 - k * 3, 700 + k * 6]]) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: tp([[200 + k * 8, 650 - k * 4], [420 - k * 3, 700 + k * 9]]) });
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  c = await check();
-  assert(c.d < 0.01, `na knijpen/schuiven ligt de rand nog op de lijn (${c.d.toFixed(4)} px)`);
-  await page.evaluate(() => { const a = window.app; a.cam.rotateAt(600, 430, 0.4); a.cameraChanged(); });
-  c = await check();
-  assert(c.d < 0.01, `na draaien van de tekening ligt de rand nog op de lijn (${c.d.toFixed(4)} px)`);
+  let s = await state();
+  assert(Math.abs(s.off0 - s0.off0) < 1e-6 && Math.abs(s.off1 - s0.off0) < 1e-6, `na knijpen/draaien nog evenwijdig op dezelfde afstand (${s.off0.toFixed(4)} m)`);
 
-  console.log('Liniaal op een bestaande lijn gelegd (niet langs getekend)');
-  await page.evaluate(() => {
-    const a = window.app; const g = a.guides.get('ruler');
-    // zet de liniaal opnieuw neer met de onderrand precies op de lijn
-    const it = a.store.doc.layers[0].items.find((i) => i.type === 'shape');
-    const [p, q] = it.points.map((w) => a.cam.toScreen(w));
-    const ang = Math.atan2(q[1] - p[1], q[0] - p[0]);
-    const m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-    g.rot = ang; g.anchor = null;
-    // onderrand ligt op lokaal y = +H/2
-    g.x = m[0] + Math.sin(ang) * g.H / 2 + Math.cos(ang) * 40; g.y = m[1] - Math.cos(ang) * g.H / 2 + Math.sin(ang) * 40;
+  console.log('Ver inzoomen: de liniaal blijft lang genoeg');
+  await page.evaluate(() => { const a = window.app; a.cam.rot = 0; a.cam.zoom = 40; a.cam.x = 600; a.cam.y = 430; a.cameraChanged(); a.cam.zoomAt(600, 500, 6); a.cameraChanged(); a.render(); });
+  s = await state();
+  assert(Math.abs(s.off0 - s0.off0) < 1e-6, 'na ver inzoomen nog steeds op dezelfde afstand');
+  assert(s.lenPx >= s.w, `tekenrand loopt over de hele breedte van het scherm (${Math.round(s.lenPx)} px ≥ ${Math.round(s.w)} px)`);
+  // in één streek over het hele scherm langs de liniaal
+  const e = await page.evaluate(() => { const a = window.app; const g = a.guides.get('ruler'); const [p, q] = g.edges[0].map((pt) => g.toScreen(pt)); return { p, q, w: a.width, h: a.height }; });
+  const along = (x) => { const t = (x - e.p[0]) / (e.q[0] - e.p[0]); return [x, e.p[1] + (e.q[1] - e.p[1]) * t + 5]; };
+  const A = along(30), B = along(e.w - 30);
+  await page.mouse.move(X(A[0]), Y(A[1])); await page.mouse.down();
+  await page.mouse.move(X(B[0]), Y(B[1]), { steps: 20 }); await page.mouse.up();
+  const line = await page.evaluate(() => { const a = window.app; const it = a.store.doc.layers[0].items; const l = it[it.length - 1]; const [p, q] = l.points; return { len: Math.hypot(q[0] - p[0], q[1] - p[1]), ang: Math.atan2(q[1] - p[1], q[0] - p[0]), screen: Math.hypot(...[0, 1].map((k) => a.cam.toScreen(q)[k] - a.cam.toScreen(p)[k])) }; });
+  assert(line.screen > e.w - 80 && Math.abs(line.ang - Math.atan2(-3, 20)) < 1e-4, `één lijn over het hele scherm langs de liniaal (${line.len.toFixed(2)} m)`);
+  await page.screenshot({ path: path.join(OUT, 'liniaal-ingezoomd.png') });
+
+  console.log('Driehoek');
+  const tri = await page.evaluate(() => {
+    const a = window.app; a.toggleGuide('tri45'); const g = a.guides.get('tri45'); g.sync(a.cam);
+    const c0 = a.cam.toWorld(g.toScreen([0, 0])); const b0 = a.cam.toWorld(g.toScreen(g.poly[1]));
+    const dir0 = Math.atan2(b0[1] - c0[1], b0[0] - c0[0]);
+    a.cam.zoomAt(200, 300, 0.3); a.cam.rotateAt(500, 500, 0.5); a.cam.x += 40; a.cameraChanged();
+    const c1 = a.cam.toWorld(g.toScreen([0, 0])); const b1 = a.cam.toWorld(g.toScreen(g.poly[1]));
+    const dir1 = Math.atan2(b1[1] - c1[1], b1[0] - c1[0]);
+    return { d: Math.hypot(c1[0] - c0[0], c1[1] - c0[1]), da: Math.abs(dir1 - dir0) };
   });
-  await page.evaluate(() => { const a = window.app; a.cam.zoomAt(500, 300, 0.45); a.cameraChanged(); });
-
-  c = await check();
-  assert(c.d < 0.01, `rand op een lijn blijft daar bij uitzoomen (${c.d.toFixed(4)} px)`);
+  assert(tri.d < 1e-9 && tri.da < 1e-9, 'rechte hoek en zijden van de driehoek blijven op hun plek in de tekening');
 
   console.log('Gradenboog');
   const pr = await page.evaluate(() => {
@@ -93,18 +105,18 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     const w = a.cam.toWorld([g.x, g.y]); const R = g.worldR;
     a.cam.zoomAt(100, 100, 1.7); a.cam.x += 33; a.cameraChanged(); a.render();
     const w2 = a.cam.toWorld([g.x, g.y]);
-    return { d: Math.hypot(w2[0] - w[0], w2[1] - w[1]), R, R2: g.worldR };
+    return { d: Math.hypot(w2[0] - w[0], w2[1] - w[1]), R, R2: g.worldR, Rpx: g.R, z: a.cam.zoom };
   });
-  assert(pr.d < 1e-9 && pr.R === pr.R2, 'middelpunt van de gradenboog blijft op dezelfde plek in de tekening');
+  assert(pr.d < 1e-9 && pr.R === pr.R2 && Math.abs(pr.Rpx - pr.R * pr.z) < 1e-6, 'middelpunt en straal van de gradenboog blijven op schaal');
 
   console.log('Buiten beeld');
   const back = await page.evaluate(() => {
-    const a = window.app; a.cam.x += 5000; a.cameraChanged();
-    const g = a.guides.get('ruler'); const off = g.x > a.width;
-    a.toggleGuide('ruler');
-    return { off, has: a.guides.has('ruler'), x: a.guides.get('ruler')?.x, w: a.width };
+    const a = window.app; a.cam.x += 5000; a.cam.y += 5000; a.cameraChanged();
+    const g = a.guides.get('tri45'); const off = !g.isVisible();
+    a.toggleGuide('tri45');
+    return { off, has: a.guides.has('tri45'), vis: a.guides.get('tri45')?.isVisible() };
   });
-  assert(back.off && back.has && Math.abs(back.x - back.w / 2) < 1, 'liniaal buiten beeld: knop haalt hem terug in plaats van weg');
+  assert(back.off && back.has && back.vis, 'driehoek buiten beeld: de knop haalt hem terug in plaats van weg');
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();

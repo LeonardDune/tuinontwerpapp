@@ -77,8 +77,8 @@ function assert(cond, msg) {
   console.log('Super-liniaal');
   await page.click('.guide-btn[data-guide="ruler"]');
   const guide = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return { x: g.x, y: g.y, H: g.H }; });
-  // Teken net boven de bovenrand van de liniaal, scheef: moet recht worden
-  const yEdge = guide.y - guide.H / 2 - 4;
+  // Teken net onder de tekenrand van de liniaal, scheef: moet recht worden
+  const yEdge = guide.y + 8;
   await drag([[guide.x - 200, yEdge - 6], [guide.x - 50, yEdge + 3], [guide.x + 150, yEdge - 8]]);
   it = await items();
   const ruled = it[it.length - 1];
@@ -95,10 +95,10 @@ function assert(cond, msg) {
   const onRuler = it[it.length - 1];
   const ys2 = onRuler.points.map((p) => p[1]);
   assert(gAfter[0] === gBefore[0] && gAfter[1] === gBefore[1], 'liniaal blijft liggen bij tekenen erop');
-  assert(Math.max(...ys2) - Math.min(...ys2) < 1e-6 && Math.abs(ys2[0] - ruled.points[0][1]) < 1e-6, 'streek op de liniaal komt exact op de bovenrand');
-  // lijngereedschap langs de onderrand
+  assert(Math.max(...ys2) - Math.min(...ys2) < 1e-6 && Math.abs(ys2[0] - ruled.points[0][1]) < 1e-6, 'streek op de liniaal komt exact op de tekenrand');
+  // lijngereedschap langs de rand
   await tool('line');
-  const yLow = guide.y + guide.H / 2 + 5;
+  const yLow = guide.y + 5;
   await drag([[guide.x - 100, yLow + 4], [guide.x + 100, yLow - 6]]);
   it = await items();
   const lineAlong = it[it.length - 1];
@@ -108,7 +108,8 @@ function assert(cond, msg) {
   await page.click('#btn-guide-lock');
   assert(await page.evaluate(() => window.app.settings.guidesLocked) === false, 'slot open: verplaatsmodus');
   // liniaal draaien via greep
-  await drag([[guide.x + 760 / 2 - 30, guide.y], [guide.x + 760 / 2 - 30, guide.y + 120]], 10);
+  const grip = await page.evaluate(() => { const g = window.app.guides.get('ruler'); return g.toScreen(g.grips.rotate[1]); });
+  await drag([grip, [grip[0], grip[1] + 120]], 10);
   const rot = await page.evaluate(() => window.app.guides.get('ruler').rot);
   assert(Math.abs(rot) > 0.1, 'liniaal draait via greep');
   await page.screenshot({ path: path.join(OUT, '01-penselen-liniaal.png') });
@@ -131,7 +132,7 @@ function assert(cond, msg) {
   assert(Math.abs(Math.abs(ang) - 45) < 0.5 || Math.abs(Math.abs(ang) - 135) < 0.5, `lijn langs 45°-driehoek is 45° (${ang.toFixed(2)}°)`);
 
   console.log('Instelbare driehoek en gradenboog');
-  const triC = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return [g.x, g.y]; });
+  const triC = await page.evaluate(() => { const g = window.app.guides.get('tri45'); return g.toScreen(g.center); });
   await page.mouse.click(X(triC[0]), Y(triC[1]));
   assert(await page.isVisible('#guide-bar'), 'tik op driehoek opent instellingenbalk');
   await page.fill('#guide-bar input[data-k="angle"]', '60');

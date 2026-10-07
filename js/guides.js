@@ -1,6 +1,9 @@
-// Tekenhulpmiddelen: super-liniaal, tekendriehoek en gradenboog. Ze houden hun grootte op het
-// scherm, maar bewegen mee met de tekening bij zoomen, verschuiven en draaien: het ankerpunt
-// (de rand waarlangs getekend werd, of die op een lijn ligt) blijft op dezelfde plek in de tekening.
+// Tekenhulpmiddelen: super-liniaal, tekendriehoek en gradenboog.
+// Ze liggen vast op de tekening (positie en richting in meters), dus bij zoomen, verschuiven en
+// draaien blijft de tekenrand exact op dezelfde plek ten opzichte van de tekening:
+//   liniaal:    één tekenrand die over het hele scherm doorloopt (oorsprong = nulpunt van de maat);
+//   driehoek:   de rechte hoek ligt vast, de rechthoekszijden blijven dus op hun plek;
+//   gradenboog: middelpunt en straal in meters.
 // Een streek die bij een rand begint, wordt exact langs die rand getrokken.
 
 import { rotate, pointInPolygon, distToSegment, projectOnLine, dist, DEG, normAngle, sideOf } from './geom.js';
@@ -13,6 +16,13 @@ export const GUIDE_TYPES = {
 };
 
 const SNAP_PX = 26;
+const view = { w: 1200, h: 800 };
+
+/** Afmetingen van het tekenvlak (CSS-px), voor de doorlopende liniaal. */
+export function setGuideView(w, h) {
+  view.w = w;
+  view.h = h;
+}
 const GRIP_R = 18;
 
 export class Guide {
@@ -26,28 +36,75 @@ export class Guide {
     this.size = params.size ?? (type === 'tri45' ? 330 : 380);
     this.worldR = params.worldR ?? null;
     this.zoom = null;
-    this.anchor = params.anchor ?? null; // lokaal punt dat aan de tekening vastzit
+    this.world = null; // { p: [x, y] in meters, rot: hoek t.o.v. de tekening }
+    this.last = null;
+    this.t0 = -380;
+    this.t1 = 380;
     this.build();
   }
 
-  /** Houd schermmaten in de pas met de zoom (gradenboog heeft een vaste maat in meters). */
+  /**
+   * Breng de schermpositie in lijn met de camera. Is het hulpmiddel sinds de vorige keer op het
+   * scherm verplaatst (slepen, draaien, invoer), dan wordt eerst de plek op de tekening bijgewerkt.
+   */
   sync(cam) {
-    if (this.type !== 'protractor') return;
-    if (this.worldR == null) this.worldR = niceStep(480 / cam.zoom) / 2;
-    if (this.zoom !== cam.zoom) {
-      this.zoom = cam.zoom;
-      this.build();
+    if (this.type === 'protractor' && this.worldR == null) this.worldR = niceStep(480 / cam.zoom) / 2;
+    const l = this.last;
+    if (!this.world || !l || l.x !== this.x || l.y !== this.y || l.rot !== this.rot) {
+      this.world = { p: cam.toWorld([this.x, this.y]), rot: this.rot - cam.rot };
     }
+    const q = cam.toScreen(this.world.p);
+    this.x = q[0];
+    this.y = q[1];
+    this.rot = this.world.rot + cam.rot;
+    this.last = { x: this.x, y: this.y, rot: this.rot };
+    let rebuild = false;
+    if (this.type === 'protractor' && this.zoom !== cam.zoom) {
+      this.zoom = cam.zoom;
+      rebuild = true;
+    }
+    if (this.type === 'ruler') {
+      const [t0, t1] = this.visibleRange();
+      if (Math.abs(t0 - this.t0) > 0.5 || Math.abs(t1 - this.t1) > 0.5) {
+        this.t0 = t0;
+        this.t1 = t1;
+        rebuild = true;
+      }
+    }
+    if (rebuild) this.build();
+  }
+
+  /** Deel van de (oneindige) liniaallijn dat in beeld is, als lokale x van/tot. */
+  visibleRange() {
+    const c = Math.cos(this.rot), sn = Math.sin(this.rot);
+    const m = this.H + 40;
+    let lo = -Infinity, hi = Infinity;
+    const clip = (p0, d, min, max) => {
+      if (Math.abs(d) < 1e-9) return p0 >= min && p0 <= max;
+      let a = (min - p0) / d, b = (max - p0) / d;
+      if (a > b) [a, b] = [b, a];
+      lo = Math.max(lo, a);
+      hi = Math.min(hi, b);
+      return true;
+    };
+    const ok = clip(this.x, c, -m, view.w + m) && clip(this.y, sn, -m, view.h + m);
+    if (!ok || hi - lo < 200) return [-380, 380];
+    return [lo, hi];
   }
 
   build() {
     switch (this.type) {
       case 'ruler': {
-        const L = 760, H = 68;
-        this.L = L; this.H = H;
-        this.poly = [[-L / 2, -H / 2], [L / 2, -H / 2], [L / 2, H / 2], [-L / 2, H / 2]];
-        this.edges = [[this.poly[0], this.poly[1]], [this.poly[3], this.poly[2]]];
-        this.grips = { rotate: [[-L / 2 + 30, 0], [L / 2 - 30, 0]], resize: [] };
+        // tekenrand op lokale y = 0 (door de oorsprong), het lichaam erboven; loopt door over het scherm
+        const H = 68;
+        const t0 = this.t0, t1 = this.t1;
+        this.H = H;
+        this.L = t1 - t0;
+        this.poly = [[t0, -H], [t1, -H], [t1, 0], [t0, 0]];
+        this.edges = [[[t0, 0], [t1, 0]]];
+        // grepen binnen beeld (het zichtbare deel loopt H + 40 px voorbij de schermrand)
+        const g0 = Math.min(t0 + H + 90, (t0 + t1) / 2 - 40), g1 = Math.max(t1 - H - 90, (t0 + t1) / 2 + 40);
+        this.grips = { rotate: [[g0, -H / 2], [g1, -H / 2]], resize: [] };
         break;
       }
       case 'tri45':
@@ -58,12 +115,13 @@ export class Guide {
         const t = Math.tan(a);
         const w = t <= 1 ? S : S / t;
         const h = t <= 1 ? S * t : S;
-        const raw = [[0, 0], [w, 0], [0, -h]];
+        // oorsprong = de rechte hoek (ligt vast op de tekening)
+        this.poly = [[0, 0], [w, 0], [0, -h]];
         const c = [w / 3, -h / 3];
-        this.poly = raw.map((p) => [p[0] - c[0], p[1] - c[1]]);
         this.edges = [[this.poly[0], this.poly[1]], [this.poly[1], this.poly[2]], [this.poly[2], this.poly[0]]];
         const k = 0.45;
-        this.hole = Math.min(w, h) > 120 ? this.poly.map((p) => [p[0] * k, p[1] * k]) : null;
+        this.hole = Math.min(w, h) > 120 ? this.poly.map((p) => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]) : null;
+        this.center = c;
         const g = Math.min(34, Math.min(w, h) * 0.18);
         this.grips = {
           rotate: [[this.poly[0][0] + g + 4, this.poly[0][1] - g - 4]],
@@ -99,14 +157,11 @@ export class Guide {
     return rotate([p[0] - this.x, p[1] - this.y], -this.rot);
   }
 
-  /** Camera veranderd van prev naar cam: het lokale punt anchor blijft op dezelfde plek in de tekening. */
-  follow(prev, cam, anchor) {
-    const W = prev.toWorld(this.toScreen(anchor));
-    const Q = cam.toScreen(W);
-    this.rot += cam.rot - prev.rot;
-    const r = rotate(anchor, this.rot);
-    this.x = Q[0] - r[0];
-    this.y = Q[1] - r[1];
+  /** Ligt (een deel van) het hulpmiddel in beeld? */
+  isVisible() {
+    const pts = this.screenPoly();
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    return Math.max(...xs) > 0 && Math.min(...xs) < view.w && Math.max(...ys) > 0 && Math.min(...ys) < view.h;
   }
 
   screenPoly() {
@@ -266,7 +321,8 @@ export class Guide {
         ctx.fillText(`Ø ${formatLength(this.worldR * 2, 100)}`, dpos[0], dpos[1]);
       }
     }
-    if (this.type === 'tri45' || this.type === 'tri30') pos = [0, 0];
+    if (this.type === 'tri45' || this.type === 'tri30') pos = rotate(this.center, this.rot);
+    if (this.type === 'ruler') pos = rotate([(this.t0 + this.t1) / 2, -this.H + 15], this.rot);
     ctx.font = '600 14px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -280,31 +336,30 @@ export class Guide {
   }
 
   drawRulerTicks(ctx, cam) {
-    const L = this.L, H = this.H;
-    const minor = niceStep(7 / cam.zoom);
-    const labelStep = niceStep(70 / cam.zoom);
-    const total = L / cam.zoom;
+    // maatverdeling langs de tekenrand, gemeten vanaf de oorsprong (nulpunt) naar beide kanten
+    const z = cam.zoom;
+    const minor = niceStep(7 / z);
+    const labelStep = niceStep(70 / z);
+    const i0 = Math.ceil(this.t0 / z / minor), i1 = Math.floor(this.t1 / z / minor);
+    if (i1 - i0 > 4000) return;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const n = Math.floor(total / minor);
-    for (let i = 0; i <= n; i++) {
+    for (let i = i0; i <= i1; i++) {
       const m = i * minor;
-      const x = -L / 2 + m * cam.zoom;
+      const x = m * z;
       const isLabel = Math.abs(m / labelStep - Math.round(m / labelStep)) < 1e-6;
       const isHalf = Math.abs((m * 2) / labelStep - Math.round((m * 2) / labelStep)) < 1e-6;
-      const len = isLabel ? 16 : isHalf ? 11 : 6;
-      ctx.moveTo(x, -H / 2); ctx.lineTo(x, -H / 2 + len);
-      ctx.moveTo(x, H / 2); ctx.lineTo(x, H / 2 - len);
+      const len = i === 0 ? 30 : isLabel ? 16 : isHalf ? 11 : 6;
+      ctx.moveTo(x, 0); ctx.lineTo(x, -len);
     }
     ctx.stroke();
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const nl = Math.floor(total / labelStep);
-    for (let i = 1; i <= nl; i++) {
-      const m = i * labelStep;
-      const x = -L / 2 + m * cam.zoom;
-      if (x > L / 2 - 50) break;
-      ctx.fillText(formatTick(m), x, -H / 2 + 18);
+    ctx.textBaseline = 'bottom';
+    const j0 = Math.ceil(this.t0 / z / labelStep), j1 = Math.floor(this.t1 / z / labelStep);
+    for (let j = j0; j <= j1; j++) {
+      const x = j * labelStep * z;
+      if (x < this.t0 + 30 || x > this.t1 - 30) continue;
+      ctx.fillText(formatTick(Math.abs(j * labelStep)), x, -19);
     }
   }
 
@@ -363,7 +418,7 @@ export class Guide {
   }
 
   toJSON() {
-    return { type: this.type, x: this.x, y: this.y, rot: this.rot, angle: this.angle, size: this.size, worldR: this.worldR, anchor: this.anchor };
+    return { type: this.type, x: this.x, y: this.y, rot: this.rot, angle: this.angle, size: this.size, worldR: this.worldR };
   }
 }
 
