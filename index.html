@@ -144,8 +144,15 @@
         </select>
       </label>
     </div>
-    <label class="check"><input type="checkbox" id="map-kadaster" checked> Perceelgrenzen (Kadaster) tonen</label>
+    <label class="check"><input type="checkbox" id="map-kadaster" checked> Perceelgrenzen (Kadaster) als lijnen, met je eigen perceel en de oppervlakte</label>
     <label class="check"><input type="checkbox" id="map-buildings" checked> Gebouwen met hun hoogte toevoegen (BAG / 3D BAG, voor schaduw)</label>
+    <label class="check"><input type="checkbox" id="map-bgt" checked> Bestaande situatie toevoegen (BGT: verharding, groen, water, muren en hekken)</label>
+    <div id="map-again" class="row" hidden>
+      <span class="hint">Voor de kaart die er al ligt:</span>
+      <button type="button" id="map-get-brk">Perceelgrenzen</button>
+      <button type="button" id="map-get-bgt">Bestaande situatie</button>
+      <button type="button" id="map-get-bag">Gebouwen</button>
+    </div>
     <p class="hint" id="map-status">Kies een adres. De kaart wordt op ware grootte als ondergrond in een eigen laag geplaatst.</p>
     <footer>
       <button value="close">Annuleren</button>

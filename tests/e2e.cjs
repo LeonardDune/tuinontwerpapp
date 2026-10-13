@@ -45,6 +45,11 @@ function assert(cond, msg) {
         'NL.IMBAG.Pand.0344100000000001-0': { type: 'BuildingPart', geometry: [] } }, vertices: [] },
     ], links: [] }),
   }));
+  // perceelgrenzen (BRK) en BGT: lege antwoorden (die hebben een eigen test)
+  await ctx.route(/api\.pdok\.nl\/(kadaster\/brk|lv\/bgt)/, (route) => route.fulfill({
+    status: 200, contentType: 'application/geo+json', headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify({ type: 'FeatureCollection', features: [], links: [] }),
+  }));
   await ctx.route(/api\.pdok\.nl\/bzk\/locatieserver/, (route) => route.fulfill({
     status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ response: { docs: [{ weergavenaam: 'Dorpsstraat 1, Testdorp', centroide_ll: 'POINT(5.1214 52.0907)', type: 'adres' }] } }),

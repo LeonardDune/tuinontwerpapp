@@ -17,7 +17,7 @@ import { hydrateIcons, icon } from './icons.js';
 import {
   DrawTool, EraserTool, ShapeTool, WallTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
 } from './tools.js';
-import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate } from './geom.js';
+import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { SelectTool } from './select.js';
 import { syncOpenings } from './walls.js';
@@ -32,6 +32,7 @@ import {
 } from './edit.js';
 import { collectSegments, bestAlignment, currentAlignments } from './parallel.js';
 import { fetchBuildings, DEFAULT_BUILDING_HEIGHT } from './buildings.js';
+import { fetchParcels, fetchBgt, builtArea, polygonCentroid } from './pdok.js';
 import { STENCIL_SHADOW, canHaveHeight, itemHeight } from './shadows.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -2428,10 +2429,14 @@ class App {
 
     $('#btn-map').addEventListener('click', () => {
       status.textContent = 'Kies een adres. De kaart wordt op ware grootte als ondergrond in een eigen laag geplaatst.';
+      $('#map-again').hidden = !this.store.doc.geo;
       dlg.showModal();
       setTimeout(() => $('#map-q').focus(), 50);
     });
     $('#map-search').addEventListener('click', search);
+    $('#map-get-brk').addEventListener('click', () => { dlg.close(); this.loadParcels(); });
+    $('#map-get-bgt').addEventListener('click', () => { dlg.close(); this.loadBgt(); });
+    $('#map-get-bag').addEventListener('click', () => { dlg.close(); this.loadBuildings(); });
     $('#map-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
     $('#map-locate').addEventListener('click', () => {
       if (!navigator.geolocation) return;
@@ -2466,7 +2471,9 @@ class App {
         if (this.sun.active) this.sun.render();
         dlg.close();
         this.toast(`Kaart geplaatst: ${sizeM} × ${sizeM} m op ware grootte. De laag is vergrendeld.`, 4000);
+        if ($('#map-bgt').checked) await this.loadBgt();
         if ($('#map-buildings').checked) await this.loadBuildings();
+        if ($('#map-kadaster').checked) await this.loadParcels();
       } catch (err) {
         status.textContent = err.message || String(err);
       } finally {
@@ -2532,14 +2539,7 @@ class App {
         height: b.height, bag: b.id, source: '3dbag', ...(b.estimated ? { heightEstimated: true } : {}),
       }));
       this.store.mutate((doc) => {
-        let layer = doc.layers.find((l) => l.source === 'gebouwen');
-        if (!layer) {
-          layer = newLayer('Gebouwen (BAG / 3D BAG)');
-          layer.source = 'gebouwen';
-          // direct boven de kaart
-          const mapIdx = doc.layers.findIndex((l) => l.items.some((i) => i.type === 'image'));
-          doc.layers.splice(mapIdx >= 0 ? mapIdx + 1 : 0, 0, layer);
-        }
+        const layer = sourceLayer(doc, 'gebouwen', 'Gebouwen (BAG / 3D BAG)');
         layer.items = items;
       }, 'buildings');
       if (res.withHeight === res.buildings.length) {
@@ -2552,6 +2552,85 @@ class App {
     } catch (err) {
       console.error(err);
       this.toast('Gebouwen ophalen mislukt: ' + (err.message || err), 6000);
+    }
+  }
+
+  /** Perceelgrenzen uit de Kadastrale Kaart (BRK) als lijnen; het eigen perceel dik, met nummer en oppervlakte. */
+  async loadParcels() {
+    const geo = this.store.doc.geo;
+    const anchor = this.geoAnchor();
+    if (!geo || !anchor) { this.toast('Importeer eerst een kaart van je adres; dan weet de app waar de percelen liggen.'); return; }
+    const sizeM = Math.min(400, geo.sizeM || 100);
+    try {
+      this.toast('Perceelgrenzen ophalen bij het Kadaster…', 8000);
+      const parcels = await fetchParcels({ lat: geo.lat, lon: geo.lon, sizeM, anchor });
+      if (!parcels.length) { this.toast('Geen percelen gevonden in dit gebied.'); return; }
+      const sc = this.store.doc.scale;
+      const own = parcels.find((q) => q.own);
+      const items = parcels.map((q) => ({
+        type: 'shape', id: uid(), kind: 'polygon', points: q.points, color: '#b03a2e',
+        width: paperToWorld(q.own ? 0.6 : 0.3, sc), dash: !q.own, source: 'brk',
+        brk: { perceel: q.label, grootte: q.grootte, eigen: q.own || undefined },
+      }));
+      let msg = `${parcels.length} perceelgrenzen toegevoegd (vergrendelde laag).`;
+      if (own) {
+        const area = own.grootte || Math.abs(polygonArea(own.points));
+        const blds = [];
+        for (const l of this.store.doc.layers) if (l.source === 'gebouwen') for (const i of l.items) if (i.type === 'shape' && i.kind === 'polygon') blds.push(i.points);
+        const built = blds.length ? builtArea(own.points, blds) : 0;
+        const c = polygonCentroid(own.points);
+        const fmt = (v) => Math.round(v).toLocaleString('nl-NL');
+        const text = `Perceel ${own.label}\n${fmt(area)} m²${built > 1 ? ` · tuin ca. ${fmt(area - built)} m²` : ''}`;
+        items.push({ type: 'text', id: uid(), x: c[0] - paperToWorld(18, sc), y: c[1], size: paperToWorld(3.5, sc), text, color: '#b03a2e', source: 'brk' });
+        msg = `Je perceel ${own.label}: ${fmt(area)} m²${own.grootte ? ' (kadastraal)' : ''}`
+          + (built > 1 ? `, waarvan bebouwd ca. ${fmt(built)} m² en tuin ca. ${fmt(area - built)} m².` : '.')
+          + (parcels.length > 1 ? ` Plus ${parcels.length - 1} ${parcels.length === 2 ? 'buurperceel' : 'buurpercelen'}.` : '');
+      }
+      this.store.mutate((doc) => {
+        const layer = sourceLayer(doc, 'percelen', 'Perceelgrenzen (Kadaster)');
+        layer.locked = true;
+        layer.items = items;
+      }, 'parcels');
+      this.toast(msg, 7000);
+    } catch (err) {
+      console.error(err);
+      this.toast('Perceelgrenzen ophalen mislukt: ' + (err.message || err), 6000);
+    }
+  }
+
+  /** Bestaande situatie uit de BGT: verharding, groen, water, bouwwerken en scheidingen, met passende materialen. */
+  async loadBgt() {
+    const geo = this.store.doc.geo;
+    const anchor = this.geoAnchor();
+    if (!geo || !anchor) { this.toast('Importeer eerst een kaart van je adres; dan weet de app waar de BGT-gegevens moeten komen.'); return; }
+    const sizeM = Math.min(400, geo.sizeM || 100);
+    try {
+      const res = await fetchBgt({ lat: geo.lat, lon: geo.lon, sizeM, anchor, onStatus: (t) => this.toast(t, 8000) });
+      if (!res.shapes.length) {
+        this.toast(res.errors.length ? `BGT ophalen mislukt: ${res.errors[0]}` : 'Geen BGT-gegevens gevonden in dit gebied.', 6000);
+        return;
+      }
+      const sc = this.store.doc.scale;
+      const items = res.shapes.map((sh) => {
+        const st = sh.style;
+        if (sh.kind === 'line') {
+          return { type: 'shape', id: uid(), kind: 'line', points: sh.points, color: '#3b3b3b', width: paperToWorld(0.5, sc), source: 'bgt', bgt: { klasse: sh.collection, type: st.label } };
+        }
+        const it = { type: 'shape', id: uid(), kind: 'polygon', points: sh.points, color: '#8a867e', width: paperToWorld(0.12, sc), source: 'bgt', bgt: { klasse: sh.collection, type: st.label } };
+        if (st.hatch && st.hatch !== 'none') it.hatch = st.hatch;
+        if (st.fill) { it.fill = st.fill; it.fillAlpha = 0.55; }
+        return it;
+      });
+      this.store.mutate((doc) => {
+        const layer = sourceLayer(doc, 'bgt', 'Bestaande situatie (BGT)');
+        layer.locked = true;
+        layer.items = items;
+      }, 'bgt');
+      const parts = Object.entries(res.counts).map(([k, n]) => `${n} ${res.names[k].toLowerCase()}`).join(', ');
+      this.toast(`Bestaande situatie uit de BGT toegevoegd: ${parts}. De laag is vergrendeld; ontgrendel hem om onderdelen aan te passen.${res.errors.length ? ` (Niet alles lukte: ${res.errors[0]})` : ''}`, 8000);
+    } catch (err) {
+      console.error(err);
+      this.toast('BGT ophalen mislukt: ' + (err.message || err), 6000);
     }
   }
 
@@ -2679,6 +2758,27 @@ function migratePlanting(doc) {
       }
     }
   }
+}
+
+/**
+ * Laag voor gegevens van buiten (BGT, gebouwen, percelen), direct boven de kaart in een vaste volgorde:
+ * kaart → bestaande situatie → gebouwen → perceelgrenzen.
+ */
+function sourceLayer(doc, source, name) {
+  let layer = doc.layers.find((l) => l.source === source);
+  if (layer) return layer;
+  layer = newLayer(name);
+  layer.source = source;
+  const order = ['bgt', 'gebouwen', 'percelen'];
+  const mapIdx = doc.layers.findIndex((l) => l.items.some((i) => i.type === 'image'));
+  let idx = mapIdx >= 0 ? mapIdx + 1 : 0;
+  // na de lagen die in de volgorde vóór deze komen
+  for (let i = 0; i < doc.layers.length; i++) {
+    const k = order.indexOf(doc.layers[i].source);
+    if (k >= 0 && k < order.indexOf(source)) idx = Math.max(idx, i + 1);
+  }
+  doc.layers.splice(idx, 0, layer);
+  return layer;
 }
 
 /** Deuren en ramen van vóór de koppeling: alsnog aan de muur koppelen waar ze in liggen. */

@@ -46,6 +46,13 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   kleur. De tegels volgen de richting van de eerste zijde van de vorm; met *Legrichting* stel je die exact in.
   Met *Materiaal* en *Voeg* kies je de kleur van de tegels of klinkers en van de voegen; bij klinkers met brede voeg
   is de voeg een gekleurd vlak (standaard groen, bijvoorbeeld zand- of splitkleurig te maken).
+- **Perceelgrenzen en bestaande situatie (PDOK)**: bij het plaatsen van een kaart (of later via het Kaart-venster)
+  haalt de app de perceelgrenzen uit de Kadastrale Kaart (BRK) op als echte lijnen. Je eigen perceel, waar het adres
+  ligt, wordt dik getekend met perceelnummer en kadastrale grootte, plus het tuinoppervlak (perceel min bebouwing);
+  buurpercelen dun gestippeld. Uit de BGT komt de bestaande situatie: gras en groen, verharding (als klinkers, grind of
+  dichte verharding), wegen, water, bouwwerken en muren/hekken, met de passende materialen en bijgesneden tot het
+  kaartgebied. Beide komen in een eigen, vergrendelde laag, zodat je erop kunt snappen zonder ze per ongeluk te
+  verschuiven.
 - **Plattegrond van het huis**: het gereedschap *Muur* tekent muren met een dikte (10, 20, 30 of 40 cm of zelf
   invullen) als ketting van punten; tik op het eerste punt om rond te sluiten. Muren zijn gearceerd en hebben nette
   verstekhoeken. Bij *Stencils › Huis: deuren en ramen* staan binnendeur, buitendeur, dubbele deur, openslaande
