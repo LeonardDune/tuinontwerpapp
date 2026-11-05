@@ -22,6 +22,12 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   Een vinger op de gradenboog of het midden tussen je vingers erop is genoeg, dus het werkt ook bij een kleine gradenboog. Een streek langs de
   boog wordt een boog met precies die straal. Vanuit het middelpunt trek je lijnen onder een hele graad. Het middelpunt
   snapt aan eindpunten, zodat je bogen rond een punt kunt tekenen.
+- **Beeld draaien**: draai je werkblad zoals een vel papier op tafel, zonder dat de tuin van windrichting verandert
+  (zon, schaduw en noordpijl rekenen in de tekening). Met twee vingers (klikt vast bij noorden boven en elke 90°), met
+  ↺ ↻ in de statusbalk (per 15°; tik op de hoek voor een exacte waarde), of op de laptop met Alt/⌥ + scrollen en de
+  toetsen [ en ]. De noordpijl rechtsboven wijst altijd naar het noorden; tik erop voor noorden boven, nog eens tikken
+  draait terug. *Alles in beeld* houdt de draaiing aan. Bij exporteren kies je *Noorden boven* of *Zoals op het
+  scherm*; de noordpijl op het papier draait mee.
 - **Hulpmiddelen liggen vast op de tekening**: zoom, verschuif of draai je de tekening, dan blijven liniaal, driehoek
   en gradenboog exact op dezelfde plek ten opzichte van de tekening (een liniaal op 1,5 m van een muur blijft op 1,5 m).
   De liniaal heeft één tekenrand die over het hele scherm doorloopt, dus ook ver ingezoomd teken je een hele muur in één

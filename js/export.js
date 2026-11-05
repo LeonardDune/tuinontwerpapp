@@ -18,11 +18,19 @@ export const PAPER = {
 const MARGIN = 10;
 const TITLE_H = 24;
 
-export function contentBox(doc) {
+/** Omhullende van de tekening; met rot (radialen) in het gedraaide assenstelsel van een gedraaid beeld. */
+export function contentBox(doc, rot = 0) {
   let box = null;
+  const c = Math.cos(rot), s = Math.sin(rot);
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
-    for (const item of layer.items) box = unionBox(box, itemBBox(item));
+    for (const item of layer.items) {
+      const b = itemBBox(item);
+      if (!b || !rot) { box = unionBox(box, b); continue; }
+      const pts = [[b.minX, b.minY], [b.maxX, b.minY], [b.maxX, b.maxY], [b.minX, b.maxY]].map(([x, y]) => [c * x - s * y, s * x + c * y]);
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      box = unionBox(box, { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) });
+    }
   }
   return box;
 }
@@ -35,7 +43,7 @@ export function planExport(doc, opts, viewBox) {
   const titleH = opts.titleBlock ? TITLE_H : 0;
   const drawW = pageW - MARGIN * 2;
   const drawH = pageH - MARGIN * 2 - titleH;
-  const box = opts.area === 'view' && viewBox ? viewBox : contentBox(doc);
+  const box = opts.area === 'view' && viewBox ? viewBox : contentBox(doc, opts.rot || 0);
   if (!box) return null;
   const bw = Math.max(box.maxX - box.minX, 0.01), bh = Math.max(box.maxY - box.minY, 0.01);
   let scale = opts.scale;
@@ -70,7 +78,8 @@ export async function renderExport(doc, opts, viewBox) {
   dc.height = dh;
   const cam = new Camera();
   cam.zoom = (pxmm * 1000) / scale;
-  cam.rot = 0;
+  // box ligt in het (eventueel gedraaide) assenstelsel van het papier
+  cam.rot = opts.rot || 0;
   cam.x = dw / 2 - ((box.minX + box.maxX) / 2) * cam.zoom;
   cam.y = dh / 2 - ((box.minY + box.maxY) / 2) * cam.zoom;
   const exportDoc = { ...doc, scale: doc.scale };
@@ -141,7 +150,7 @@ function drawTitleBlock(g, k, { drawW, drawH, scale, doc, opts }) {
   const r = 7;
   g.save();
   g.translate(mm(nx), mm(ny));
-  g.rotate(((doc.northDeg || 0) * Math.PI) / 180);
+  g.rotate(((doc.northDeg || 0) * Math.PI) / 180 + (opts.rot || 0));
   g.translate(-mm(nx), -mm(ny));
   g.beginPath();
   g.moveTo(mm(nx), mm(ny - r));

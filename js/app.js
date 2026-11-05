@@ -10,7 +10,7 @@ import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stenci
 import { setAssetLoadHandler } from './assets.js';
 import { transformItem, invalidate as invalidateItem, hatchAngle } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
-import { SCALES, formatAngle, parseLength, formatLength, niceStep } from './units.js';
+import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
@@ -178,7 +178,7 @@ class App {
     // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen en hechten aan deze tekening
     for (const g of this.guides.values()) g.world = null;
     if (doc.view) this.cam.set(doc.view);
-    else this.fitView(true);
+    else { this.cam.rot = 0; this.fitView(true); } // nieuwe tekening: noorden boven
     this.settings.lastDoc = doc.id;
     this.persistSettings();
     $('#doc-name').value = doc.name;
@@ -412,9 +412,11 @@ class App {
   }
 
   fitView(defaultIfEmpty = false) {
-    const box = contentBox(this.store.doc);
-    if (box) this.cam.fitBox(box, this.width, this.height, 50);
-    else if (defaultIfEmpty || !box) this.cam.fitBox({ minX: -10, minY: -7, maxX: 10, maxY: 7 }, this.width, this.height, 30);
+    // de draaiing van het beeld blijft staan
+    const rot = this.cam.rot;
+    const box = contentBox(this.store.doc, rot);
+    if (box) this.cam.fitBox(box, this.width, this.height, 50, rot);
+    else if (defaultIfEmpty || !box) this.cam.fitBox({ minX: -10, minY: -7, maxX: 10, maxY: 7 }, this.width, this.height, 30, rot);
     this.cameraChanged();
   }
 
@@ -711,9 +713,15 @@ class App {
       const a = this.pointers.get(n.ids[0]), b = this.pointers.get(n.ids[1]);
       if (!a || !b) return;
       this.cam.fitTwoPoints(n.A, n.B, a.s, b.s, this.settings.rotateGesture);
-      if (this.settings.rotateGesture && Math.abs(normAngle(this.cam.rot)) < 3 * DEG && this.cam.rot !== 0) {
-        this.cam.rot = 0;
-        this.cam.fitTwoPoints(n.A, n.B, a.s, b.s, false);
+      if (this.settings.rotateGesture) {
+        // klik vast bij noorden boven en elke 90° daarvandaan
+        const north = -((this.store.doc.northDeg || 0) * Math.PI) / 180;
+        const off = normAngle(this.cam.rot - north);
+        const snap = Math.round(off / (Math.PI / 2)) * (Math.PI / 2);
+        if (Math.abs(off - snap) < 3 * DEG && Math.abs(off - snap) > 1e-9) {
+          this.cam.rot = north + snap;
+          this.cam.fitTwoPoints(n.A, n.B, a.s, b.s, false);
+        }
       }
     }
     this.cameraChanged();
@@ -986,6 +994,17 @@ class App {
   onWheel(e) {
     e.preventDefault();
     const s = this.pos(e);
+    if (e.altKey) {
+      // Alt/Option + scrollen: beeld draaien om de muis, met een klik bij noorden en elke 90°
+      const d = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : 1);
+      this.cam.rotateAt(s[0], s[1], (-d * 0.15 * Math.PI) / 180);
+      const north = -((this.store.doc.northDeg || 0) * Math.PI) / 180;
+      const off = normAngle(this.cam.rot - north);
+      const snap = Math.round(off / (Math.PI / 2)) * (Math.PI / 2);
+      if (Math.abs(off - snap) < 1.5 * DEG) this.cam.rotateAt(s[0], s[1], snap - off);
+      this.cameraChanged();
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       this.cam.zoomAt(s[0], s[1], Math.exp(-e.deltaY * 0.01));
     } else if (e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY))) {
@@ -1018,6 +1037,7 @@ class App {
     if (mod && k === 'v') { this.pasteClipboard(); return; }
     if (mod && k === 'd') { e.preventDefault(); this.selectionAction('duplicate'); return; }
     if (mod && k === 'a') { e.preventDefault(); this.selectLayer(this.store.doc.activeLayer); return; }
+    if (!mod && (e.key === '[' || e.key === ']')) { this.rotateViewBy(e.key === ']' ? 15 : -15); return; }
     if (mod && k === 's') { e.preventDefault(); this.saveNow(); return; }
     if (mod) return;
     if (k === 'delete' || k === 'backspace') { this.selectionAction('delete'); return; }
@@ -1098,9 +1118,15 @@ class App {
     $('#btn-layers-close').addEventListener('click', () => { $('#layers-panel').hidden = true; });
     $('#btn-layer-add').addEventListener('click', () => this.addLayer());
     $('#btn-fit').addEventListener('click', () => this.fitView());
-    $('#btn-reset-rot').addEventListener('click', () => {
-      this.cam.rotateAt(this.width / 2, this.height / 2, -this.cam.rot);
-      this.cameraChanged();
+    $('#btn-north').addEventListener('click', () => this.toggleNorthUp());
+    $('#btn-rot-ccw').addEventListener('click', () => this.rotateViewBy(-15));
+    $('#btn-rot-cw').addEventListener('click', () => this.rotateViewBy(15));
+    $('#rot-info').addEventListener('click', async () => {
+      const cur = Math.round(this.viewAngleDeg() * 10) / 10;
+      const v = await this.askText('Beeld draaien (graden rechtsom, 0 = noorden boven)', String(cur).replace('.', ','));
+      if (v == null) return;
+      const deg = parseFloat(String(v).replace(',', '.'));
+      if (Number.isFinite(deg)) this.setViewAngleDeg(deg);
     });
 
     const nameInput = $('#doc-name');
@@ -1219,9 +1245,54 @@ class App {
 
   updateStatus() {
     $('#doc-scale').value = String(this.store.doc.scale);
-    const rotated = Math.abs(normAngle(this.cam.rot)) > 0.001;
-    $('#btn-reset-rot').hidden = !rotated;
-    $('#zoom-info').textContent = rotated ? `Beeld gedraaid ${formatAngle(-this.cam.rot)}` : '';
+    const deg = this.viewAngleDeg();
+    const north = Math.abs(deg) < 0.05 || Math.abs(deg - 360) < 0.05;
+    $('#rot-info').textContent = north ? 'Noorden boven' : `Gedraaid ${String(Math.round(deg * 10) / 10).replace('.', ',')}°`;
+    $('#zoom-info').textContent = '';
+    // de noordpijl wijst naar het noorden op het scherm
+    const needle = document.querySelector('#btn-north .needle');
+    if (needle) needle.style.transform = `rotate(${this.northScreenRad() * 180 / Math.PI}deg)`;
+  }
+
+  /** Richting van het noorden op het scherm (radialen, 0 = boven). */
+  northScreenRad() {
+    return ((this.store.doc.northDeg || 0) * Math.PI) / 180 + this.cam.rot;
+  }
+
+  /** Hoe ver het beeld rechtsom gedraaid is ten opzichte van "noorden boven" (0–360°). */
+  viewAngleDeg() {
+    // beeld rechtsom gedraaid = het noorden draait op het scherm mee rechtsom
+    let d = (this.northScreenRad() * 180) / Math.PI;
+    d = ((d % 360) + 360) % 360;
+    return d > 359.95 ? 0 : d;
+  }
+
+  /** Draai het beeld (niet de tekening) om het midden van het scherm. */
+  setViewAngleDeg(deg) {
+    const target = -((this.store.doc.northDeg || 0) * Math.PI) / 180 + (deg * Math.PI) / 180;
+    this.cam.rotateAt(this.width / 2, this.height / 2, normAngle(target - this.cam.rot));
+    this.cameraChanged();
+  }
+
+  rotateViewBy(deg) {
+    // naar het volgende veelvoud van de stap, zodat je op ronde hoeken uitkomt
+    const cur = this.viewAngleDeg();
+    const next = deg > 0 ? Math.floor(cur / deg + 1e-6) * deg + deg : Math.ceil(cur / -deg - 1e-6) * -deg + deg;
+    this.setViewAngleDeg(next);
+  }
+
+  /** Noorden boven; nog eens: terug naar de vorige draaiing. */
+  toggleNorthUp() {
+    const deg = this.viewAngleDeg();
+    if (deg !== 0) {
+      this.lastViewAngle = deg;
+      this.setViewAngleDeg(0);
+      this.toast('Noorden boven. Tik nog eens op de noordpijl om terug te draaien.', 2500);
+    } else if (this.lastViewAngle) {
+      this.setViewAngleDeg(this.lastViewAngle);
+    } else {
+      this.toast('Draai het beeld met twee vingers, met de knoppen ↺ ↻ onderaan, of op de laptop met Alt + scrollen of [ en ]. De windrichting van de tuin blijft gelijk.', 6000);
+    }
   }
 
   toast(msg, ms = 3000) {
@@ -2692,9 +2763,13 @@ class App {
       title: $('#exp-title').value.trim(),
       subtitle: $('#exp-subtitle').value.trim(),
       plantView: this.state.plantView || 'planten',
+      // richting op papier: noorden boven, of gedraaid zoals het beeld nu staat
+      rot: $('#exp-rot').value === 'view' ? this.cam.rot : -((this.store.doc.northDeg || 0) * Math.PI) / 180,
     });
     const viewBox = () => {
-      const pts = [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map((p) => this.cam.toWorld(p));
+      // in het assenstelsel van het papier (gedraaid met dezelfde hoek als de export)
+      const r = opts().rot, c = Math.cos(r), s = Math.sin(r);
+      const pts = [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map((p) => this.cam.toWorld(p)).map(([x, y]) => [c * x - s * y, s * x + c * y]);
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
       return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
     };
@@ -2707,11 +2782,13 @@ class App {
       el.textContent = `Gebied ${f(bw)} × ${f(bh)} m op ${opts().paper} bij schaal 1:${plan.scale}. ` +
         (plan.fits ? 'Past op het papier.' : 'Let op: past niet helemaal; de randen vallen weg. Kies een kleinere schaal (groter getal) of groter papier.');
     };
-    for (const id of ['#exp-paper', '#exp-orient', '#exp-scale', '#exp-area', '#exp-titleblock']) $(id).addEventListener('change', info);
+    for (const id of ['#exp-paper', '#exp-orient', '#exp-scale', '#exp-area', '#exp-rot', '#exp-titleblock']) $(id).addEventListener('change', info);
 
     $('#btn-export').addEventListener('click', () => {
       $('#exp-title').value = this.store.doc.name;
       scaleSel.value = String(this.store.doc.scale);
+      // gedraaid beeld: standaard ook gedraaid op papier
+      $('#exp-rot').value = this.viewAngleDeg() === 0 ? 'north' : 'view';
       info();
       dlg.showModal();
     });

@@ -44,6 +44,8 @@ const P = {
   check: '<path d="m5 12 5 5 9-10"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  rotCcw: '<path d="M4 5v5h5"/><path d="M4.6 14a8 8 0 1 0 1.8-8.3L4 10"/>',
+  rotCw: '<path d="M20 5v5h-5"/><path d="M19.4 14a8 8 0 1 1-1.8-8.3L20 10"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m12 5 3 8h-6Z"/>',
   palette: '<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.3"/><circle cx="12" cy="7.5" r="1.3"/><circle cx="16" cy="10" r="1.3"/><path d="M12 21a2 2 0 0 1 0-4h1.5a2.5 2.5 0 0 0 0-5"/>',
   front: '<rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>',

@@ -92,6 +92,9 @@
   <aside id="plant-panel" class="side-panel" hidden></aside>
 
   <footer id="optionsbar"></footer>
+  <button id="btn-north" class="north-btn" title="Noorden boven (nog eens tikken: terug naar je eigen draaiing)" aria-label="Noorden">
+    <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true"><g class="needle"><path d="M20 4 26 21 20 18 14 21Z" fill="#c0392b"/><path d="M20 36 14 19 20 22 26 19Z" fill="#7f8c8d"/><text x="20" y="3.5" text-anchor="middle" font-size="7" font-weight="700" fill="#1d2b36">N</text></g></svg>
+  </button>
 
   <div id="statusbar">
     <label class="scale-select">Tekenschaal
@@ -99,7 +102,11 @@
     </label>
     <span id="zoom-info"></span>
     <div class="spacer"></div>
-    <button class="sb" id="btn-reset-rot" title="Draaiing herstellen" hidden><i data-icon="compass" data-size="18"></i></button>
+    <div class="rotgroup" title="Beeld draaien (de windrichting van de tuin blijft gelijk)">
+      <button class="sb" id="btn-rot-ccw" title="15° linksom draaien ( [ )"><i data-icon="rotCcw" data-size="18"></i></button>
+      <button class="sb rot-info" id="rot-info" title="Draaiing exact invullen">Noorden boven</button>
+      <button class="sb" id="btn-rot-cw" title="15° rechtsom draaien ( ] )"><i data-icon="rotCw" data-size="18"></i></button>
+    </div>
     <button class="sb" id="btn-fit" title="Alles in beeld"><i data-icon="fit" data-size="18"></i></button>
     <span id="save-state"></span>
   </div>
@@ -179,6 +186,9 @@
       </label>
       <label>Gebied
         <select id="exp-area"><option value="all">Hele tekening</option><option value="view">Huidig beeld</option></select>
+      </label>
+      <label>Richting
+        <select id="exp-rot"><option value="north">Noorden boven</option><option value="view">Zoals op het scherm (gedraaid)</option></select>
       </label>
     </div>
     <label class="check"><input type="checkbox" id="exp-titleblock" checked> Titelblok met schaalbalk en noordpijl</label>

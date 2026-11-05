@@ -78,10 +78,11 @@ export class Camera {
   }
 
   /** Laat een wereldkader passend in een schermrechthoek zien. */
-  fitBox(box, width, height, padding = 40) {
+  /** Kader in beeld; box ligt in het assenstelsel dat met rot gedraaid is (rot = 0: gewoon de wereld). */
+  fitBox(box, width, height, padding = 40, rot = 0) {
     const bw = Math.max(box.maxX - box.minX, 1e-3);
     const bh = Math.max(box.maxY - box.minY, 1e-3);
-    this.rot = 0;
+    this.rot = rot;
     this.zoom = clamp(Math.min((width - padding * 2) / bw, (height - padding * 2) / bh), MIN_ZOOM, MAX_ZOOM);
     this.x = width / 2 - ((box.minX + box.maxX) / 2) * this.zoom;
     this.y = height / 2 - ((box.minY + box.maxY) / 2) * this.zoom;
