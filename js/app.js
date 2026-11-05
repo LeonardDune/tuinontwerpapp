@@ -335,6 +335,7 @@ class App {
       g.draw(ctx, cam, dpr, g === activeGuide, this.settings.guidesLocked);
     }
     this.drawAlignment(ctx);
+    this.drawRotateRing(ctx);
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -480,6 +481,8 @@ class App {
     document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     window.addEventListener('keydown', (e) => this.onKey(e, true));
+    // toetsen kunnen 'blijven hangen' als het venster de focus verliest
+    window.addEventListener('blur', () => { this.rotKey = false; this.spaceDown = false; if (!this.rotDrag) this.canvas.style.cursor = ''; });
     window.addEventListener('keyup', (e) => this.onKey(e, false));
     window.addEventListener('beforeunload', () => { this.store.doc.view = this.cam.toJSON(); this.saveNow(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveNow(); });
@@ -545,11 +548,14 @@ class App {
 
   /** Begin een handeling voor een nieuwe aanraking: hulpmiddel verplaatsen, navigeren of tekenen. */
   startToolOrGuide(e, s) {
-    // Alt/⌥ of Shift + rechtermuisknop: beeld traploos draaien om het midden van het scherm
-    if (e.pointerType === 'mouse' && e.button === 2 && (e.altKey || e.shiftKey)) {
+    // beeld traploos draaien om het midden van het scherm:
+    // D ingedrukt + slepen (muis of trackpad), of Alt/⌥, Shift, Ctrl of Cmd + rechtermuisknop slepen
+    const rightMod = e.pointerType === 'mouse' && e.button === 2 && (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey);
+    if (rightMod || (this.rotKey && e.pointerType !== 'touch')) {
       const c = [this.width / 2, this.height / 2];
       this.mode = 'rotate';
-      this.rotDrag = { c, last: Math.atan2(s[1] - c[1], s[0] - c[0]), raw: this.cam.rot, id: e.pointerId };
+      this.rotDrag = { c, last: Math.atan2(s[1] - c[1], s[0] - c[0]), raw: this.cam.rot, id: e.pointerId, cur: s };
+      this.requestRender();
       this.canvas.style.cursor = 'grabbing';
       return;
     }
@@ -653,7 +659,7 @@ class App {
         if (e.pointerId !== this.rotDrag?.id) break;
         this.mode = null;
         this.rotDrag = null;
-        this.canvas.style.cursor = '';
+        this.canvas.style.cursor = this.rotKey ? 'alias' : '';
         this.cam.rot = normAngle(this.cam.rot); // na een hele slag rond: hoek weer binnen ±180°
         this.cameraChanged();
         break;
@@ -746,10 +752,44 @@ class App {
     this.cameraChanged();
   }
 
+  /** Draaicirkel in het midden tijdens het draaien: noordrichting, de hand en de hoek. */
+  drawRotateRing(ctx) {
+    const d = this.rotDrag;
+    if (!d) return;
+    const [cx, cy] = d.c, R = 74;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.strokeStyle = 'rgba(47,93,58,0.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // noorden op het scherm
+    const n = this.northScreenRad();
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.sin(n) * (R - 6), cy - Math.cos(n) * (R - 6));
+    ctx.lineTo(cx + Math.sin(n + 0.18) * (R - 26), cy - Math.cos(n + 0.18) * (R - 26));
+    ctx.lineTo(cx + Math.sin(n - 0.18) * (R - 26), cy - Math.cos(n - 0.18) * (R - 26));
+    ctx.closePath(); ctx.fill();
+    ctx.font = '700 11px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('N', cx + Math.sin(n) * (R + 12), cy - Math.cos(n) * (R + 12));
+    // lijn naar de muis
+    ctx.strokeStyle = 'rgba(29,43,54,0.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(d.cur[0], d.cur[1]); ctx.stroke();
+    ctx.setLineDash([]);
+    const deg = Math.round(this.viewAngleDeg() * 10) / 10;
+    ctx.fillStyle = '#1d2b36';
+    ctx.font = '600 15px system-ui, -apple-system, sans-serif';
+    ctx.fillText(deg === 0 ? 'Noorden boven' : `${String(deg).replace('.', ',')}°`, cx, cy);
+    ctx.restore();
+  }
+
   /** Traploos draaien: de hoek van de muis rond het midden van het scherm, met een lichte magneet bij noorden en elke 90°. */
   updateRotateDrag(s) {
     const d = this.rotDrag;
     if (!d) return;
+    d.cur = s;
     if (Math.hypot(s[0] - d.c[0], s[1] - d.c[1]) < 12) return; // vlak bij het midden is de hoek onrustig
     const a = Math.atan2(s[1] - d.c[1], s[0] - d.c[0]);
     d.raw += normAngle(a - d.last); // optellen, zodat ook een hele slag rond kan
@@ -1064,6 +1104,17 @@ class App {
       e.preventDefault();
       return;
     }
+    if (e.code === 'KeyD' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // D ingedrukt houden + slepen = beeld draaien (werkt ook met een trackpad)
+      if (down && !this.rotKey && !this.rotKeyHinted) {
+        this.rotKeyHinted = true;
+        this.toast('D ingedrukt houden en slepen: beeld draaien rond het midden.', 2500);
+      }
+      this.rotKey = down;
+      if (!this.rotDrag) this.canvas.style.cursor = down ? 'alias' : '';
+      e.preventDefault();
+      return;
+    }
     if (!down) return;
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
@@ -1327,7 +1378,7 @@ class App {
     } else if (this.lastViewAngle) {
       this.setViewAngleDeg(this.lastViewAngle);
     } else {
-      this.toast('Draai het beeld met twee vingers, met de knoppen ↺ ↻ onderaan, of op de laptop traploos met Alt/⌥ of Shift + rechtermuisknop slepen (of Alt + scrollen, [ en ]). De windrichting van de tuin blijft gelijk.', 6000);
+      this.toast('Draai het beeld met twee vingers, met de knoppen ↺ ↻ onderaan, of op de laptop traploos: houd D ingedrukt en sleep (of Alt/⌥ + rechtermuisknop slepen, Alt + scrollen, [ en ]). De windrichting van de tuin blijft gelijk.', 6000);
     }
   }
 

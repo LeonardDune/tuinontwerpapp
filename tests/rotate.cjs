@@ -70,7 +70,24 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await arc(['Alt'], 0, 360 + 20, 60);
   s = await st();
   assert(Math.abs(s.deg - 59.5) < 0.1, `een hele slag rond plus 20° (${s.deg.toFixed(2)}°)`);
-  await arc(['Alt'], 0, -59, 20);
+  // D ingedrukt houden + slepen met de linkerknop (ook met een trackpad)
+  {
+    const c = await page.evaluate(() => [window.app.width / 2, window.app.height / 2]);
+    const P = (deg) => [box.x + c[0] + Math.cos(deg * Math.PI / 180) * 200, box.y + c[1] + Math.sin(deg * Math.PI / 180) * 200];
+    const before = (await st()).deg;
+    await page.keyboard.down('d');
+    await page.mouse.move(...P(0)); await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(...P(k));
+    const ring = await page.evaluate(() => !!window.app.rotDrag);
+    await page.screenshot({ path: path.join(OUT, 'draaicirkel.png') });
+    await page.mouse.up(); await page.keyboard.up('d');
+    const after = await st();
+    const items = await page.evaluate(() => JSON.stringify(window.app.store.doc.layers[0].items));
+    assert(ring && Math.abs(after.deg - before - 10) < 0.05 && items === s0.items, `D + slepen: 10° traploos gedraaid, met draaicirkel, niets getekend (${after.deg.toFixed(2)}°)`);
+  }
+  await arc(['Control'], 0, 3);
+  assert(Math.abs((await st()).deg - 72.5) < 0.1, 'Ctrl + rechtermuisknop werkt ook');
+  await arc(['Alt'], 0, -72, 20);
   s = await st();
   assert(s.deg === 0, 'magneet: vlak bij noorden boven klikt het precies recht');
   const panBefore = await page.evaluate(() => ({ x: window.app.cam.x, rot: window.app.cam.rot }));
