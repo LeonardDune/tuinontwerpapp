@@ -545,6 +545,14 @@ class App {
 
   /** Begin een handeling voor een nieuwe aanraking: hulpmiddel verplaatsen, navigeren of tekenen. */
   startToolOrGuide(e, s) {
+    // Alt/⌥ of Shift + rechtermuisknop: beeld traploos draaien om het midden van het scherm
+    if (e.pointerType === 'mouse' && e.button === 2 && (e.altKey || e.shiftKey)) {
+      const c = [this.width / 2, this.height / 2];
+      this.mode = 'rotate';
+      this.rotDrag = { c, last: Math.atan2(s[1] - c[1], s[0] - c[0]), raw: this.cam.rot, id: e.pointerId };
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
     const touchNav = e.pointerType === 'touch' && this.settings.pencilOnly;
     const mouseNav = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || this.spaceDown);
     const locked = this.settings.guidesLocked;
@@ -623,6 +631,9 @@ class App {
       case 'nav':
         this.updateNav();
         break;
+      case 'rotate':
+        if (e.pointerId === this.rotDrag?.id) this.updateRotateDrag(s);
+        break;
       case 'guide':
         this.updateGuideDrag(s);
         break;
@@ -638,6 +649,14 @@ class App {
     this.pointers.delete(e.pointerId);
     const s = this.pos(e);
     switch (this.mode) {
+      case 'rotate':
+        if (e.pointerId !== this.rotDrag?.id) break;
+        this.mode = null;
+        this.rotDrag = null;
+        this.canvas.style.cursor = '';
+        this.cam.rot = normAngle(this.cam.rot); // na een hele slag rond: hoek weer binnen ±180°
+        this.cameraChanged();
+        break;
       case 'tool':
         if (e.pointerId !== this.toolPointer) break;
         if (e.type === 'pointercancel') this.tool.cancel();
@@ -724,6 +743,23 @@ class App {
         }
       }
     }
+    this.cameraChanged();
+  }
+
+  /** Traploos draaien: de hoek van de muis rond het midden van het scherm, met een lichte magneet bij noorden en elke 90°. */
+  updateRotateDrag(s) {
+    const d = this.rotDrag;
+    if (!d) return;
+    if (Math.hypot(s[0] - d.c[0], s[1] - d.c[1]) < 12) return; // vlak bij het midden is de hoek onrustig
+    const a = Math.atan2(s[1] - d.c[1], s[0] - d.c[0]);
+    d.raw += normAngle(a - d.last); // optellen, zodat ook een hele slag rond kan
+    d.last = a;
+    let rot = d.raw;
+    const north = -((this.store.doc.northDeg || 0) * Math.PI) / 180;
+    const off = normAngle(rot - north);
+    const snap = Math.round(off / (Math.PI / 2)) * (Math.PI / 2);
+    if (Math.abs(off - snap) < 1 * DEG) rot = north + snap;
+    this.cam.rotateAt(d.c[0], d.c[1], normAngle(rot - this.cam.rot));
     this.cameraChanged();
   }
 
@@ -1264,7 +1300,7 @@ class App {
     // beeld rechtsom gedraaid = het noorden draait op het scherm mee rechtsom
     let d = (this.northScreenRad() * 180) / Math.PI;
     d = ((d % 360) + 360) % 360;
-    return d > 359.95 ? 0 : d;
+    return d < 1e-6 || d > 360 - 1e-6 ? 0 : d; // afrondingsruis telt als noorden boven
   }
 
   /** Draai het beeld (niet de tekening) om het midden van het scherm. */
@@ -1291,7 +1327,7 @@ class App {
     } else if (this.lastViewAngle) {
       this.setViewAngleDeg(this.lastViewAngle);
     } else {
-      this.toast('Draai het beeld met twee vingers, met de knoppen ↺ ↻ onderaan, of op de laptop met Alt + scrollen of [ en ]. De windrichting van de tuin blijft gelijk.', 6000);
+      this.toast('Draai het beeld met twee vingers, met de knoppen ↺ ↻ onderaan, of op de laptop traploos met Alt/⌥ of Shift + rechtermuisknop slepen (of Alt + scrollen, [ en ]). De windrichting van de tuin blijft gelijk.', 6000);
     }
   }
 
