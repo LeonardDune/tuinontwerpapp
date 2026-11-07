@@ -964,6 +964,7 @@ export class StencilTool extends Tool {
       type: 'stencil', id: uid(), symbol: def.id,
       x: this.snap.p[0], y: this.snap.p[1], w: size.w, h: size.h, rot: -this.app.cam.rot,
       color: this.app.state.stencilOwnColor ? this.app.state.color : def.color,
+      ...(def.defaults || {}),
     };
     const hh = this.app.state.stencilHeights?.[def.id];
     if (hh != null) this.item.height = hh;

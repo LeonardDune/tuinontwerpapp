@@ -5,6 +5,7 @@ import { itemSnapPoints } from './items.js';
 import { dist, distToSegment, projectOnLine, angleOf, snapAngle, DEG } from './geom.js';
 import { gridStepFor } from './render.js';
 import { wallSides } from './walls.js';
+import { STENCIL_MAP } from './stencils.js';
 
 const cache = { doc: null, key: null, segs: null, circles: null };
 
@@ -238,5 +239,107 @@ export function drawSnapMarker(ctx, app, snap) {
     ctx.fillStyle = ctx.strokeStyle;
     ctx.fillText(label, s[0] + 14, ly + 2);
   }
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------ zijkanten laten aansluiten
+
+/** Rechte zijden van een element (vormen, muurvlakken, rechthoekige stencils). */
+export function itemEdges(it) {
+  const out = [];
+  const push = (a, b) => { if (dist(a, b) > 1e-6) out.push({ a, b }); };
+  if (it.type === 'shape' && it.kind !== 'circle') {
+    const p = it.points, closed = it.kind === 'polygon';
+    for (let i = 1; i < p.length; i++) push(p[i - 1], p[i]);
+    if (closed && p.length > 2) push(p[p.length - 1], p[0]);
+    if (it.wall) {
+      const { left, right } = wallSides(p, closed, it.width);
+      for (const side of [left, right]) {
+        for (let i = 1; i < side.length; i++) push(side[i - 1], side[i]);
+        if (closed) push(side[side.length - 1], side[0]);
+      }
+    }
+  } else if (it.type === 'stencil' && it.w && it.h) {
+    const c = Math.cos(it.rot || 0), s = Math.sin(it.rot || 0);
+    const P = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [it.x + (u * it.w / 2) * c - (v * it.h / 2) * s, it.y + (u * it.w / 2) * s + (v * it.h / 2) * c]);
+    if (!STENCIL_MAP[it.symbol]?.round) for (let i = 0; i < 4; i++) push(P[i], P[(i + 1) % 4]);
+  }
+  return out;
+}
+
+function segBox(s) {
+  return [Math.min(s.a[0], s.b[0]), Math.min(s.a[1], s.b[1]), Math.max(s.a[0], s.b[0]), Math.max(s.a[1], s.b[1])];
+}
+
+/** Zijden van alle andere zichtbare elementen. */
+export function edgeTargets(app, exclude) {
+  const out = [];
+  for (const layer of app.store.doc.layers) {
+    if (!layer.visible) continue;
+    for (const it of layer.items) {
+      if (exclude.has(it.id)) continue;
+      for (const e of itemEdges(it)) { e.box = segBox(e); out.push(e); }
+    }
+  }
+  return out;
+}
+
+const sub = (p, q) => [p[0] - q[0], p[1] - q[1]];
+const dotp = (p, q) => p[0] * q[0] + p[1] * q[1];
+
+/**
+ * Zoek een zijde (own, al verplaatst met off) die evenwijdig en vlak bij een doelzijde ligt.
+ * Geeft { off: verschuiving om ze precies op elkaar te leggen, t: doelzijde, u: richting } of null.
+ */
+export function flushEdge(own, targets, tol, angTol = 0.6 * DEG) {
+  let best = null;
+  for (const s of own) {
+    const sb = segBox(s);
+    const sa = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
+    const mid = [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2];
+    for (const t of targets) {
+      if (t.box[0] > sb[2] + tol || t.box[2] < sb[0] - tol || t.box[1] > sb[3] + tol || t.box[3] < sb[1] - tol) continue;
+      const ta = Math.atan2(t.b[1] - t.a[1], t.b[0] - t.a[0]);
+      if (Math.abs(lineDiff(sa, ta)) > angTol) continue;
+      const len = dist(t.a, t.b);
+      const u = [(t.b[0] - t.a[0]) / len, (t.b[1] - t.a[1]) / len], n = [-u[1], u[0]];
+      const d = dotp(sub(mid, t.a), n);
+      if (Math.abs(d) >= tol) continue;
+      // ze moeten elkaar (bijna) overlappen langs de zijde
+      const p0 = dotp(sub(s.a, t.a), u), p1 = dotp(sub(s.b, t.a), u);
+      const overlap = Math.min(len, Math.max(p0, p1)) - Math.max(0, Math.min(p0, p1));
+      if (overlap < -tol) continue;
+      // echte overlap gaat voor op kop-aan-kop in het verlengde
+      const score = Math.abs(d) + 2 * Math.max(0, -overlap);
+      if (!best || score < best.score) best = { score, d: Math.abs(d), off: [-d * n[0], -d * n[1]], t, u, s };
+    }
+  }
+  return best;
+}
+
+/** Na het aansluiten: langs de zijde schuiven tot hoekpunten precies gelijk liggen. */
+export function slideAlong(ownPts, targetPts, u, tol) {
+  let best = null;
+  const n = [-u[1], u[0]];
+  for (const p of ownPts) {
+    for (const q of targetPts) {
+      const v = sub(q, p);
+      if (Math.abs(dotp(v, n)) > tol * 0.25) continue;
+      const a = dotp(v, u);
+      if (Math.abs(a) < tol && (!best || Math.abs(a) < Math.abs(best))) best = a;
+    }
+  }
+  return best == null ? null : [u[0] * best, u[1] * best];
+}
+
+/** Markeer de zijde waar tegenaan is aangesloten. */
+export function drawEdgeMarker(ctx, app, t) {
+  if (!t) return;
+  const a = app.cam.toScreen(t.a), b = app.cam.toScreen(t.b);
+  ctx.save();
+  ctx.strokeStyle = '#e8590c';
+  ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
   ctx.restore();
 }

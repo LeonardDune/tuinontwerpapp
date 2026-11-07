@@ -2,13 +2,14 @@
 // schalen, maten aanpassen met grepen en hoekpunten verslepen.
 
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
+import { edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
 import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { isBed, isGroup } from './planting.js';
 import { isWall, isOpening, syncOpenings } from './walls.js';
 import { formatLength } from './units.js';
 import {
-  dist, pointInPolygon, polygonArea, distToSegment, snapAngle, matTranslate, matMul, matScale, matRotate, angleOf,
+  dist, pointInPolygon, polygonArea, distToSegment, snapAngle, matTranslate, matMul, matApply, matScale, matRotate, angleOf,
 } from './geom.js';
 import {
   isRect, itemFrame, frameToWorld, worldToFrame, applyFrame, selectionBox, displayAngle, itemAngle, itemPivot,
@@ -222,6 +223,7 @@ export class SelectTool extends Tool {
     this.path = null;
     this.drag = null;
     this.snap = null;
+    this.snapEdge = null;
     this.app.updateSelectionUI();
   }
 
@@ -341,6 +343,21 @@ export class SelectTool extends Tool {
       }
       this.drag.own = items.flatMap(({ item }) => itemSnapPoints(item).map((p) => [p[0], p[1]]));
     }
+    if (h.kind === 'move' || h.kind === 'rotate') {
+      // zijden om tegenaan te sluiten (bijv. plantvakken naast elkaar)
+      const sel = new Set(items.map(({ item }) => item.id));
+      for (const f of this.followers) sel.add(f.item.id);
+      this.drag.edgeTargets = app.settings.snap ? edgeTargets(app, sel) : [];
+      this.drag.ownEdges = items.flatMap(({ item }) => itemEdges(item));
+      this.drag.ownPts = this.drag.ownEdges.flatMap((e) => [e.a, e.b]);
+      this.drag.targetPts = this.drag.edgeTargets.flatMap((e) => [e.a, e.b]);
+      if (h.kind === 'rotate' && this.drag.ownPts.length) {
+        // zijden binnen bereik van wat er draait
+        const pv = this.drag.pivot;
+        const R = Math.max(...this.drag.ownPts.map((p) => dist(p, pv))) + Math.max(0.5, 60 / app.cam.zoom);
+        this.drag.near = this.drag.edgeTargets.filter((t) => distToSegment(pv, t.a, t.b) < R);
+      }
+    }
   }
 
   restore() {
@@ -360,12 +377,23 @@ export class SelectTool extends Tool {
     this.liveS = e.s;
     this.liveInfo = null;
     this.snap = null;
+    this.snapEdge = null;
     const it = this.single();
 
     if (d.kind === 'move') {
       let dx = e.w[0] - d.startW[0], dy = e.w[1] - d.startW[1];
       // snap: een punt van de selectie op een punt van een ander element
-      if (app.settings.snap && d.own.length && d.targets.length) {
+      // eerst: een zijde precies tegen een zijde van een ander element leggen
+      const flush = d.ownEdges.length && d.edgeTargets.length
+        ? flushEdge(d.ownEdges.map((s) => ({ a: [s.a[0] + dx, s.a[1] + dy], b: [s.b[0] + dx, s.b[1] + dy] })), d.edgeTargets, 12 / cam.zoom)
+        : null;
+      if (flush) {
+        dx += flush.off[0]; dy += flush.off[1];
+        const sl = slideAlong(d.ownPts.map((p) => [p[0] + dx, p[1] + dy]), d.targetPts, flush.u, 12 / cam.zoom);
+        if (sl) { dx += sl[0]; dy += sl[1]; }
+        this.snapEdge = flush.t;
+        this.liveInfo = sl ? 'Sluit aan, hoeken gelijk' : 'Sluit aan';
+      } else if (app.settings.snap && d.own.length && d.targets.length) {
         let best = null, bd = 10 / cam.zoom;
         for (const p of d.own) {
           const q = [p[0] + dx, p[1] + dy];
@@ -391,8 +419,38 @@ export class SelectTool extends Tool {
         r = snapAngle(r, 15 * DEG, 3 * DEG);
         this.liveInfo = `${String(displayAngle(-r)).replace('.', ',')}°`;
       }
+      // evenwijdig draaien aan een zijde in de buurt, en dan precies ertegenaan
+      let off = [0, 0];
+      const raw = angleOf(c, e.w) - angleOf(c, d.startW);
+      const near = d.near || [];
+      if (near.length) {
+        let best = null;
+        for (const s of d.ownEdges) {
+          const so = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
+          for (const t of near) {
+            const ta = Math.atan2(t.b[1] - t.a[1], t.b[0] - t.a[0]);
+            let cand = raw + lineDiffSigned(ta, so + raw);
+            const dd = Math.abs(cand - raw);
+            if (dd < 4 * DEG && (!best || dd < best.dd)) best = { r: cand, dd, t };
+          }
+        }
+        if (best) {
+          r = best.r;
+          const rot = matMul(matTranslate(c[0], c[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
+          const moved = d.ownEdges.map((s) => ({ a: matApply(rot, s.a), b: matApply(rot, s.b) }));
+          const flush = flushEdge(moved, near, 16 / cam.zoom, 0.05 * DEG);
+          if (flush) {
+            off = flush.off;
+            const sl = slideAlong(moved.flatMap((s) => [s.a, s.b]).map((p) => [p[0] + off[0], p[1] + off[1]]), [flush.t.a, flush.t.b], flush.u, 10 / cam.zoom);
+            if (sl) off = [off[0] + sl[0], off[1] + sl[1]];
+          }
+          this.snapEdge = flush ? flush.t : best.t;
+          const ang = d.baseAngle != null ? displayAngle(d.baseAngle + r) : displayAngle(-r);
+          this.liveInfo = `${String(ang).replace('.', ',')}° ${flush ? '· sluit aan' : '· evenwijdig'}`;
+        }
+      }
       this.restore();
-      const m = matMul(matTranslate(c[0], c[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
+      const m = matMul(matTranslate(c[0] + off[0], c[1] + off[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
       for (const { item } of [...this.selectedItems(), ...this.followers]) transformItem(item, m, 1, r);
     } else if (d.kind === 'scale') {
       const o = d.opposite;
@@ -534,8 +592,17 @@ export class SelectTool extends Tool {
     }
     ctx.restore();
     drawSnapMarker(ctx, this.app, this.snap);
+    if (this.mode) drawEdgeMarker(ctx, this.app, this.snapEdge);
     if (this.mode && this.liveInfo && this.liveS) drawBubble(ctx, this.liveInfo, this.liveS[0], this.liveS[1]);
   }
+}
+
+/** Kleinste hoekverschil a − b tussen twee lijnrichtingen (−90°..90°). */
+function lineDiffSigned(a, b) {
+  let d = (a - b) % Math.PI;
+  if (d > Math.PI / 2) d -= Math.PI;
+  if (d < -Math.PI / 2) d += Math.PI;
+  return d;
 }
 
 export { isRect };

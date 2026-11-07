@@ -163,7 +163,138 @@ function potPlant(g, rx, ry, lw, seed) {
   g.restore();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Potten & bakken', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
+// ---------- pergola's en klimplanten ----------
+
+/** Soorten klimplanten: bladkleur en (eventueel) bloemen. */
+export const CLIMBERS = {
+  groen: { name: 'Groen (klimop, wingerd, hop)', leaf: '#4f7f36' },
+  druif: { name: 'Druif', leaf: '#6b8f3a', fruit: '#6a3d7a' },
+  blauweregen: { name: 'Blauweregen', leaf: '#6d9a4a', flower: '#9b7fd1', tros: true },
+  roos: { name: 'Klimroos', leaf: '#4f7a3a', flower: '#d9577a' },
+  clematis: { name: 'Clematis', leaf: '#5a8a40', flower: '#7b4fb0' },
+  kamperfoelie: { name: 'Kamperfoelie', leaf: '#5f8f45', flower: '#e8c35a' },
+  herfst: { name: 'Wingerd in de herfst', leaf: '#b5462f' },
+};
+export const GROW = { geen: 'Geen begroeiing', deels: 'Deels begroeid', vol: 'Helemaal begroeid' };
+
+/** Stuk hout (of metaal) van boven gezien. */
+function wood(g, x, y, ww, hh, c, a = 0.55) {
+  g.fillStyle = hexA(c, a);
+  g.beginPath(); g.rect(x, y, ww, hh); g.fill(); g.stroke();
+}
+
+/** Palen en liggers (langs de lengte); geeft de paalposities terug. */
+function pergolaFrame(g, w, h, c, lw, { front = true, back = true, span = 3 } = {}) {
+  const ov = Math.min(0.25, h * 0.08);
+  const ps = 0.12, bw = 0.07;
+  const n = Math.max(2, Math.ceil((w - 0.6) / span) + 1);
+  const posts = [];
+  const rows = [];
+  if (back) rows.push(-h / 2 + ov);
+  if (front) rows.push(h / 2 - ov);
+  for (const y of rows) {
+    for (let i = 0; i < n; i++) {
+      const x = -w / 2 + 0.3 + ((w - 0.6) * i) / (n - 1);
+      posts.push([x, y]);
+      g.fillStyle = hexA(c, 0.9);
+      g.beginPath(); g.rect(x - ps / 2, y - ps / 2, ps, ps); g.fill(); g.stroke();
+    }
+  }
+  g.save(); g.lineWidth = lw * 0.9;
+  for (const y of rows) wood(g, -w / 2 + 0.05, y - bw / 2, w - 0.1, bw, c, 0.6);
+  g.restore();
+  return posts;
+}
+
+/** Dwarsbalken (gordingen) bovenop, over de hele diepte, met schuin afgezaagde koppen. */
+function rafters(g, w, h, c, lw, step = 0.45, wallSide = false) {
+  const rw = 0.05, cut = 0.06;
+  const n = Math.max(2, Math.round((w - 0.1) / step));
+  g.save(); g.lineWidth = lw * 0.7;
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + 0.05 + ((w - 0.1 - rw) * i) / n;
+    g.fillStyle = hexA(c, 0.5);
+    g.beginPath();
+    g.moveTo(x, -h / 2 + (wallSide ? 0 : cut)); g.lineTo(x + rw, -h / 2);
+    g.lineTo(x + rw, h / 2 - cut); g.lineTo(x, h / 2);
+    g.closePath(); g.fill(); g.stroke();
+  }
+  g.restore();
+}
+
+/** Bladmassa als één vlak (zonder donkere overlappingen), met bloemen of trossen. */
+function foliage(g, centers, r, lw, kind, seed, line) {
+  const rnd = rng(seed);
+  const blobs = centers.map(([x, y]) => [x + (rnd() - 0.5) * r * 0.4, y + (rnd() - 0.5) * r * 0.4, r * (0.8 + rnd() * 0.35), Math.floor(rnd() * 1000)]);
+  const path = () => {
+    g.beginPath();
+    for (const [x, y, rr, s] of blobs) {
+      const q = rng(s + 1); const n = 9;
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * TAU; const k = 0.8 + q() * 0.3;
+        const px = x + Math.cos(a) * rr * k, py = y + Math.sin(a) * rr * k;
+        if (i === 0) g.moveTo(px, py); else g.quadraticCurveTo(x + Math.cos(a - 0.35) * rr * 1.15, y + Math.sin(a - 0.35) * rr * 1.15, px, py);
+      }
+      g.closePath();
+    }
+  };
+  g.save();
+  path();
+  g.fillStyle = hexA(kind.leaf, 0.42);
+  g.fill('nonzero');
+  g.globalAlpha = 0.3; g.strokeStyle = fillOverride.paper || kind.leaf || line; g.lineWidth = lw * 0.6;
+  g.stroke();
+  g.globalAlpha = 1;
+  if (!fillOverride.paper && (kind.flower || kind.fruit)) {
+    for (const [x, y, rr] of blobs) {
+      for (let k = 0; k < 4; k++) {
+        const a = rnd() * TAU, d = rnd() * rr * 0.7;
+        const fx = x + Math.cos(a) * d, fy = y + Math.sin(a) * d;
+        if (kind.tros) {
+          g.fillStyle = hexA(kind.flower, 0.85);
+          g.beginPath(); g.ellipse(fx, fy, rr * 0.09, rr * 0.28, rnd() * 0.6 - 0.3, 0, TAU); g.fill();
+        } else {
+          g.fillStyle = hexA(kind.flower || kind.fruit, 0.9);
+          g.beginPath(); g.arc(fx, fy, rr * 0.1, 0, TAU); g.fill();
+        }
+      }
+    }
+  }
+  g.restore();
+}
+
+/** Begroeiing over een pergola: plantgaten bij de palen en bladmassa over het dak. */
+function climbOver(g, w, h, lw, it, posts) {
+  const grow = it?.grow || 'geen';
+  if (grow === 'geen') return;
+  const kind = CLIMBERS[it?.growKind || 'blauweregen'] || CLIMBERS.blauweregen;
+  const part = grow === 'deels';
+  const step = Math.max(0.35, Math.min(0.6, Math.min(w, h) / 3));
+  const centers = [];
+  const xmax = part ? -w / 2 + w * 0.55 : w / 2;
+  for (let x = -w / 2 + step * 0.6; x <= xmax - step * 0.3; x += step) {
+    for (let y = -h / 2 + step * 0.6; y <= h / 2 - step * 0.3; y += step) {
+      // deels: dichter bij de palen, uitlopend naar het midden
+      if (part && (x + w / 2) / (w * 0.55) > 0.55 + 0.45 * Math.abs(y) / (h / 2)) continue;
+      centers.push([x, y]);
+    }
+  }
+  foliage(g, centers, step * 0.75, lw, kind, Math.round(w * 13 + h * 7));
+  // plantgaten bij de palen (bij deels: alleen aan het begin)
+  const planted = part ? posts.filter(([x]) => x < -w / 2 + w * 0.3) : posts;
+  g.save();
+  g.strokeStyle = hexA('#5b4a32', 1); g.lineWidth = lw * 0.8;
+  for (const [x, y] of planted) {
+    const oy = y + (y >= 0 ? 0.18 : -0.18);
+    g.fillStyle = hexA(kind.leaf, 0.5);
+    g.beginPath(); g.arc(x, oy, 0.09, 0, TAU); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(x, oy); g.lineTo(x, y); g.stroke();
+  }
+  g.restore();
+}
+
+
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -454,6 +585,134 @@ export const STENCILS = [
     },
   },
 
+  // --- Pergola's en overkappingen (B = lengte, D = diepte; c = kleur van hout of metaal) ---
+  {
+    id: 'overkapping', name: 'Houten pergola (dwarsbalken)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true });
+      rafters(g, w, h, c, lw);
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'pergolagang', name: 'Pergolagang (over een pad)', cat: 'Pergola\'s & klimplanten', round: false, w: 7, h: 2.4, color: '#8a6a45', climb: true,
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true, span: 2.4 });
+      rafters(g, w, h, c, lw, 0.6);
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'pergolamuur', name: 'Muurpergola (aan de gevel)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
+    draw(g, w, h, c, lw, paper, it) {
+      // boven = gevelkant: muurregel tegen de gevel, palen alleen aan de voorkant
+      const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: false });
+      wood(g, -w / 2, -h / 2, w, 0.07, c);
+      rafters(g, w, h, c, lw, 0.45, true);
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'pergolalatten', name: 'Pergola met lattenrooster', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#9c7a52', climb: true,
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true });
+      rafters(g, w, h, c, lw, 0.6);
+      // dunne latten bovenop, haaks op de dwarsbalken
+      const ov = Math.min(0.25, h * 0.08);
+      for (let y = -h / 2 + ov + 0.2; y < h / 2 - ov - 0.1; y += 0.3) wood(g, -w / 2 + 0.1, y - 0.015, w - 0.2, 0.03, c, 0.7);
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'lamellendak', name: 'Lamellenoverkapping (aluminium)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#3c4146',
+    draw(g, w, h, c, lw) {
+      const f = 0.16;
+      g.fillStyle = hexA(c, 0.12);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill();
+      // lamellen dwars op de lengte, iets schuin gezien
+      g.save();
+      g.lineWidth = lw * 0.6;
+      for (let x = -w / 2 + f + 0.1; x < w / 2 - f; x += 0.2) {
+        g.fillStyle = hexA(c, 0.28);
+        g.beginPath(); g.rect(x, -h / 2 + f, 0.16, h - 2 * f); g.fill(); g.stroke();
+      }
+      g.restore();
+      g.fillStyle = hexA(c, 0.75);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.rect(-w / 2 + f, -h / 2 + f, w - 2 * f, h - 2 * f);
+      g.fill('evenodd'); g.stroke();
+      g.beginPath(); g.rect(-w / 2 + f, -h / 2 + f, w - 2 * f, h - 2 * f); g.stroke();
+      g.fillStyle = c;
+      for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) g.fillRect(x * (w / 2 - f / 2) - f / 2, y * (h / 2 - f / 2) - f / 2, f, f);
+    },
+  },
+  {
+    id: 'veranda', name: 'Overkapping met dicht dak (veranda)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#4a4f55',
+    draw(g, w, h, c, lw) {
+      // boven = gevelkant; het dak loopt af naar de goot aan de voorkant
+      g.fillStyle = hexA('#9fb8c8', 0.3);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      g.fillStyle = hexA(c, 0.8);
+      g.fillRect(-w / 2, -h / 2, w, 0.08);
+      g.fillRect(-w / 2, h / 2 - 0.14, w, 0.14);
+      g.beginPath(); g.moveTo(-w / 2, h / 2 - 0.2); g.lineTo(w / 2, h / 2 - 0.2); g.stroke();
+      const n = Math.max(2, Math.round(w / 0.8));
+      for (let i = 0; i <= n; i++) {
+        const x = -w / 2 + (w * i) / n;
+        g.fillStyle = hexA(c, 0.8);
+        g.fillRect(x - (i === 0 ? 0 : i === n ? 0.06 : 0.03), -h / 2, 0.06, h);
+      }
+      const np = Math.max(2, Math.ceil(w / 3.5) + 1);
+      g.fillStyle = c;
+      for (let i = 0; i < np; i++) { const x = -w / 2 + 0.06 + ((w - 0.12) * i) / (np - 1); g.fillRect(x - 0.06, h / 2 - 0.12, 0.12, 0.12); }
+      // afschot naar de goot
+      g.save(); g.lineWidth = lw * 0.8; g.globalAlpha = 0.7;
+      const ax = w * 0.18, s = Math.min(h * 0.12, 0.3);
+      g.beginPath(); g.moveTo(ax, -h * 0.25); g.lineTo(ax, h * 0.2); g.moveTo(ax - s * 0.5, h * 0.2 - s); g.lineTo(ax, h * 0.2); g.lineTo(ax + s * 0.5, h * 0.2 - s); g.stroke();
+      g.restore();
+    },
+  },
+  {
+    id: 'rozenboog', name: 'Rozenboog', cat: 'Pergola\'s & klimplanten', round: false, w: 1.4, h: 0.5, color: '#3d3d3d', climb: true, defaults: { grow: 'vol', growKind: 'roos' },
+    draw(g, w, h, c, lw, paper, it) {
+      // je loopt er van boven naar beneden doorheen; links en rechts de zijkanten
+      const r = 0.03;
+      g.save();
+      g.lineWidth = lw * 1.2;
+      for (const x of [-w / 2 + r, w / 2 - r]) { g.beginPath(); g.moveTo(x, -h / 2 + r); g.lineTo(x, h / 2 - r); g.stroke(); }
+      for (const y of [-h / 2 + r, h / 2 - r]) { g.beginPath(); g.moveTo(-w / 2 + r, y); g.lineTo(w / 2 - r, y); g.stroke(); }
+      g.lineWidth = lw * 0.6;
+      for (let y = -h / 2 + 0.12; y < h / 2 - 0.08; y += 0.12) { g.beginPath(); g.moveTo(-w / 2 + r, y); g.lineTo(w / 2 - r, y); g.stroke(); }
+      g.restore();
+      g.fillStyle = c;
+      const posts = [];
+      for (const x of [-w / 2 + r, w / 2 - r]) for (const y of [-h / 2 + r, h / 2 - r]) { dot(g, x, y, r * 1.4); posts.push([x, y]); }
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'klimplant', name: 'Klimplant (langs muur, schutting of hek)', cat: 'Pergola\'s & klimplanten', round: false, w: 2.5, h: 0.5, color: '#4f7f36', climbPlant: true, defaults: { grow: 'vol', growKind: 'groen' },
+    draw(g, w, h, c, lw, paper, it) {
+      // bovenkant = de muur of het hek; het plantgat staat ervoor (onder)
+      const kind = CLIMBERS[it?.growKind || 'groen'] || CLIMBERS.groen;
+      const px = -w / 2 + Math.min(0.35, w * 0.15), py = h * 0.18;
+      const band = [];
+      const n = Math.max(3, Math.round(w / 0.35));
+      for (let i = 0; i < n; i++) band.push([-w / 2 + (w * (i + 0.5)) / n, -h * 0.22]);
+      g.save();
+      g.strokeStyle = hexA('#5b4a32', 0.8); g.lineWidth = lw * 0.8;
+      g.beginPath();
+      for (let i = 0; i < band.length; i += 2) { g.moveTo(px, py); g.quadraticCurveTo(px, band[i][1], band[i][0], band[i][1]); }
+      g.stroke();
+      g.restore();
+      foliage(g, band, Math.min(h * 0.42, w / n * 0.95), lw, kind, 7, c);
+      g.save();
+      g.fillStyle = hexA(c, 0.35);
+      g.beginPath(); g.ellipse(px, py, h * 0.22, h * 0.22, 0, 0, TAU); g.fill(); g.stroke();
+      g.restore();
+      g.fillStyle = c; dot(g, px, py, lw * 1.6);
+    },
+  },
+
   // --- Meubilair ---
   {
     id: 'tafelrond', name: 'Ronde tafel (4)', cat: 'Meubilair', round: true, w: 2.4, h: 2.4, color: '#7a6a58',
@@ -739,22 +998,6 @@ export const STENCILS = [
     },
   },
   {
-    id: 'overkapping', name: 'Overkapping / pergola', cat: 'Bouw & water', round: false, w: 4, h: 3, color: '#7a6a58',
-    draw(g, w, h, c, lw) {
-      g.setLineDash([lw * 5, lw * 3]);
-      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.stroke();
-      g.setLineDash([]);
-      g.fillStyle = c;
-      const s = Math.min(0.15, w * 0.05);
-      for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-        g.fillRect(x * (w / 2 - s) - s / 2, y * (h / 2 - s) - s / 2, s, s);
-      }
-      g.globalAlpha = 0.5;
-      for (let x = -w / 2 + w / 8; x < w / 2; x += w / 8) { g.beginPath(); g.moveTo(x, -h / 2); g.lineTo(x, h / 2); g.stroke(); }
-      g.globalAlpha = 1;
-    },
-  },
-  {
     id: 'kas', name: 'Kas', cat: 'Bouw & water', round: false, w: 2.5, h: 3, color: '#4a7c8c',
     draw(g, w, h, c) {
       g.fillStyle = hexA(c, 0.12);
@@ -942,6 +1185,7 @@ export function drawStencil(g, item, lw, paper) {
   g.lineJoin = 'round';
   g.lineCap = 'round';
   const c = item.color || def.color;
+  const view = def.defaults ? { ...def.defaults, ...item } : item;
   if (!item.see && !def.opening && !def.fixedPaper) {
     // dichte ondergrond: het stencil eerst één keer in papierkleur tekenen, zodat precies zijn eigen
     // vorm afdekt wat eronder ligt (geen rechthoek met witte hoeken, geen vlak tussen de stoelen)
@@ -951,7 +1195,7 @@ export function drawStencil(g, item, lw, paper) {
     g.strokeStyle = P;
     g.fillStyle = P;
     try {
-      def.draw(g, item.w, item.h, P, lw, P);
+      def.draw(g, item.w, item.h, P, lw, P, view);
     } finally {
       fillOverride.paper = null;
     }
@@ -963,7 +1207,7 @@ export function drawStencil(g, item, lw, paper) {
   fillOverride.color = item.fillColor || null;
   fillOverride.alpha = item.fillAlpha ?? null;
   try {
-    def.draw(g, item.w, item.h, c, lw, paper);
+    def.draw(g, item.w, item.h, c, lw, paper, view);
   } finally {
     fillOverride.line = null;
   }

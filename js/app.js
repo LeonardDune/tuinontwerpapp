@@ -6,7 +6,7 @@ import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
-import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil } from './stencils.js';
+import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
 import { transformItem, invalidate as invalidateItem, hatchAngle } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
@@ -2018,6 +2018,14 @@ class App {
     }
     html += range('opacity', 'Dekking', Math.round((items[0].opacity ?? 1) * 100), 'Doorzichtigheid van het element');
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
+    // begroeiing van pergola's en de soort klimplant
+    const climbs = items.filter((i) => i.type === 'stencil' && (STENCIL_MAP[i.symbol]?.climb || STENCIL_MAP[i.symbol]?.climbPlant));
+    if (climbs.length) {
+      const c0 = { ...STENCIL_MAP[climbs[0].symbol].defaults, ...climbs[0] };
+      const opts = (o, cur) => Object.entries(o).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${typeof v === 'string' ? v : v.name}</option>`).join('');
+      if (climbs.some((i) => STENCIL_MAP[i.symbol].climb)) html += `<select data-k="grow" title="Begroeiing met klimplanten">${opts(GROW, c0.grow || 'geen')}</select>`;
+      if ((c0.grow || 'geen') !== 'geen' || STENCIL_MAP[climbs[0].symbol].climbPlant) html += `<select data-k="growKind" title="Soort klimplant">${opts(CLIMBERS, c0.growKind || 'blauweregen')}</select>`;
+    }
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
@@ -2233,6 +2241,12 @@ class App {
           for (const i of st) { if (on) i.see = true; else delete i.see; }
           break;
         }
+        case 'grow':
+          for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.climb && GROW[raw]) i.grow = raw;
+          break;
+        case 'growKind':
+          for (const i of items) if (i.type === 'stencil' && CLIMBERS[raw] && (STENCIL_MAP[i.symbol]?.climb || STENCIL_MAP[i.symbol]?.climbPlant)) i.growKind = raw;
+          break;
         case 'mirror':
           for (const i of items) if (i.type === 'stencil') i.mirror = !i.mirror;
           break;

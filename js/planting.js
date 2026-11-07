@@ -610,6 +610,7 @@ const STENCIL_ROLE = {
   siergras: { role: 'structuur', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9, 10], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
   vasteplant: { role: 'vulling', height: 'laag', habit: 'kussen', form: 'schijf', bloom: [6, 7], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#8e5bb5' },
   bodembedekker: { role: 'vulling', height: 'bodem', habit: 'spreidend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geen', winter: 'groen', color: '#6b9c5a' },
+  klimplant: { role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'groen', autumn: 'rood', winter: 'silhouet', color: '#4f7f36' },
   potbol: { role: 'structuur', height: 'laag', habit: 'bol', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
   potgras: { role: 'accent', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
   potboom: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'zilver', autumn: 'geen', winter: 'groen', color: '#8a9a6a' },
