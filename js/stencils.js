@@ -9,9 +9,10 @@ function rng(seed) {
 }
 
 // eigen vulkleur en -sterkte van het stencil dat nu getekend wordt (zie drawStencil)
-const fillOverride = { line: null, color: null, alpha: null };
+const fillOverride = { line: null, color: null, alpha: null, paper: null };
 
 function hexA(color, a) {
+  if (fillOverride.paper) return fillOverride.paper; // afdekken: silhouet in papierkleur
   if (fillOverride.line && color === fillOverride.line) {
     if (fillOverride.color) color = fillOverride.color;
     if (fillOverride.alpha != null) a = fillOverride.alpha;
@@ -71,6 +72,35 @@ function dot(g, x, y, r) {
   g.beginPath();
   g.arc(x, y, r, 0, TAU);
   g.fill();
+}
+
+/** Stoel in bovenaanzicht, zitting naar boven en rugleuning onder; optioneel armleuningen. */
+function chairTop(g, w, h, { arms = false, back = 0.2, r = 0.06 } = {}) {
+  const rr = (x, y, ww, hh, rad) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, ww, hh, rad) : g.rect(x, y, ww, hh); };
+  rr(-w / 2, -h / 2, w, h, Math.min(w, h) * r);
+  g.fill(); g.stroke();
+  const bh = h * back;
+  rr(-w / 2, h / 2 - bh, w, bh, Math.min(w, h) * r);
+  g.stroke();
+  if (arms) {
+    const aw = w * 0.14;
+    for (const x of [-w / 2, w / 2 - aw]) { rr(x, -h / 2 + h * 0.08, aw, h - bh - h * 0.08, aw * 0.4); g.stroke(); }
+  }
+}
+
+/** Tafelblad (rond of recht) met een rand. */
+function tableTop(g, w, h, c, lw, round = false) {
+  g.fillStyle = hexA(c, 0.22);
+  g.beginPath();
+  if (round) g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); else g.rect(-w / 2, -h / 2, w, h);
+  g.fill(); g.stroke();
+  g.lineWidth = lw * 0.6;
+  g.globalAlpha = 0.5;
+  const k = Math.min(w, h) * 0.08;
+  g.beginPath();
+  if (round) g.ellipse(0, 0, w / 2 - k, h / 2 - k, 0, 0, TAU); else g.rect(-w / 2 + k, -h / 2 + k, w - 2 * k, h - 2 * k);
+  g.stroke();
+  g.globalAlpha = 1;
 }
 
 function chair(g, x, y, s, rot) {
@@ -366,6 +396,121 @@ export const STENCILS = [
     },
   },
 
+  {
+    id: 'zitbank', name: 'Bank zonder leuning', cat: 'Meubilair', round: false, w: 1.5, h: 0.45, color: '#7a6a58',
+    draw(g, w, h, c) {
+      g.fillStyle = hexA(c, 0.2);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      g.globalAlpha = 0.5;
+      for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(-w / 2, -h / 2 + (h * i) / 4); g.lineTo(w / 2, -h / 2 + (h * i) / 4); g.stroke(); }
+      g.globalAlpha = 1;
+    },
+  },
+  {
+    id: 'bankhalfrond', name: 'Halfronde bank', cat: 'Meubilair', round: false, w: 2.6, h: 1.3, color: '#7a6a58',
+    draw(g, w, h, c, lw) {
+      // halve ring, rugleuning aan de buitenkant; open kant onder
+      const R = w / 2, d = Math.min(0.5, R * 0.45), cy = h / 2;
+      g.fillStyle = hexA(c, 0.2);
+      g.beginPath(); g.arc(0, cy, R, Math.PI, TAU); g.arc(0, cy, R - d, TAU, Math.PI, true); g.closePath(); g.fill(); g.stroke();
+      g.lineWidth = lw * 1.6;
+      g.beginPath(); g.arc(0, cy, R - d * 0.15, Math.PI, TAU); g.stroke();
+      g.lineWidth = lw * 0.6;
+      g.globalAlpha = 0.5;
+      for (let i = 1; i < 8; i++) { const a = Math.PI + (i / 8) * Math.PI; g.beginPath(); g.moveTo(Math.cos(a) * (R - d), cy + Math.sin(a) * (R - d)); g.lineTo(Math.cos(a) * R * 0.97, cy + Math.sin(a) * R * 0.97); g.stroke(); }
+      g.globalAlpha = 1;
+    },
+  },
+  {
+    id: 'boombank', name: 'Boombank (rond om een boom)', cat: 'Meubilair', round: true, w: 2.2, h: 2.2, color: '#7a6a58',
+    draw(g, w, h, c, lw) {
+      const R = w / 2, r = R - Math.min(0.5, R * 0.45);
+      g.fillStyle = hexA(c, 0.2);
+      g.beginPath(); g.arc(0, 0, R, 0, TAU); g.arc(0, 0, r, TAU, 0, true); g.fill('evenodd'); g.stroke();
+      g.beginPath(); g.arc(0, 0, r, 0, TAU); g.stroke();
+      g.lineWidth = lw * 0.6;
+      g.globalAlpha = 0.5;
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g.beginPath(); g.moveTo(Math.cos(a) * r, Math.sin(a) * r); g.lineTo(Math.cos(a) * R, Math.sin(a) * R); g.stroke(); }
+      g.globalAlpha = 1;
+    },
+  },
+  {
+    id: 'tuinstoel', name: 'Tuinstoel', cat: 'Meubilair', round: false, w: 0.6, h: 0.6, color: '#7a6a58',
+    draw(g, w, h, c) {
+      g.fillStyle = hexA(c, 0.2);
+      chairTop(g, w, h, { arms: false });
+    },
+  },
+  {
+    id: 'loungestoel', name: 'Loungestoel', cat: 'Meubilair', round: false, w: 0.85, h: 0.85, color: '#6c7a89',
+    draw(g, w, h, c) {
+      g.fillStyle = hexA(c, 0.25);
+      chairTop(g, w, h, { arms: true, back: 0.28, r: 0.12 });
+    },
+  },
+  {
+    id: 'bistrostoel', name: 'Bistrostoel', cat: 'Meubilair', round: false, w: 0.45, h: 0.48, color: '#3d4f5c',
+    draw(g, w, h, c, lw) {
+      // rond zitje met gebogen rugleuning (onder)
+      g.fillStyle = hexA(c, 0.2);
+      g.beginPath(); g.ellipse(0, -h * 0.06, w * 0.46, h * 0.4, 0, 0, TAU); g.fill(); g.stroke();
+      g.lineWidth = lw * 1.8;
+      g.beginPath(); g.ellipse(0, -h * 0.06, w * 0.46, h * 0.44, 0, Math.PI * 0.12, Math.PI * 0.88); g.stroke();
+    },
+  },
+  {
+    id: 'terrastafel', name: 'Terrastafel 80×80', cat: 'Meubilair', round: false, w: 0.8, h: 0.8, color: '#7a6a58',
+    draw(g, w, h, c, lw) { tableTop(g, w, h, c, lw); },
+  },
+  {
+    id: 'terrastafelrecht', name: 'Terrastafel 160×90', cat: 'Meubilair', round: false, w: 1.6, h: 0.9, color: '#7a6a58',
+    draw(g, w, h, c, lw) { tableTop(g, w, h, c, lw); },
+  },
+  {
+    id: 'tafelrondlos', name: 'Ronde tafel Ø 1,0 m', cat: 'Meubilair', round: true, w: 1.0, h: 1.0, color: '#7a6a58',
+    draw(g, w, h, c, lw) { tableTop(g, w, h, c, lw, true); },
+  },
+  {
+    id: 'bistrotafel', name: 'Bistrotafel Ø 0,6 m', cat: 'Meubilair', round: true, w: 0.6, h: 0.6, color: '#3d4f5c',
+    draw(g, w, h, c, lw) {
+      tableTop(g, w, h, c, lw, true);
+      g.fillStyle = c; dot(g, 0, 0, Math.max(w * 0.06, lw));
+    },
+  },
+  {
+    id: 'bistroset', name: 'Bistroset (tafel + 2 stoelen)', cat: 'Meubilair', round: false, w: 1.45, h: 0.62, color: '#3d4f5c',
+    draw(g, w, h, c, lw) {
+      const t = Math.min(h, w * 0.42);
+      g.save(); tableTop(g, t, t, c, lw, true); g.fillStyle = c; dot(g, 0, 0, Math.max(t * 0.06, lw)); g.restore();
+      for (const sx of [-1, 1]) {
+        g.save();
+        g.translate(sx * (t / 2 + (w / 2 - t / 2) * 0.5), 0);
+        g.rotate(sx > 0 ? -Math.PI / 2 : Math.PI / 2);
+        const s = Math.min(w / 2 - t / 2, h) * 0.95;
+        g.fillStyle = hexA(c, 0.2);
+        g.beginPath(); g.ellipse(0, -s * 0.06, s * 0.46, s * 0.4, 0, 0, TAU); g.fill(); g.stroke();
+        g.lineWidth = lw * 1.8;
+        g.beginPath(); g.ellipse(0, -s * 0.06, s * 0.46, s * 0.44, 0, Math.PI * 0.12, Math.PI * 0.88); g.stroke();
+        g.restore();
+      }
+    },
+  },
+  {
+    id: 'picknicktafel', name: 'Picknicktafel', cat: 'Meubilair', round: false, w: 1.8, h: 1.6, color: '#7a6a58',
+    draw(g, w, h, c, lw) {
+      const th = h * 0.44, bh = h * 0.19;
+      g.fillStyle = hexA(c, 0.22);
+      g.beginPath(); g.rect(-w / 2, -th / 2, w, th); g.fill(); g.stroke();
+      g.globalAlpha = 0.5;
+      for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(-w / 2, -th / 2 + (th * i) / 4); g.lineTo(w / 2, -th / 2 + (th * i) / 4); g.stroke(); }
+      g.globalAlpha = 1;
+      g.fillStyle = hexA(c, 0.18);
+      for (const sy of [-1, 1]) { g.beginPath(); g.rect(-w / 2, sy > 0 ? h / 2 - bh : -h / 2, w, bh); g.fill(); g.stroke(); }
+      g.lineWidth = lw * 0.6;
+      g.beginPath(); for (const x of [-w * 0.38, w * 0.38]) { g.moveTo(x, -h / 2 + bh); g.lineTo(x, -th / 2); g.moveTo(x, th / 2); g.lineTo(x, h / 2 - bh); } g.stroke();
+    },
+  },
+
   // --- Huis: deuren, ramen en puien (bovenaanzicht; h = muurdikte, ze klikken in een muur) ---
   {
     id: 'deur', name: 'Binnendeur', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 0.93, h: 0.3, color: '#2f2f2f',
@@ -524,16 +669,32 @@ export const STENCILS = [
   {
     id: 'auto', name: 'Auto', cat: 'Bouw & water', round: false, w: 1.8, h: 4.5, color: '#555555',
     draw(g, w, h, c, lw) {
+      // bovenaanzicht, neus boven: carrosserie, ruiten, dak, spiegels en wielen
+      const rr = (x, y, ww, hh, r) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, ww, hh, r) : g.rect(x, y, ww, hh); };
+      g.fillStyle = hexA(c, 0.55);
+      for (const sx of [-1, 1]) for (const sy of [-0.3, 0.3]) { rr(sx * w / 2 - (sx > 0 ? w * 0.07 : 0), sy * h - h * 0.07, w * 0.07, h * 0.14, w * 0.02); g.fill(); }
       g.fillStyle = hexA(c, 0.12);
-      const r = w * 0.25;
-      g.beginPath();
-      g.moveTo(-w / 2 + r, -h / 2); g.lineTo(w / 2 - r, -h / 2); g.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
-      g.lineTo(w / 2, h / 2 - r); g.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
-      g.lineTo(-w / 2 + r, h / 2); g.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
-      g.lineTo(-w / 2, -h / 2 + r); g.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+      rr(-w / 2, -h / 2, w, h, [w * 0.32, w * 0.32, w * 0.2, w * 0.2]);
       g.fill(); g.stroke();
-      g.lineWidth = lw * 0.7;
-      g.beginPath(); g.rect(-w * 0.38, -h * 0.22, w * 0.76, h * 0.5); g.stroke();
+      // spiegels
+      g.fillStyle = hexA(c, 0.3);
+      for (const sx of [-1, 1]) { g.beginPath(); g.ellipse(sx * (w / 2 + w * 0.05), -h * 0.15, w * 0.06, h * 0.025, 0, 0, TAU); g.fill(); g.stroke(); }
+      // voorruit, dak, achterruit
+      g.lineWidth = lw * 0.8;
+      g.fillStyle = hexA(c, 0.35);
+      g.beginPath();
+      g.moveTo(-w * 0.4, -h * 0.13); g.quadraticCurveTo(0, -h * 0.2, w * 0.4, -h * 0.13);
+      g.lineTo(w * 0.36, -h * 0.03); g.lineTo(-w * 0.36, -h * 0.03); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = hexA(c, 0.18);
+      rr(-w * 0.36, -h * 0.03, w * 0.72, h * 0.27, w * 0.06); g.fill(); g.stroke();
+      g.fillStyle = hexA(c, 0.35);
+      g.beginPath();
+      g.moveTo(-w * 0.36, h * 0.24); g.lineTo(w * 0.36, h * 0.24);
+      g.lineTo(w * 0.38, h * 0.33); g.quadraticCurveTo(0, h * 0.37, -w * 0.38, h * 0.33); g.closePath(); g.fill(); g.stroke();
+      // motorkap-lijnen
+      g.globalAlpha = 0.45;
+      g.beginPath(); g.moveTo(-w * 0.22, -h * 0.46); g.lineTo(-w * 0.3, -h * 0.2); g.moveTo(w * 0.22, -h * 0.46); g.lineTo(w * 0.3, -h * 0.2); g.stroke();
+      g.globalAlpha = 1;
     },
   },
 
@@ -632,12 +793,19 @@ export function drawStencil(g, item, lw, paper) {
   g.lineCap = 'round';
   const c = item.color || def.color;
   if (!item.see && !def.opening && !def.fixedPaper) {
-    // dichte ondergrond in papierkleur: een stencil ligt bovenop wat eronder getekend is
-    g.fillStyle = paper || '#fbfaf6';
-    g.beginPath();
-    if (def.round) g.ellipse(0, 0, item.w * 0.43, item.h * 0.43, 0, 0, Math.PI * 2); // binnen de (golvende) kroonrand
-    else g.rect(-item.w / 2, -item.h / 2, item.w, item.h);
-    g.fill();
+    // dichte ondergrond: het stencil eerst één keer in papierkleur tekenen, zodat precies zijn eigen
+    // vorm afdekt wat eronder ligt (geen rechthoek met witte hoeken, geen vlak tussen de stoelen)
+    const P = paper || '#fbfaf6';
+    g.save();
+    fillOverride.paper = P;
+    g.strokeStyle = P;
+    g.fillStyle = P;
+    try {
+      def.draw(g, item.w, item.h, P, lw, P);
+    } finally {
+      fillOverride.paper = null;
+    }
+    g.restore();
   }
   g.strokeStyle = c;
   g.fillStyle = c;

@@ -62,6 +62,28 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(px.red[0] > 200 && px.red[1] < 60, `vulkleur rood is te zien (${px.red})`);
   assert(px.half[1] < px.full[1] - 60, `40% dekking laat de zwarte ondergrond door (${px.half} vs ${px.full})`);
 
+  console.log('Afdekken volgt de vorm van het stencil');
+  const sil = await page.evaluate(async () => {
+    const { drawStencil, STENCIL_MAP } = await import('./js/stencils.js');
+    const at = (symbol, lx, ly) => {
+      const def = STENCIL_MAP[symbol];
+      const c = document.createElement('canvas'); c.width = c.height = 400;
+      const g = c.getContext('2d');
+      g.fillStyle = '#000'; g.fillRect(0, 0, 400, 400);
+      g.setTransform(60, 0, 0, 60, 200, 200);
+      drawStencil(g, { type: 'stencil', symbol, x: 0, y: 0, w: def.w, h: def.h, rot: 0 }, 0.01, '#ffffff');
+      return [...g.getImageData(Math.round(200 + lx * 60), Math.round(200 + ly * 60), 1, 1).data].slice(0, 3);
+    };
+    return {
+      autoHoek: at('auto', 0.86, -2.2), autoMidden: at('auto', 0, 0.9),
+      tussenStoelen: at('tafel6', 0, -0.95 + 0.0), tafelblad: at('tafel6', 0.3, 0.1),
+      nieuw: ['tuinstoel', 'loungestoel', 'bistrostoel', 'terrastafel', 'terrastafelrecht', 'tafelrondlos', 'bistrotafel', 'bistroset', 'picknicktafel', 'zitbank', 'bankhalfrond', 'boombank'].filter((k) => !STENCIL_MAP[k]),
+    };
+  });
+  assert(sil.autoHoek.every((v) => v < 40) && sil.autoMidden.every((v) => v > 150), `auto: afgeronde hoek laat de ondergrond zien (${sil.autoHoek}), de auto zelf dekt af`);
+  assert(sil.tafelblad.every((v) => v > 150), 'tafel met stoelen: het tafelblad dekt af');
+  assert(!sil.nieuw.length, 'nieuwe stencils: stoelen, tafels, bistroset, picknicktafel, banken (ook halfrond en boombank)');
+
   console.log('Vormen en lijnen');
   await page.evaluate(() => window.app.setSelection(new Set(['R'])));
   assert(await page.locator('#selection-bar [data-k="fillColor"]').count() === 1 && await page.locator('#selection-bar [data-k="fillAlpha"]').count() === 1, 'gevulde vorm: vulkleur en vulsterkte');

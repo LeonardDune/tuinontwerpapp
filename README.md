@@ -60,6 +60,10 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   dichte verharding), wegen, water, bouwwerken en muren/hekken, met de passende materialen en bijgesneden tot het
   kaartgebied. Beide komen in een eigen, vergrendelde laag, zodat je erop kunt snappen zonder ze per ongeluk te
   verschuiven.
+- **Tuinmeubilair** (Stencils › Meubilair): losse tuinstoel, loungestoel en bistrostoel; terrastafels (80×80 en
+  160×90), ronde tafel Ø 1,0 m en bistrotafel Ø 0,6 m; bistroset en picknicktafel; tuinbank, bank zonder leuning,
+  halfronde bank en boombank; plus de bestaande sets (ronde tafel met 4, tafel met 6), loungebank, ligbed, parasol en
+  barbecue. Een stencil dekt precies zijn eigen vorm af, dus tussen stoelen of rond een auto blijft de ondergrond zichtbaar.
 - **Plattegrond van het huis**: het gereedschap *Muur* tekent muren met een dikte (10, 20, 30 of 40 cm of zelf
   invullen) als ketting van punten; tik op het eerste punt om rond te sluiten. Muren zijn gearceerd en hebben nette
   verstekhoeken. Bij *Stencils › Huis: deuren en ramen* staan binnendeur, buitendeur, dubbele deur, openslaande
