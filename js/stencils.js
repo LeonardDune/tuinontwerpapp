@@ -118,7 +118,52 @@ function chair(g, x, y, s, rot) {
   g.restore();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
+const POT_GREEN = '#4f7f36';
+const SOIL = '#6b4f3a';
+
+/** Ronde pot in bovenaanzicht: rand in de potkleur, aarde binnenin. */
+function potRound(g, rx, ry, c, lw) {
+  g.fillStyle = hexA(c, 0.5);
+  g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, TAU); g.fill(); g.stroke();
+  const k = Math.max(Math.min(rx, ry) * 0.14, lw * 2);
+  g.fillStyle = hexA(SOIL, 0.35);
+  g.beginPath(); g.ellipse(0, 0, rx - k, ry - k, 0, 0, TAU); g.fill();
+  g.save(); g.lineWidth = lw * 0.6; g.stroke(); g.restore();
+}
+
+/** Vierkante of lange bak in bovenaanzicht. */
+function potSquare(g, w, h, c, lw) {
+  g.fillStyle = hexA(c, 0.5);
+  g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+  const k = Math.max(Math.min(w, h) * 0.1, lw * 2);
+  g.fillStyle = hexA(SOIL, 0.35);
+  g.beginPath(); g.rect(-w / 2 + k, -h / 2 + k, w - 2 * k, h - 2 * k); g.fill();
+  g.save(); g.lineWidth = lw * 0.6; g.stroke(); g.restore();
+}
+
+/** Plant in een pot, van boven gezien: een rozet van bladeren. */
+function potPlant(g, rx, ry, lw, seed) {
+  const r = rng(seed);
+  const n = 7 + Math.floor(r() * 3);
+  const off = r() * TAU;
+  g.save();
+  g.strokeStyle = POT_GREEN;
+  g.lineWidth = lw * 0.8;
+  for (const [k, sc, al] of [[0, 1, 0.55], [0.5, 0.62, 0.7]]) {
+    g.fillStyle = hexA('#5a8f3c', al);
+    for (let i = 0; i < n; i++) {
+      const a = off + ((i + k) / n) * TAU + (r() - 0.5) * 0.3;
+      const L = (0.78 + r() * 0.22) * sc;
+      const cx = Math.cos(a) * rx * L * 0.52, cy = Math.sin(a) * ry * L * 0.52;
+      g.beginPath();
+      g.ellipse(cx, cy, rx * L * 0.48, ry * L * 0.2, a, 0, TAU);
+      g.fill(); g.stroke();
+    }
+  }
+  g.restore();
+}
+
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Potten & bakken', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -301,6 +346,111 @@ export const STENCILS = [
         for (let x = -w / 2 + w / 4; x < w / 2; x += w / 4) { g.fillStyle = '#5a8f3c'; dot(g, x, y, Math.min(w, h) * 0.04); }
       }
       g.globalAlpha = 1;
+    },
+  },
+
+  // --- Potten & bakken (maat = buitenmaat van pot plus plant; c = kleur van de pot) ---
+  {
+    id: 'potrond', name: 'Ronde pot met plant', cat: 'Potten & bakken', round: true, w: 0.5, h: 0.5, color: '#b5653a',
+    draw(g, w, h, c, lw) {
+      potRound(g, w / 2, h / 2, c, lw);
+      potPlant(g, w * 0.4, h * 0.4, lw, 7);
+    },
+  },
+  {
+    id: 'potvierkant', name: 'Vierkante pot met plant', cat: 'Potten & bakken', round: false, w: 0.5, h: 0.5, color: '#55595e',
+    draw(g, w, h, c, lw) {
+      potSquare(g, w, h, c, lw);
+      potPlant(g, w * 0.4, h * 0.4, lw, 11);
+    },
+  },
+  {
+    id: 'potbol', name: 'Pot met bolvorm (buxus)', cat: 'Potten & bakken', round: true, w: 0.6, h: 0.6, color: '#9a968e',
+    draw(g, w, h, c, lw) {
+      potRound(g, w / 2, h / 2, c, lw);
+      g.save();
+      g.strokeStyle = POT_GREEN; g.fillStyle = hexA('#3f6f34', 0.45);
+      cloud(g, w * 0.4, h * 0.4, 14, 0.06); g.fill(); g.stroke();
+      g.globalAlpha = 0.5; g.lineWidth = lw * 0.6;
+      cloud(g, w * 0.22, h * 0.22, 9, 0.1); g.stroke();
+      g.restore();
+    },
+  },
+  {
+    id: 'potgras', name: 'Pot met siergras', cat: 'Potten & bakken', round: true, w: 0.6, h: 0.6, color: '#c9c2b3',
+    draw(g, w, h, c, lw) {
+      potRound(g, w * 0.38, h * 0.38, c, lw);
+      g.save();
+      g.strokeStyle = '#8a8238'; g.lineWidth = lw * 0.8;
+      g.fillStyle = hexA('#a39a45', 0.15);
+      g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill();
+      g.beginPath();
+      for (let i = 0; i < 20; i++) {
+        const a = (i / 20) * TAU, k = i % 2 ? 0.5 : 0.42;
+        g.moveTo(0, 0);
+        g.quadraticCurveTo(Math.cos(a + 0.25) * w * 0.25, Math.sin(a + 0.25) * h * 0.25, Math.cos(a) * w * k, Math.sin(a) * h * k);
+      }
+      g.stroke();
+      g.restore();
+    },
+  },
+  {
+    id: 'potbloei', name: 'Pot met bloeiende plant', cat: 'Potten & bakken', round: true, w: 0.4, h: 0.4, color: '#b5653a',
+    draw(g, w, h, c, lw) {
+      potRound(g, w / 2, h / 2, c, lw);
+      potPlant(g, w * 0.4, h * 0.4, lw, 23);
+      g.save();
+      const r = rng(17);
+      g.fillStyle = hexA('#d0569a', 0.9);
+      for (let i = 0; i < 8; i++) {
+        const a = r() * TAU, d = 0.08 + r() * 0.22;
+        dot(g, Math.cos(a) * w * d, Math.sin(a) * h * d, w * 0.045);
+      }
+      g.restore();
+    },
+  },
+  {
+    id: 'potboom', name: 'Pot met boompje (olijf)', cat: 'Potten & bakken', round: true, w: 1.4, h: 1.4, color: '#b5653a',
+    draw(g, w, h, c, lw) {
+      // de kroon is groter dan de pot; de pot zie je gestippeld door de kroon heen
+      g.save();
+      g.strokeStyle = '#6f8455'; g.fillStyle = hexA('#8a9a6a', 0.35);
+      cloud(g, w / 2, h / 2, 10, 0.14); g.fill(); g.stroke();
+      g.globalAlpha = 0.5; g.lineWidth = lw * 0.6;
+      cloud(g, w * 0.28, h * 0.28, 7, 0.15); g.stroke();
+      g.restore();
+      g.save();
+      g.setLineDash([lw * 3, lw * 2.5]);
+      g.beginPath(); g.ellipse(0, 0, w * 0.22, h * 0.22, 0, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      g.restore();
+      dot(g, 0, 0, Math.max(w * 0.03, lw * 1.5));
+    },
+  },
+  {
+    id: 'plantenbak', name: 'Plantenbak (lang)', cat: 'Potten & bakken', round: false, w: 1.2, h: 0.4, color: '#8a4b2a',
+    draw(g, w, h, c, lw) {
+      potSquare(g, w, h, c, lw);
+      const n = Math.max(1, Math.round(w / h));
+      for (let i = 0; i < n; i++) {
+        g.save();
+        g.translate(-w / 2 + (w / n) * (i + 0.5), 0);
+        potPlant(g, Math.min(w / n, h) * 0.42, h * 0.42, lw, 31 + i);
+        g.restore();
+      }
+    },
+  },
+  {
+    id: 'potgroep', name: 'Groep van 3 potten', cat: 'Potten & bakken', round: false, w: 1.0, h: 0.8, color: '#b5653a',
+    draw(g, w, h, c, lw) {
+      const s = Math.min(w, h * 1.25);
+      for (const [x, y, d, seed] of [[-0.22, -0.12, 0.5, 3], [0.27, -0.2, 0.36, 9], [0.12, 0.24, 0.32, 13]]) {
+        g.save();
+        g.translate(x * w, y * h);
+        potRound(g, (s * d) / 2, (s * d) / 2, c, lw);
+        potPlant(g, s * d * 0.4, s * d * 0.4, lw, seed);
+        g.restore();
+      }
     },
   },
 
