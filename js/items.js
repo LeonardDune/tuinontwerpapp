@@ -300,6 +300,7 @@ function drawShape(g, item, rc) {
       g.restore();
     }
   }
+  if (closed && item.border && BORDERS[item.border] && item.kind === 'polygon') { drawBorder(g, item); tracePath(g, item); }
   if (item.width > 0 && item.stroke !== false && (item.strokeAlpha ?? 1) > 0) {
     g.globalAlpha *= item.strokeAlpha ?? 1; // de omtrek apart doorzichtig (de vulling niet)
     g.strokeStyle = item.color;
@@ -695,4 +696,56 @@ export function transformItem(item, m, s, r) {
 
 export function stencilDef(item) {
   return STENCIL_MAP[item.symbol];
+}
+
+/** Randen langs de binnenkant van een vlak (rollaag, kasseien, opsluitband). */
+export const BORDERS = {
+  geen: { name: 'Geen rand' },
+  rollaag: { name: 'Rollaag (klinkers dwars)', d: 0.2, pitch: 0.1, bg: '#9a4a38' },
+  rollaag2: { name: 'Dubbele rollaag', d: 0.4, pitch: 0.1, bg: '#9a4a38', rows: 2 },
+  kasseirand: { name: 'Rand van kasseien (2 rijen)', d: 0.24, pitch: 0.12, bg: '#8e8c88', rows: 2, round: true },
+  band: { name: 'Opsluitband (10 cm)', d: 0.1, pitch: 1, bg: '#b9b4ab' },
+  strek: { name: 'Strekse laag (klinkers in de lengte)', d: 0.1, pitch: 0.2, bg: '#9a4a38' },
+};
+
+function drawBorder(g, item) {
+  const b = BORDERS[item.border];
+  const pts = item.points;
+  const n = pts.length;
+  let area = 0;
+  for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; area += p[0] * q[1] - q[0] * p[1]; }
+  const sgn = area > 0 ? 1 : -1; // binnenkant ligt links (positief) of rechts
+  const d = item.borderWidth || b.d;
+  const col = item.hatchColor || '#3a3a3a';
+  g.save();
+  tracePath(g, item);
+  g.clip();
+  g.lineJoin = 'miter';
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], c = pts[(i + 1) % n];
+    const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    if (L < 1e-6) continue;
+    const u = [(c[0] - a[0]) / L, (c[1] - a[1]) / L], nn = [-u[1] * sgn, u[0] * sgn];
+    const P = (s, t) => [a[0] + u[0] * s + nn[0] * t, a[1] + u[1] * s + nn[1] * t];
+    // strook (iets verlengd zodat de hoeken dicht zijn; de clip snijdt af)
+    const q = [P(-d, 0), P(L + d, 0), P(L + d, d), P(-d, d)];
+    g.beginPath(); q.forEach((p, k) => (k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
+    g.fillStyle = item.borderColor || b.bg;
+    g.globalAlpha = 0.85;
+    g.fill();
+    g.globalAlpha = 1;
+    g.strokeStyle = col;
+    g.lineWidth = Math.min(0.012, d * 0.08);
+    g.beginPath();
+    const rows = b.rows || 1;
+    for (let r = 1; r <= rows; r++) { const t = (d * r) / rows; g.moveTo(...P(-d, t)); g.lineTo(...P(L + d, t)); }
+    if (b.pitch < L) {
+      for (let r = 0; r < rows; r++) {
+        const off = rows > 1 && r % 2 ? b.pitch / 2 : 0;
+        for (let s2 = off; s2 <= L; s2 += b.pitch) { const t0 = (d * r) / rows, t1 = (d * (r + 1)) / rows; g.moveTo(...P(s2, t0)); g.lineTo(...P(s2, t1)); }
+      }
+    }
+    g.stroke();
+  }
+  g.restore();
 }

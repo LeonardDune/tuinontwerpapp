@@ -9,7 +9,7 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem, hatchAngle } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -2045,6 +2045,8 @@ class App {
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
       html += `<select data-k="hatch" title="Materiaal / arcering">${hatchOptions(closed[0].hatch || 'none')}</select>`;
+      const polys = closed.filter((i) => i.kind === 'polygon' && ((i.hatch && i.hatch !== 'none') || i.border));
+      if (polys.length) html += `<select data-k="border" title="Rand langs de binnenkant (rollaag, kasseien, opsluitband)">${Object.entries(BORDERS).map(([k, v]) => `<option value="${k}" ${(polys[0].border || 'geen') === k ? 'selected' : ''}>${k === 'geen' ? 'Rand: geen' : v.name}</option>`).join('')}</select>`;
       if (it && it.hatch && it.hatch !== 'none' && HATCHES[it.hatch]?.size) {
         const hd = HATCHES[it.hatch];
         const hex = (c, d) => (c && c.length === 7 ? c : d);
@@ -2260,6 +2262,9 @@ class App {
           for (const i of st) { if (on) i.see = true; else delete i.see; }
           break;
         }
+        case 'border':
+          for (const i of items) if (i.type === 'shape' && i.kind === 'polygon' && !i.wall && BORDERS[raw]) { if (raw === 'geen') delete i.border; else i.border = raw; }
+          break;
         case 'grow':
           for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.climb && GROW[raw]) i.grow = raw;
           break;

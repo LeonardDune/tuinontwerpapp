@@ -18,9 +18,21 @@ export const HATCHES = {
   klinkers: { name: 'Klinkers, halfsteens', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
   visgraat: { name: 'Klinkers, visgraat', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
   bredevoeg: { name: 'Klinkers met brede voeg (waterdoorlatend)', size: 0.48, bg: '#b06a52', joint: '#8fae6a', group: 'Bestrating' },
+  keper: { name: 'Klinkers, keperverband (visgraat schuin, 45°)', size: 0.4, bg: '#b06a52', group: 'Bestrating', tile: 'visgraat', rotOff: Math.PI / 4 },
+  mandverband: { name: 'Klinkers, mandverband (blokverband)', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
+  molenwiek: { name: 'Klinkers, molenwiekverband (pinwheel)', size: 0.3, bg: '#a46450', group: 'Bestrating' },
+  stapel: { name: 'Klinkers, stapelverband', size: 0.4, bg: '#b06a52', group: 'Bestrating' },
+  oudhollands: { name: 'Oude gebakken klinkers (rustiek)', size: 0.4, bg: '#a25a45', group: 'Bestrating' },
+  rustiek: { name: 'Rustieke stenen met brede lichte voeg', size: 0.48, bg: '#b5543c', joint: '#d9d2c3', group: 'Bestrating' },
+  waalformaat: { name: 'Waalformaat (smalle steen), halfsteens', size: 0.48, bg: '#a9553f', group: 'Bestrating' },
+  grootformaat: { name: 'Grootformaat betonstenen, wildverband', size: 1.2, bg: '#b7aa9b', group: 'Bestrating' },
+  achthoek: { name: 'Achthoekige tegels met cabochons', size: 0.3, bg: '#a29589', group: 'Bestrating' },
+  waaier: { name: 'Waaierverband (schubben)', size: 1.0, bg: '#a29d94', group: 'Bestrating' },
+  kasseien: { name: 'Oude kasseien in rijen', size: 0.6, bg: '#9a9a96', group: 'Bestrating' },
+  hardsteen: { name: 'Blauwe hardsteen, wildverband', size: 1.2, bg: '#7d8fa3', group: 'Bestrating' },
   cirkel: { name: 'Cirkelverband (rond terras, om een boom)', size: 0.12, bg: '#a29d94', group: 'Bestrating', radial: true },
   kinderkopjes: { name: 'Kinderkopjes / kasseien', size: 0.6, bg: '#a29d94', group: 'Bestrating' },
-  romaans: { name: 'Natuursteen, Romaans verband', size: 1.2, bg: '#d4cbbb', group: 'Bestrating' },
+  romaans: { name: 'Natuursteen, Romaans verband (ashlar)', size: 1.2, bg: '#d4cbbb', group: 'Bestrating' },
   flagstones: { name: 'Flagstones / breuksteen', size: 2.0, bg: '#cdc3b0', group: 'Bestrating' },
   grastegels: { name: 'Grastegels (waterdoorlatend)', size: 0.5, bg: '#a9c493', group: 'Bestrating' },
   // halfverharding
@@ -68,6 +80,15 @@ function makeTile(kind, color) {
   const T = TILE;
   let seed = 99;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // kleurverschil per steen (gemêleerd), ook over de rand van de tegel heen
+  const tone = (x, y, w, h, max = 0.12) => {
+    const a = rnd() * max, light = rnd() < 0.5;
+    g.save();
+    g.fillStyle = light ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a * 0.8})`;
+    for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) g.fillRect(x + dx + 1, y + dy + 1, w - 2, h - 2);
+    g.restore();
+  };
+  const rrect = (x, y, w, h, r) => { if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); };
   switch (kind) {
     case 'gras':
       for (let i = 0; i < 14; i++) {
@@ -128,6 +149,177 @@ function makeTile(kind, color) {
       g.beginPath(); g.moveTo(T * 0.5, 0); g.lineTo(T * 0.5, T); g.stroke();
       g.globalAlpha = 1;
       break;
+    case 'mandverband': {
+      // mandverband: per vak van 20×20 twee klinkers, afwisselend liggend en staand
+      const u = T / 2;
+      g.lineWidth = 1.2;
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          const x = i * u, y = j * u;
+          g.strokeRect(x, y, u, u);
+          if ((i + j) % 2) { tone(x, y, u / 2, u); tone(x + u / 2, y, u / 2, u); } else { tone(x, y, u, u / 2); tone(x, y + u / 2, u, u / 2); }
+          g.beginPath();
+          if ((i + j) % 2) { g.moveTo(x + u / 2, y); g.lineTo(x + u / 2, y + u); } else { g.moveTo(x, y + u / 2); g.lineTo(x + u, y + u / 2); }
+          g.stroke();
+        }
+      }
+      break;
+    }
+    case 'achthoek': {
+      // achthoekige tegels met kleine vierkante tegeltjes op de kruispunten
+      const k = T / (2 + Math.SQRT2);
+      g.lineWidth = 1.4;
+      g.beginPath();
+      g.moveTo(k, 0); g.lineTo(T - k, 0); g.lineTo(T, k); g.lineTo(T, T - k); g.lineTo(T - k, T); g.lineTo(k, T); g.lineTo(0, T - k); g.lineTo(0, k); g.closePath();
+      g.stroke();
+      g.save(); g.globalAlpha = 0.12; g.fillStyle = '#000';
+      for (const [x, y] of [[0, 0], [T, 0], [T, T], [0, T]]) { g.beginPath(); g.moveTo(x - k, y); g.lineTo(x, y - k); g.lineTo(x + k, y); g.lineTo(x, y + k); g.closePath(); g.fill(); }
+      g.restore();
+      break;
+    }
+    case 'waalformaat': {
+      // smalle gevelsteen (ca. 21×5) halfsteens: 8 lagen per tegel
+      const h = T / 8;
+      g.lineWidth = 1;
+      for (let r = 0; r < 8; r++) {
+        const y = r * h, off = r % 2 ? T / 4 : 0;
+        g.beginPath(); g.moveTo(0, y); g.lineTo(T, y); g.stroke();
+        for (let x = off - T / 2; x <= T; x += T / 2) {
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + h); g.stroke();
+          tone(x, y, T / 2, h);
+        }
+      }
+      break;
+    }
+    case 'waaier': {
+      // waaierverband (schubben): rijen bogen die elkaar half overlappen, met kleine keien erin
+      const R = T / 4;
+      g.lineWidth = 1.2;
+      const disks = [];
+      for (let r = -2; r <= 6; r++) {
+        for (let c = -1; c <= 3; c++) disks.push([c * 2 * R + (r % 2 ? R : 0), r * R]);
+      }
+      disks.sort((a, b) => a[1] - b[1]);
+      for (const [cx, cy] of disks) {
+        g.save();
+        g.globalCompositeOperation = 'destination-out';
+        g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+        g.restore();
+        g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+        for (const f of [0.68, 0.36]) { g.beginPath(); g.arc(cx, cy, R * f, Math.PI, Math.PI * 2); g.stroke(); }
+        // voegen tussen de keien in elke ring
+        for (const [r0, r1, n] of [[0.68, 1, 7], [0.36, 0.68, 5], [0, 0.36, 3]]) {
+          for (let i = 1; i < n; i++) {
+            const a = Math.PI + (i / n) * Math.PI;
+            g.beginPath(); g.moveTo(cx + Math.cos(a) * R * r0, cy + Math.sin(a) * R * r0); g.lineTo(cx + Math.cos(a) * R * r1, cy + Math.sin(a) * R * r1); g.stroke();
+          }
+        }
+      }
+      break;
+    }
+    case 'oudhollands': {
+      // oude, gebakken klinkers: onregelmatig, afgeronde hoeken, halfsteens
+      const h = T / 4;
+      g.lineWidth = 1.2;
+      for (let r = 0; r < 4; r++) {
+        const off = r % 2 ? T / 4 : 0;
+        for (let i = -1; i < 2; i++) {
+          const j = [rnd(), rnd(), rnd(), rnd()].map((v) => 1 + v * 3);
+          for (const dx of [-T, 0, T]) {
+            const x = off + i * (T / 2) + dx, y = r * h;
+            g.beginPath();
+            rrect(x + j[0], y + j[1], T / 2 - j[0] - j[2], h - j[1] - j[3], 4);
+            g.stroke();
+          }
+          tone(off + i * (T / 2), r * h, T / 2, h);
+        }
+      }
+      break;
+    }
+    case 'kasseien': {
+      // oude kasseien: rijen van ongelijke lengte, ruw en afgerond
+      const rows = 5, h = T / rows;
+      g.lineWidth = 1.3;
+      for (let r = 0; r < rows; r++) {
+        const ws = [];
+        let left = T;
+        while (left > 0) { const w = Math.min(left, T * (0.16 + rnd() * 0.12)); ws.push(left - w < T * 0.12 ? left : w); left -= ws[ws.length - 1]; }
+        let x = rnd() * T * 0.1;
+        for (const w of ws) {
+          const j = [rnd(), rnd(), rnd(), rnd()].map((v) => 2 + v * 3);
+          for (const dx of [-T, 0, T]) { g.beginPath(); rrect(x + dx + j[0], r * h + j[1], w - j[0] - j[2], h - j[1] - j[3], 6); g.stroke(); }
+          tone(x, r * h, w, h);
+          x += w;
+        }
+      }
+      break;
+    }
+    case 'molenwiek': {
+      // molenwiekverband: vier klinkers (20×10) rond een vierkantje (10×10), tegel = 30×30
+      const u = T / 3;
+      g.lineWidth = 1.2;
+      for (const [x, y, w, h] of [[0, 0, 2, 1], [2, 0, 1, 2], [1, 2, 2, 1], [0, 1, 1, 2], [1, 1, 1, 1]]) { g.strokeRect(x * u, y * u, w * u, h * u); tone(x * u, y * u, w * u, h * u); }
+      break;
+    }
+    case 'hardsteen': {
+      // blauwe hardsteen in wildverband: rijen van wisselende hoogte, stenen van wisselende lengte
+      g.lineWidth = 1.5;
+      let y = 0;
+      for (const hh of [0.25, 0.25, 0.2, 0.3]) {
+        const h = T * hh;
+        let x = rnd() * T * 0.3, left = T;
+        while (left > 1) {
+          const w = Math.min(left, T * (0.25 + rnd() * 0.25));
+          const ww = left - w < T * 0.18 ? left : w;
+          for (const dx of [-T, 0]) g.strokeRect(x + dx, y, ww, h);
+          tone(x, y, ww, h, 0.16);
+          x += ww; left -= ww;
+          if (x > T) x -= T;
+        }
+        y += h;
+      }
+      break;
+    }
+    case 'rustiek': {
+      // rustieke stenen met een brede, lichte voeg (de voeg is het gekleurde vlak)
+      const cm = T / 48;
+      g.fillStyle = color;
+      g.fillRect(0, 0, T, T);
+      g.globalCompositeOperation = 'destination-out';
+      for (let r = 0; r < 4; r++) {
+        const y = r * 12 * cm;
+        const off = r % 2 ? 12 * cm : 0;
+        for (let x = off - 24 * cm; x < T; x += 24 * cm) {
+          const j = [rnd(), rnd(), rnd(), rnd()].map((v) => cm * (1 + v * 1.2));
+          for (const dx of [0, T]) { g.beginPath(); rrect(x + dx + j[0], y + j[1], 24 * cm - j[0] - j[2], 12 * cm - j[1] - j[3], cm * 1.5); g.fill(); }
+        }
+      }
+      g.globalCompositeOperation = 'source-over';
+      break;
+    }
+    case 'stapel': {
+      // stapelverband: staande klinkers recht naast en boven elkaar
+      const u = T / 4;
+      g.lineWidth = 1.2;
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) { g.strokeRect(i * u, j * T / 2, u, T / 2); tone(i * u, j * T / 2, u, T / 2); }
+      break;
+    }
+    case 'grootformaat': {
+      // grote betonstenen (30×20 en 20×20) in wildverband, rijen van 20 cm
+      const rows = 6, h = T / rows, u = T / 12;
+      g.lineWidth = 1.3;
+      for (let r = 0; r < rows; r++) {
+        let x = (r * 5 % 12) * u, left = 12;
+        while (left > 0) {
+          const n = left <= 3 ? left : (rnd() < 0.5 ? 2 : 3);
+          for (const dx of [-T, 0]) g.strokeRect(x + dx, r * h, n * u, h);
+          tone(x, r * h, n * u, h);
+          x += n * u; left -= n;
+          if (x >= T) x -= T;
+        }
+      }
+      break;
+    }
     case 'hout':
       g.lineWidth = 1.2;
       for (let r = 0; r < 4; r++) {
@@ -358,7 +550,7 @@ export function hatchPattern(ctx, kind, color, rot = 0, origin = null) {
   const key = kind + color;
   let tile = cache.get(key);
   if (!tile) {
-    tile = makeTile(kind, color);
+    tile = makeTile(def.tile || kind, color);
     cache.set(key, tile);
   }
   const pattern = ctx.createPattern(tile, 'repeat');
@@ -366,7 +558,8 @@ export function hatchPattern(ctx, kind, color, rot = 0, origin = null) {
   // legrichting (rot, radialen) en beginpunt (origin) van het patroon in de tekening
   const m = new DOMMatrix();
   if (origin) m.translateSelf(origin[0], origin[1]);
-  if (rot) m.rotateSelf((rot * 180) / Math.PI);
+  const r = rot + (def.rotOff || 0);
+  if (r) m.rotateSelf((r * 180) / Math.PI);
   m.scaleSelf(s, s);
   pattern.setTransform(m);
   return pattern;
