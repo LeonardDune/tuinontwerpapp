@@ -8,7 +8,7 @@ import { isBed, isGroup } from './planting.js';
 import { isWall, isOpening, syncOpenings } from './walls.js';
 import { formatLength } from './units.js';
 import {
-  dist, pointInPolygon, distToSegment, snapAngle, matTranslate, matMul, matScale, matRotate, angleOf,
+  dist, pointInPolygon, polygonArea, distToSegment, snapAngle, matTranslate, matMul, matScale, matRotate, angleOf,
 } from './geom.js';
 import {
   isRect, itemFrame, frameToWorld, worldToFrame, applyFrame, selectionBox, displayAngle, itemAngle, itemPivot,
@@ -28,6 +28,31 @@ function edgeHit(it, w, tol) {
     return false;
   }
   return hitItem(it, w, tol);
+}
+
+/** 'edge' (op een lijn of rand), 'inside' (binnen een vlak) of null. */
+function hitKind(it, w, tol) {
+  if (it.type === 'shape') {
+    if (edgeHit(it, w, tol) || (it.kind === 'line' && hitItem(it, w, tol))) return 'edge';
+    if (it.wall) return null; // binnen een rondgesloten muur ligt de kamer, niet de muur
+    if (it.kind === 'polygon' && it.points.length > 2 && pointInPolygon(w, it.points)) return 'inside';
+    if (it.kind === 'circle' && dist(w, it.points[0]) <= dist(it.points[0], it.points[1])) return 'inside';
+    return null;
+  }
+  if (it.type === 'stroke' || it.type === 'dim') return hitItem(it, w, tol) ? 'edge' : null;
+  return hitItem(it, w, tol) ? 'inside' : null; // stencil, afbeelding, tekst, plant
+}
+
+/** Oppervlak (m²) om vlakken onderling te vergelijken. */
+function itemArea(it) {
+  if (it.type === 'shape') {
+    if (it.kind === 'circle') return Math.PI * dist(it.points[0], it.points[1]) ** 2;
+    return Math.abs(polygonArea(it.points));
+  }
+  if (it.type === 'plant') return Math.PI * (it.d / 2) ** 2;
+  if (it.type === 'text') { const m = measureText(it); return Math.max(1e-4, m.w * m.h); }
+  if (it.w && it.h) return Math.abs(it.w * it.h);
+  return Infinity;
 }
 
 export class SelectTool extends Tool {
@@ -209,26 +234,33 @@ export class SelectTool extends Tool {
 
   // ------------------------------------------------------------------ selecteren
 
-  /** Bovenste element onder een punt: eerst lijnen/randen, dan binnenkant van vormen. */
+  /**
+   * Welk element ligt onder een punt?
+   * - Op een lijn of rand (lijnen, omtrekken, penseelstreken, maatlijnen, muren): de bovenste.
+   * - Binnen vlakken (vormen, afbeeldingen, stencils, tekst, planten): het kleinste vlak, zodat een klein
+   *   element op een grote ondergrond (plattegrond, kaart, bestrating) altijd te pakken is.
+   * - Een rand wint alleen van zo'n vlak als hij erboven ligt.
+   */
   pickAt(w) {
     const app = this.app;
     const tol = 9 / app.cam.zoom;
     const layers = app.store.doc.layers;
-    for (const pass of [0, 1]) {
-      for (let li = layers.length - 1; li >= 0; li--) {
-        const layer = layers[li];
-        if (!layer.visible || layer.locked) continue;
-        for (let i = layer.items.length - 1; i >= 0; i--) {
-          const it = layer.items[i];
-          if (pass === 0 && edgeHit(it, w, tol)) return { layer, item: it };
-          if (pass === 1 && it.type === 'shape' && !it.wall) {
-            if (it.kind === 'polygon' && pointInPolygon(w, it.points)) return { layer, item: it };
-            if (it.kind === 'circle' && dist(w, it.points[0]) <= dist(it.points[0], it.points[1])) return { layer, item: it };
-          }
+    let edge = null, inner = null;
+    let z = 0;
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
+      if (!layer.visible || layer.locked) { z += layer.items.length; continue; }
+      for (let i = 0; i < layer.items.length; i++, z++) {
+        const it = layer.items[i];
+        const k = hitKind(it, w, tol);
+        if (k === 'edge') { if (!edge || z > edge.z) edge = { layer, item: it, z }; } else if (k === 'inside') {
+          const a = itemArea(it);
+          if (!inner || a < inner.a - 1e-9 || (Math.abs(a - inner.a) <= 1e-9 && z > inner.z)) inner = { layer, item: it, z, a };
         }
       }
     }
-    return null;
+    const pick = edge && (!inner || edge.z >= inner.z) ? edge : inner;
+    return pick ? { layer: pick.layer, item: pick.item } : null;
   }
 
   finishLasso(e) {
