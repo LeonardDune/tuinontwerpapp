@@ -4,6 +4,7 @@ import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
 import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
+import { unionPolygons, isRectRing } from './union.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
@@ -1124,6 +1125,7 @@ class App {
     if (mod && k === 'c') { this.copySelection(); return; }
     if (mod && k === 'v') { this.pasteClipboard(); return; }
     if (mod && k === 'd') { e.preventDefault(); this.selectionAction('duplicate'); return; }
+    if (mod && k === 'g') { e.preventDefault(); this.selectionAction(e.shiftKey ? 'ungroup' : 'group'); return; }
     if (mod && k === 'a') { e.preventDefault(); this.selectLayer(this.store.doc.activeLayer); return; }
     if (!mod && (e.key === '[' || e.key === ']')) { this.rotateViewBy(e.key === ']' ? 15 : -15); return; }
     if (mod && k === 's') { e.preventDefault(); this.saveNow(); return; }
@@ -1183,6 +1185,14 @@ class App {
   setSelection(ids) {
     this.selection.clear();
     for (const id of ids) this.selection.add(id);
+    // een groep wordt in zijn geheel geselecteerd, behalve de groep die open staat (dubbeltik)
+    const gids = new Set();
+    for (const id of this.selection) { const g = this.store.findItem(id)?.item.gid; if (g) gids.add(g); }
+    if (this.openGroup && !gids.has(this.openGroup)) this.openGroup = null;
+    for (const g of gids) {
+      if (g === this.openGroup) continue;
+      for (const l of this.store.doc.layers) for (const it of l.items) if (it.gid === g) this.selection.add(it.id);
+    }
     this.updateSelectionUI();
     this.plantPanel?.refresh();
     this.requestRender();
@@ -1409,7 +1419,7 @@ class App {
       add(this.slider('Grootte', 4, 60, 1, this.state.eraserSize, (v) => { this.state.eraserSize = v; }, (v) => `${v} px`));
       add(this.hint('Gumt op de actieve laag. Afbeeldingen en kaarten worden niet gegumd (gebruik de lasso).'));
     } else if (t === 'lasso') {
-      add(this.hint('Tik op een element of omcirkel er meerdere. Slepen = verplaatsen · ronde greep = draaien (klikt per 15°) · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Exacte maten en hoeken in de balk onderaan.'));
+      add(this.hint('Tik op een element of omcirkel er meerdere. Slepen = verplaatsen · ronde greep = draaien · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Klikt vast aan zijden, uitlijning, gelijke afstand en hoek. Dubbeltik op een groep = één element aanpassen.'));
     } else if (t === 'wall') {
       const seg = document.createElement('div');
       seg.className = 'seg';
@@ -1936,7 +1946,9 @@ class App {
       if (i.type === 'plant') return 'Bouwsteen';
       return { stroke: 'Penseelstreek', dim: i.kind === 'area' ? 'Oppervlakte' : 'Maatlijn', text: 'Tekst', image: 'Afbeelding' }[i.type] || 'Element';
     };
-    let html = `<span class="count">${it ? typeName(it) : `${items.length} elementen`}</span>`;
+    const gidsSel = [...new Set(items.map((i) => i.gid).filter(Boolean))];
+    const wholeGroup = !it && gidsSel.length === 1 && items.every((i) => i.gid === gidsSel[0]);
+    let html = `<span class="count">${it ? typeName(it) + (it.gid ? ' (in groep)' : '') : wholeGroup ? `Groep van ${items.length}` : `${items.length} elementen`}</span>`;
     if (it) {
       const size = itemSize(it);
       const ang = itemAngle(it);
@@ -2039,6 +2051,9 @@ class App {
       }
     }
     html += '<span class="sepv"></span>';
+    if (items.length > 1 && !wholeGroup) html += `<button type="button" class="tgl" data-sel="group" title="Groeperen: blijven los, maar bewegen als één geheel (Ctrl/Cmd+G)">Groeperen</button>`;
+    if (gidsSel.length && !this.openGroup) html += `<button type="button" class="tgl" data-sel="ungroup" title="Groep opheffen (Ctrl/Cmd+Shift+G)">Groep opheffen</button>`;
+    if (items.filter((i) => mergeable(i)).length > 1) html += `<button type="button" class="tgl" data-sel="merge" title="Samenvoegen tot één vlak (de instellingen van het grootste vak blijven)">Samenvoegen</button>`;
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
     html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
@@ -2346,6 +2361,30 @@ class App {
         }, 'delete');
         this.setSelection(new Set());
         break;
+      case 'group': {
+        const g = uid();
+        this.store.mutate((doc) => {
+          // alles in één laag (die van het eerste element), volgorde blijft gelijk
+          const ordered = doc.layers.flatMap((l) => l.items.filter((i) => this.selection.has(i.id)).map((i) => ({ i, l })));
+          for (const { i, l } of ordered) {
+            i.gid = g;
+            if (l !== layer) { l.items = l.items.filter((x) => x !== i); layer.items.push(i); }
+          }
+        }, 'group');
+        this.openGroup = null;
+        this.toast('Gegroepeerd. Dubbeltik om één element in de groep aan te passen.', 2500);
+        this.setSelection(new Set(this.selection));
+        break;
+      }
+      case 'ungroup': {
+        const gs = new Set(found.map(({ item }) => item.gid).filter(Boolean));
+        this.store.mutate((doc) => { for (const l of doc.layers) for (const i of l.items) if (gs.has(i.gid)) delete i.gid; }, 'ungroup');
+        this.openGroup = null;
+        break;
+      }
+      case 'merge':
+        this.mergeSelection(found);
+        return;
       case 'duplicate': {
         const off = 16 / this.cam.zoom;
         const idMap = {};
@@ -2356,6 +2395,7 @@ class App {
           transformItem(c, matTranslate(off, off), 1, 0);
           return c;
         });
+        renewGroups(clones);
         // gekoppelde deuren/ramen: mee naar de gekopieerde muur, anders los
         for (const c of clones) {
           if (!c.wallId) continue;
@@ -2421,6 +2461,33 @@ class App {
     this.requestRender();
   }
 
+  /** Vlakken samenvoegen tot één vlak; het grootste vak bepaalt de instellingen. */
+  mergeSelection(found) {
+    const parts = found.filter(({ item }) => mergeable(item));
+    if (parts.length < 2) return;
+    const polys = parts.map(({ item }) => mergePolygon(item));
+    const res = unionPolygons(polys);
+    if (res.outer !== 1) { this.toast('Deze vlakken raken elkaar niet. Schuif ze tegen elkaar, of gebruik Groeperen.', 3500); return; }
+    if (res.holes) { this.toast('Samenvoegen zou een gat in het vlak geven; dat kan (nog) niet. Gebruik Groeperen.', 3500); return; }
+    const ring = res.rings[0];
+    const areas = polys.map((p) => Math.abs(polygonArea(p)));
+    const big = parts[areas.indexOf(Math.max(...areas))].item;
+    const others = new Set(parts.map(({ item }) => item.id).filter((id) => id !== big.id));
+    this.store.mutate((doc) => {
+      big.kind = 'polygon';
+      big.points = ring.map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000]);
+      if (isRectRing(big.points)) big.rect = true; else delete big.rect;
+      // groepen (drifts) in de andere vakken horen voortaan bij het samengevoegde vak
+      for (const l of doc.layers) {
+        for (const i of l.items) if (i.bedId && others.has(i.bedId)) i.bedId = big.id;
+        l.items = l.items.filter((i) => !others.has(i.id));
+      }
+      invalidateItem(big);
+    }, 'merge');
+    this.toast(`${parts.length} vlakken samengevoegd (${(Math.round(Math.abs(polygonArea(ring)) * 10) / 10).toLocaleString('nl-NL')} m²). Ongedaan maken zet ze weer los.`, 3000);
+    this.setSelection(new Set([big.id]));
+  }
+
   copySelection() {
     if (!this.selection.size) return;
     this.clipboard = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean)
@@ -2439,6 +2506,7 @@ class App {
       transformItem(c, matTranslate(off, off), 1, 0);
       return c;
     });
+    renewGroups(items);
     this.store.mutate(() => { layer.items.push(...items); }, 'paste');
     this.setTool('lasso');
     this.setSelection(new Set(items.map((i) => i.id)));
@@ -3087,3 +3155,21 @@ async function shareOrDownload(blob, filename) {
 }
 
 window.app = new App();
+
+/** Kan dit element samengevoegd worden? (gesloten vlak, geen muur) */
+function mergeable(i) {
+  return i.type === 'shape' && !i.wall && (i.kind === 'polygon' || (i.kind === 'circle' && i.points.length === 2)) && (i.kind === 'circle' || i.points.length >= 3);
+}
+
+function mergePolygon(i) {
+  if (i.kind !== 'circle') return i.points.map((p) => [p[0], p[1]]);
+  const [c, e] = i.points;
+  const r = Math.hypot(e[0] - c[0], e[1] - c[1]);
+  return Array.from({ length: 48 }, (_, k) => [c[0] + Math.cos((k / 48) * Math.PI * 2) * r, c[1] + Math.sin((k / 48) * Math.PI * 2) * r]);
+}
+
+/** Gekopieerde groepen krijgen een eigen groepsnummer. */
+function renewGroups(items) {
+  const map = {};
+  for (const c of items) if (c.gid) c.gid = map[c.gid] ||= uid();
+}

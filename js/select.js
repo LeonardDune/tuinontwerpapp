@@ -181,6 +181,10 @@ export class SelectTool extends Tool {
         if (h.kind === 'move' && this.lastTap && this.lastTap.kind === 'move' && now - this.lastTap.t < 350) {
           const it = this.single();
           if (it && it.type === 'text') { this.lastTap = null; this.app.editText(it.id); return; }
+          // dubbeltik op een groep: de groep openen en alleen het aangetikte element selecteren
+          const hit = this.pickAt(e.w);
+          // (pas bij het loslaten, zodat tikken en meteen slepen gewoon de groep verschuift)
+          if (hit && hit.item.gid && !it && this.selection.has(hit.item.id) && this.app.openGroup !== hit.item.gid) this.pendingOpen = hit.item;
         }
         this.startDrag(h, e);
         return;
@@ -205,12 +209,20 @@ export class SelectTool extends Tool {
 
   up(e) {
     if (this.mode === 'lasso') {
+      const tapped = !this.pathS || this.pathS.length < 3;
       this.finishLasso(e);
+      // een tik telt mee voor een dubbeltik (groep openen)
+      if (tapped && this.selection.size) this.lastTap = { kind: 'move', t: e.time };
     } else if (this.mode) {
       if (this.moved) this.app.store.commit('edit');
       else this.app.store.cancel();
       if (!this.moved) this.lastTap = { kind: this.drag.kind, i: this.drag.i, t: e.time };
-      if (!this.moved && this.drag.kind === 'move') {
+      if (!this.moved && this.pendingOpen) {
+        this.lastTap = null;
+        this.app.openGroup = this.pendingOpen.gid;
+        this.app.setSelection(new Set([this.pendingOpen.id]));
+        this.app.toast('Groep geopend: je past nu één element aan. Tik ernaast om de groep te sluiten.', 2500);
+      } else if (!this.moved && this.drag.kind === 'move') {
         // tik zonder slepen: wat ligt er bovenop? Dat selecteren (of niets, op een lege plek)
         const hit = this.pickAt(e.w);
         if (!hit) this.app.setSelection(new Set());
@@ -220,6 +232,7 @@ export class SelectTool extends Tool {
         }
       }
     }
+    this.pendingOpen = null;
     this.mode = null;
     this.path = null;
     this.drag = null;
@@ -579,6 +592,18 @@ export class SelectTool extends Tool {
   // ------------------------------------------------------------------ tekenen
 
   drawScreen(ctx) {
+    // geopende groep: stippelkader om de hele groep
+    const og = this.app.openGroup;
+    if (og) {
+      const its = this.app.store.doc.layers.flatMap((l) => l.items.filter((i) => i.gid === og));
+      const b = selectionBox(its);
+      if (b) {
+        const c = [[b.minX, b.minY], [b.maxX, b.minY], [b.maxX, b.maxY], [b.minX, b.maxY]].map((p) => this.app.cam.toScreen(p));
+        ctx.save(); ctx.setLineDash([3, 4]); ctx.lineWidth = 1.2; ctx.strokeStyle = '#7b4fb0';
+        ctx.beginPath(); c.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke();
+        ctx.restore();
+      }
+    }
     if (this.mode === 'lasso' && this.pathS && this.pathS.length > 1) {
       ctx.save();
       ctx.setLineDash([6, 5]);
