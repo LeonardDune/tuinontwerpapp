@@ -13,16 +13,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.goto(BASE);
   await page.waitForFunction(() => window.app);
   const cat = await page.evaluate(async () => { const { STENCILS } = await import('./js/stencils.js'); return STENCILS.filter((s) => s.cat === 'Pergola\'s & klimplanten').map((s) => s.id); });
-  assert(['overkapping', 'pergolagang', 'pergolamuur', 'pergolalatten', 'lamellendak', 'veranda', 'rozenboog', 'klimplant'].every((id) => cat.includes(id)), `categorie "Pergola's & klimplanten" (${cat.length} stencils)`);
+  assert(['overkapping', 'pergolagang', 'pergolamuur', 'pergolalatten', 'lamellendak', 'veranda', 'verandaterras', 'rozenboog', 'klimplant'].every((id) => cat.includes(id)), `categorie "Pergola's & klimplanten" (${cat.length} stencils)`);
 
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js'); const { STENCIL_MAP } = await import('./js/stencils.js');
     const d = newDoc('Pergola'); const L = d.layers[0].items;
     const put = (id, x, y, extra = {}) => { const s = STENCIL_MAP[id]; L.push({ type: 'stencil', id: id + x + y, symbol: id, x, y, w: s.w, h: s.h, rot: 0, color: s.color, ...(s.defaults || {}), ...extra }); };
-    put('overkapping', 0, 0); put('pergolamuur', 5, 0); put('pergolalatten', 10, 0); put('lamellendak', 15, 0); put('veranda', 20, 0);
+    put('overkapping', 0, 0); put('pergolamuur', 5, 0); put('pergolalatten', 10, 0); put('lamellendak', 15, 0); put('veranda', 20, 0); put('verandaterras', 25.5, 0);
     put('overkapping', 0, 4.5, { grow: 'vol', growKind: 'blauweregen' }); put('pergolamuur', 5, 4.5, { grow: 'deels', growKind: 'roos' }); put('pergolalatten', 10, 4.5, { grow: 'vol', growKind: 'druif' }); put('pergolagang', 17, 4.5, { grow: 'deels', growKind: 'groen' });
     put('rozenboog', 0, 8); put('klimplant', 4, 8); put('klimplant', 8, 8, { growKind: 'clematis' }); put('klimplant', 12, 8, { growKind: 'herfst' });
-    a.openDoc(d, true); a.cam.zoom = 52; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 200; a.cameraChanged(); a.render();
+    a.openDoc(d, true); a.cam.zoom = 45; a.cam.rot = 0; a.cam.x = 120; a.cam.y = 200; a.cameraChanged(); a.render();
   });
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(OUT, 'pergolas.png') });

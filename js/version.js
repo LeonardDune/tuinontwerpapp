@@ -1,3 +1,3 @@
 // Versienummer van de app (gelijk houden met VERSION in sw.js), getoond in Instellingen.
-export const APP_VERSION = 35;
+export const APP_VERSION = 36;
 export const APP_DATE = '7 november 2026';

@@ -2,6 +2,7 @@
 // schalen, maten aanpassen met grepen en hoekpunten verslepen.
 
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
+import { collectRefs, extentsOf, alignMove, matchSize, matchAngle, drawSmartGuides, toWorld } from './smartguides.js';
 import { edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
 import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
@@ -224,6 +225,7 @@ export class SelectTool extends Tool {
     this.drag = null;
     this.snap = null;
     this.snapEdge = null;
+    this.guides = null;
     this.app.updateSelectionUI();
   }
 
@@ -316,7 +318,10 @@ export class SelectTool extends Tool {
     }
     this.orig = new Map([...items, ...this.followers].map(({ item }) => [item.id, clone(item)]));
     const it = items.length === 1 ? items[0].item : null;
-    if (h.kind === 'frame') this.drag.frame = itemFrame(it);
+    if (h.kind === 'frame') {
+      this.drag.frame = itemFrame(it);
+      this.drag.refs = app.settings.snap ? collectRefs(app, new Set([it.id]), this.drag.frame.ang) : [];
+    }
     if (h.kind === 'rotate') {
       const hs = this.handles();
       this.drag.pivot = hs.pivot;
@@ -351,6 +356,16 @@ export class SelectTool extends Tool {
       this.drag.ownEdges = items.flatMap(({ item }) => itemEdges(item));
       this.drag.ownPts = this.drag.ownEdges.flatMap((e) => [e.a, e.b]);
       this.drag.targetPts = this.drag.edgeTargets.flatMap((e) => [e.a, e.b]);
+      if (h.kind === 'move') {
+        // assenstelsel voor uitlijnen: dat van het element zelf, anders het scherm
+        const angs = items.map(({ item }) => itemAngle(item)).filter((x) => x != null);
+        const same = angs.length === items.length && angs.every((x) => Math.abs(Math.sin(2 * (x - angs[0]))) < 1e-4);
+        const th = same ? angs[0] : -app.cam.rot;
+        this.drag.th = th;
+        this.drag.refs = app.settings.snap ? collectRefs(app, sel, th) : [];
+        this.drag.ext0 = extentsOf(items.flatMap(({ item }) => itemOutline(item) || []), th);
+      }
+      if (h.kind === 'rotate') this.drag.refs = app.settings.snap ? collectRefs(app, sel, 0) : [];
       if (h.kind === 'rotate' && this.drag.ownPts.length) {
         // zijden binnen bereik van wat er draait
         const pv = this.drag.pivot;
@@ -378,6 +393,8 @@ export class SelectTool extends Tool {
     this.liveInfo = null;
     this.snap = null;
     this.snapEdge = null;
+    this.guides = null;
+    this.sizeMatch = null;
     const it = this.single();
 
     if (d.kind === 'move') {
@@ -404,6 +421,16 @@ export class SelectTool extends Tool {
         }
         if (best) { dx = best[0]; dy = best[1]; this.snap = { p: best[2], kind: 'point' }; }
       }
+      // uitlijnen en gelijke tussenruimte (als er niet al ergens tegenaan is gesnapt)
+      if (!flush && !this.snap && d.refs?.length && isFinite(d.ext0.u0)) {
+        const c = Math.cos(d.th), sn = Math.sin(d.th);
+        const du0 = dx * c + dy * sn, dv0 = -dx * sn + dy * c;
+        const ext = { u0: d.ext0.u0 + du0, u1: d.ext0.u1 + du0, v0: d.ext0.v0 + dv0, v1: d.ext0.v1 + dv0 };
+        const g = alignMove(d.refs, ext, 8 / cam.zoom);
+        const w = toWorld(g.du, g.dv, d.th);
+        dx += w[0]; dy += w[1];
+        if (g.lines.length || g.gaps.length) this.guides = { th: d.th, lines: g.lines, gaps: g.gaps };
+      }
       this.restore();
       const m = matTranslate(dx, dy);
       for (const { item } of [...this.selectedItems(), ...this.followers]) transformItem(item, m, 1, 0);
@@ -423,6 +450,7 @@ export class SelectTool extends Tool {
       let off = [0, 0];
       const raw = angleOf(c, e.w) - angleOf(c, d.startW);
       const near = d.near || [];
+      let edgeHit = false;
       if (near.length) {
         let best = null;
         for (const s of d.ownEdges) {
@@ -435,6 +463,7 @@ export class SelectTool extends Tool {
           }
         }
         if (best) {
+          edgeHit = true;
           r = best.r;
           const rot = matMul(matTranslate(c[0], c[1]), matMul(matRotate(r), matTranslate(-c[0], -c[1])));
           const moved = d.ownEdges.map((s) => ({ a: matApply(rot, s.a), b: matApply(rot, s.b) }));
@@ -447,6 +476,15 @@ export class SelectTool extends Tool {
           this.snapEdge = flush ? flush.t : best.t;
           const ang = d.baseAngle != null ? displayAngle(d.baseAngle + r) : displayAngle(-r);
           this.liveInfo = `${String(ang).replace('.', ',')}° ${flush ? '· sluit aan' : '· evenwijdig'}`;
+        }
+      }
+      if (!edgeHit && d.baseAngle != null && d.refs?.length) {
+        // dezelfde hoek als een ander element
+        const ma = matchAngle(d.refs, d.baseAngle + raw, 2 * DEG);
+        // gaat voor op de 15°-stap als hij dichterbij ligt
+        if (ma && (Math.abs(r - raw) < 1e-12 || Math.abs(ma.d) < Math.abs(r - raw))) {
+          r = raw + ma.d;
+          this.liveInfo = `${String(displayAngle(d.baseAngle + r)).replace('.', ',')}° · gelijke hoek`;
         }
       }
       this.restore();
@@ -473,6 +511,13 @@ export class SelectTool extends Tool {
         xb = xa + Math.sign(xb - xa || 1) * Math.abs(f.w) * k;
         yb = ya + Math.sign(yb - ya || 1) * Math.abs(f.h) * k;
       }
+      if (!this.snap && !d.uniform && d.refs?.length) {
+        const ms = matchSize(d.refs, xb - xa, yb - ya, f.ang, 8 / cam.zoom);
+        const eq = [];
+        if (ms.w != null && d.hx !== 0.5) { xb = xa + Math.sign(xb - xa || 1) * ms.w; eq.push('breedte'); }
+        if (ms.h != null && d.hy !== 0.5) { yb = ya + Math.sign(yb - ya || 1) * ms.h; eq.push('diepte'); }
+        if (eq.length) this.sizeMatch = `gelijke ${eq.join(' en ')}`;
+      }
       const min = 0.02;
       if (Math.abs(xb - xa) < min) xb = xa + min * Math.sign(xb - xa || 1);
       if (Math.abs(yb - ya) < min) yb = ya + min * Math.sign(yb - ya || 1);
@@ -481,6 +526,7 @@ export class SelectTool extends Tool {
       applyFrame(it, nf);
       const sc = app.store.doc.scale;
       this.liveInfo = `${formatLength(Math.abs(nf.w), sc)} × ${formatLength(Math.abs(nf.h), sc)}`;
+      if (this.sizeMatch) this.liveInfo += ` · ${this.sizeMatch}`;
     } else if (d.kind === 'vertex') {
       const pts = it.type === 'dim' ? null : it.points;
       const prev = pts ? pts[d.i - 1] || (it.kind === 'polygon' ? pts[pts.length - 1] : null) : (d.i === 1 ? it.a : it.b);
@@ -593,6 +639,7 @@ export class SelectTool extends Tool {
     ctx.restore();
     drawSnapMarker(ctx, this.app, this.snap);
     if (this.mode) drawEdgeMarker(ctx, this.app, this.snapEdge);
+    if (this.mode) drawSmartGuides(ctx, this.app, this.guides);
     if (this.mode && this.liveInfo && this.liveS) drawBubble(ctx, this.liveInfo, this.liveS[0], this.liveS[1]);
   }
 }

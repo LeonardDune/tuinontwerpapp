@@ -646,7 +646,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'veranda', name: 'Overkapping met dicht dak (veranda)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#4a4f55',
+    id: 'veranda', name: 'Overkapping met dicht dak', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#4a4f55',
     draw(g, w, h, c, lw) {
       // boven = gevelkant; het dak loopt af naar de goot aan de voorkant
       g.fillStyle = hexA('#9fb8c8', 0.3);
@@ -668,6 +668,45 @@ export const STENCILS = [
       g.save(); g.lineWidth = lw * 0.8; g.globalAlpha = 0.7;
       const ax = w * 0.18, s = Math.min(h * 0.12, 0.3);
       g.beginPath(); g.moveTo(ax, -h * 0.25); g.lineTo(ax, h * 0.2); g.moveTo(ax - s * 0.5, h * 0.2 - s); g.lineTo(ax, h * 0.2); g.lineTo(ax + s * 0.5, h * 0.2 - s); g.stroke();
+      g.restore();
+    },
+  },
+  {
+    id: 'verandaterras', name: 'Veranda (terras met overkapping)', cat: 'Pergola\'s & klimplanten', round: false, w: 5, h: 3.5, color: '#4a4f55',
+    draw(g, w, h, c, lw) {
+      // boven = gevel. Een vlonder onder een glazen dak, palen en goot aan de voorkant,
+      // glazen schuifwanden aan de zijkanten.
+      g.fillStyle = hexA('#b08a5a', 0.35);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill();
+      g.save();
+      g.strokeStyle = hexA('#7a5a35', 0.55); g.lineWidth = lw * 0.5;
+      g.beginPath();
+      for (let y = -h / 2 + 0.145; y < h / 2 - 0.05; y += 0.145) { g.moveTo(-w / 2, y); g.lineTo(w / 2, y); }
+      g.stroke();
+      g.restore();
+      // glazen dak
+      g.fillStyle = hexA('#9fc3d8', 0.28);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      g.fillStyle = hexA(c, 0.85);
+      g.fillRect(-w / 2, -h / 2, w, 0.08);
+      g.fillRect(-w / 2, h / 2 - 0.15, w, 0.15);
+      const n = Math.max(2, Math.round(w / 0.85));
+      for (let i = 1; i < n; i++) g.fillRect(-w / 2 + (w * i) / n - 0.03, -h / 2, 0.06, h - 0.15);
+      // zijwanden van glas (schuifpanelen)
+      g.save();
+      g.lineWidth = lw * 0.8;
+      for (const x of [-w / 2 + 0.06, w / 2 - 0.06]) {
+        g.fillStyle = hexA(c, 0.85); g.fillRect(x - 0.06, -h / 2, 0.12, h);
+        g.strokeStyle = hexA('#e8f2f8', 1);
+        g.beginPath(); g.moveTo(x - 0.02, -h / 2 + 0.1); g.lineTo(x - 0.02, h / 2 * 0.1); g.moveTo(x + 0.02, -h / 2 * 0.1); g.lineTo(x + 0.02, h / 2 - 0.2); g.stroke();
+      }
+      g.restore();
+      const np = Math.max(2, Math.ceil(w / 3.5) + 1);
+      g.fillStyle = c;
+      for (let i = 0; i < np; i++) { const x = -w / 2 + 0.06 + ((w - 0.12) * i) / (np - 1); g.fillRect(x - 0.06, h / 2 - 0.13, 0.12, 0.12); }
+      g.save(); g.lineWidth = lw * 0.8; g.globalAlpha = 0.7;
+      const ax = w * 0.22, sz = Math.min(h * 0.1, 0.3);
+      g.beginPath(); g.moveTo(ax, -h * 0.25); g.lineTo(ax, h * 0.2); g.moveTo(ax - sz * 0.5, h * 0.2 - sz); g.lineTo(ax, h * 0.2); g.lineTo(ax + sz * 0.5, h * 0.2 - sz); g.stroke();
       g.restore();
     },
   },
