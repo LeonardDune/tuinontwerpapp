@@ -62,6 +62,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const placed = await page.evaluate(() => { const a = window.app; const it = a.store.doc.layers[0].items.at(-1); return { sym: it.symbol, role: it.role, roles: (a.store.doc.planting?.roles || []).map((r) => r.label) }; });
   assert(placed.sym === 'potboom' && placed.role && placed.roles.includes('Pot met boompje (olijf)'), 'boompje in pot komt als bouwsteen in de beplanting');
 
+  console.log('Kliko');
+  const bins = await page.evaluate(async () => { const { STENCIL_MAP } = await import('./js/stencils.js'); return ['kliko', 'kliko140', 'kliko3'].map((id) => STENCIL_MAP[id] && [STENCIL_MAP[id].w, STENCIL_MAP[id].h]); });
+  assert(bins.every(Boolean) && bins[0][0] === 0.58 && bins[0][1] === 0.74, 'kliko 240 L (58 × 74 cm), 140 L en een rij van drie');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pot-tests geslaagd.');

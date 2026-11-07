@@ -305,6 +305,27 @@ function climbOver(g, w, h, lw, it, posts) {
 }
 
 
+/** Rolcontainer van boven: deksel met greep en scharnier achter (boven), wielen achter. */
+function drawBin(g, w, h, c, lw) {
+  const rr = (x, y, ww, hh, r) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, ww, hh, r); else g.rect(x, y, ww, hh); };
+  // wielen achter, net buiten de bak
+  g.fillStyle = hexA('#2b2b2b', 0.9);
+  for (const sx of [-1, 1]) { rr(sx * (w / 2 - w * 0.16) - w * 0.08, -h / 2 - h * 0.035, w * 0.16, h * 0.08, w * 0.03); g.fill(); }
+  // deksel (iets groter dan de bak)
+  g.fillStyle = hexA(c, 0.55);
+  rr(-w / 2, -h / 2 + h * 0.03, w, h * 0.97, w * 0.06); g.fill(); g.stroke();
+  // greep / scharnierbalk achter
+  g.fillStyle = hexA(c, 0.85);
+  rr(-w / 2 + w * 0.06, -h / 2, w * 0.88, h * 0.09, w * 0.03); g.fill(); g.stroke();
+  // ribbels en handgreep voor op het deksel
+  g.save(); g.globalAlpha = 0.6; g.lineWidth = lw * 0.6;
+  g.beginPath();
+  for (const f of [0.35, 0.65]) { g.moveTo(-w * 0.3, -h / 2 + h * f); g.lineTo(w * 0.3, -h / 2 + h * f); }
+  g.stroke();
+  g.restore();
+  rr(-w * 0.15, h / 2 - h * 0.11, w * 0.3, h * 0.06, w * 0.02); g.stroke();
+}
+
 export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
@@ -1258,6 +1279,25 @@ export const STENCILS = [
       g.fillStyle = hexA(c, 0.3);
       g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
       g.beginPath(); g.rect(-w / 2 + lw * 4, -h / 2 + lw * 4, w - lw * 8, h - lw * 8); g.stroke();
+    },
+  },
+  {
+    id: 'kliko', name: 'Kliko 240 L (rolcontainer)', cat: 'Bouw & water', round: false, w: 0.58, h: 0.74, color: '#4f7f36',
+    draw(g, w, h, c, lw) { drawBin(g, w, h, c, lw); },
+  },
+  {
+    id: 'kliko140', name: 'Kliko 140 L', cat: 'Bouw & water', round: false, w: 0.48, h: 0.56, color: '#5a5f66',
+    draw(g, w, h, c, lw) { drawBin(g, w, h, c, lw); },
+  },
+  {
+    id: 'kliko3', name: 'Kliko\'s: rest, gft en papier', cat: 'Bouw & water', round: false, w: 1.86, h: 0.74, color: '#5a5f66',
+    draw(g, w, h, c, lw) {
+      const bw = (w - 0.06) / 3;
+      for (const [k, col] of [[0, c], [1, '#4f7f36'], [2, '#2f5f9e']]) {
+        g.save(); g.translate(-w / 2 + bw / 2 + k * (bw + 0.03), 0);
+        g.strokeStyle = col; drawBin(g, bw, h, col, lw);
+        g.restore();
+      }
     },
   },
   {
