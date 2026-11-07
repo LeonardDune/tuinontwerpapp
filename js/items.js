@@ -297,7 +297,8 @@ function drawShape(g, item, rc) {
       g.restore();
     }
   }
-  if (item.width > 0 && item.stroke !== false) {
+  if (item.width > 0 && item.stroke !== false && (item.strokeAlpha ?? 1) > 0) {
+    g.globalAlpha *= item.strokeAlpha ?? 1; // de omtrek apart doorzichtig (de vulling niet)
     g.strokeStyle = item.color;
     g.lineWidth = item.width;
     g.lineJoin = 'round';

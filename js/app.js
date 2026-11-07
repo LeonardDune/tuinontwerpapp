@@ -1434,6 +1434,7 @@ class App {
       add(this.slider('Lijndikte', 0.1, 5, 0.05, this.state.shapeWidth, (v) => { this.state.shapeWidth = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`, true));
       if (t !== 'line') {
         add(this.toggle('Vulling', this.state.fill, (v) => { this.state.fill = v; }));
+        add(this.toggle('Omtrek', this.state.shapeStroke !== false, (v) => { this.state.shapeStroke = v; }));
         add(this.hatchSelect());
       }
       add(this.numberField('Hoogte (m)', this.state.shapeHeight || 0, (v) => { this.state.shapeHeight = v; }, 'Voor schaduw: bijv. huis 8, schutting 1,8. 0 = plat.'));
@@ -1990,6 +1991,16 @@ class App {
       const sh = shapes.find((i) => !i.wall);
       const w = sh.width ? Math.round((sh.width / sc) * 1000 * 100) / 100 : 0.35;
       html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
+      // omtrek van vlakken uitzetten of doorzichtig maken (de vulling blijft)
+      const outl = items.filter((i) => i.type === 'shape' && !i.wall && !i.group && !isBed(i) && (i.kind === 'polygon' || i.kind === 'circle'));
+      if (outl.length) {
+        const on = outl[0].stroke !== false;
+        html += `<button type="button" class="tgl ${on ? 'on' : ''}" data-act="stroke" title="Omtrek tonen of verbergen">${on ? 'Omtrek aan' : 'Omtrek uit'}</button>`;
+        if (on) {
+          const v = Math.round((outl[0].strokeAlpha ?? 1) * 100);
+          html += `<label class="pf prange" title="Doorzichtigheid van de omtrek">Omtrek<input type="range" data-k="strokeAlpha" min="0" max="100" step="5" value="${v}"><span>${v}%</span></label>`;
+        }
+      }
     }
     const stencils = items.filter((i) => i.type === 'stencil' && !STENCIL_MAP[i.symbol]?.opening);
     const range = (key, label, val, title) => `<label class="pf prange" title="${title}">${label}<input type="range" data-k="${key}" min="${key === 'opacity' ? 10 : 0}" max="100" step="5" value="${val}"><span>${val}%</span></label>`;
@@ -2055,6 +2066,7 @@ class App {
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
+    bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
   }
@@ -2201,6 +2213,17 @@ class App {
             if (i.type === 'stencil') i.fillAlpha = v;
             else if (i.type === 'shape' && i.fill) i.fillAlpha = v;
           }
+          break;
+        }
+        case 'stroke': {
+          const sh = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
+          const off = sh[0]?.stroke !== false;
+          for (const i of sh) { if (off) i.stroke = false; else delete i.stroke; }
+          break;
+        }
+        case 'strokeAlpha': {
+          const v = Math.max(0, Math.min(1, num(raw) / 100));
+          for (const i of items) if (i.type === 'shape' && !i.wall) { if (v >= 0.999) delete i.strokeAlpha; else i.strokeAlpha = v; }
           break;
         }
         case 'see': {

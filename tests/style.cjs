@@ -96,6 +96,36 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await slide('opacity', 100);
   assert((await item('L')).opacity === undefined, '100% = volledig dekkend');
 
+  console.log('Omtrek van vlakken');
+  await page.evaluate(() => window.app.setSelection(new Set(['R'])));
+  assert(await page.locator('#selection-bar [data-act="stroke"]').count() === 1, 'rechthoek: knop "Omtrek aan"');
+  await slide('strokeAlpha', 30);
+  assert((await item('R')).strokeAlpha === 0.3, 'omtrek 30% doorzichtig met het schuifje');
+  await page.click('#selection-bar [data-act="stroke"]');
+  assert((await item('R')).stroke === false && /Omtrek uit/.test(await page.locator('#selection-bar [data-act="stroke"]').innerText()), 'omtrek uitgezet');
+  const edgePx = await page.evaluate(async () => {
+    const { drawItem } = await import('./js/items.js');
+    const it = JSON.parse(JSON.stringify(window.app.store.findItem('R').item));
+    const c = document.createElement('canvas'); c.width = c.height = 200;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 200);
+    g.setTransform(20, 0, 0, 20, 20, 20);
+    drawItem(g, { ...it, fill: null }, { doc: window.app.store.doc, scale: 100, zoom: 20, dpr: 1, minPx: 0 });
+    return [...g.getImageData(20 + 4 * 20, 20, 1, 1).data].slice(0, 3); // midden van de bovenzijde (0..8, y = 0)
+  });
+  assert(edgePx.every((v) => v > 245), `zonder omtrek staat er geen lijn meer (${edgePx})`);
+  await page.click('#selection-bar [data-act="stroke"]');
+  assert((await item('R')).stroke === undefined, 'omtrek weer aan');
+  await page.evaluate(() => { const a = window.app; a.setSelection(new Set()); a.state.shapeStroke = false; a.state.rectMode = 'axis'; a.setTool('rect'); });
+  assert(await page.locator('#optionsbar button.toggle:has-text("Omtrek")').count() === 1, 'optiebalk van de rechthoek: schakelaar "Omtrek"');
+  {
+    const bx = await page.locator('#canvas').boundingBox();
+    await page.mouse.move(bx.x + 700, bx.y + 300); await page.mouse.down();
+    await page.mouse.move(bx.x + 820, bx.y + 380, { steps: 6 }); await page.mouse.up();
+  }
+  const last = await page.evaluate(() => { const it = window.app.store.doc.layers[0].items; return it[it.length - 1]; });
+  assert(last.type === 'shape' && last.stroke === false, 'nieuwe rechthoek getekend zonder omtrek');
+  await page.evaluate(() => { window.app.state.shapeStroke = true; });
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle stijl-tests geslaagd.');

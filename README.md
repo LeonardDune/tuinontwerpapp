@@ -42,7 +42,8 @@ automatische maatvoering. Alles draait in de browser, werkt offline en bewaart t
   veelhoek of muur klikt de richting vast als die evenwijdig of loodrecht aan een bestaande lijn loopt; die lijn licht
   dan blauw op met ∥ of ⊥ en een korte tekst (midden, snijpunt, evenwijdig …).
 - **Kleur en doorzichtigheid per element**: met het schuifje *Dekking* (10–100%) maak je elk element (stencil, vorm,
-  lijn, tekst, afbeelding, plant) meer of minder doorzichtig. Stencils hebben een eigen lijnkleur (*Kleur*), vulkleur
+  lijn, tekst, afbeelding, plant) meer of minder doorzichtig. Bij vlakken (rechthoek, cirkel, veelhoek) zet je de *Omtrek* aan of uit of maak je hem
+  doorzichtig met een eigen schuifje; nieuwe vlakken kun je via de optiebalk meteen zonder omtrek tekenen. Stencils hebben een eigen lijnkleur (*Kleur*), vulkleur
   (*Vulling*) en vulsterkte (*Sterkte*); bij gevulde vormen stel je vulkleur en -sterkte ook in. Stencils dekken
   standaard af wat eronder ligt.
 - **Bestrating en materialen** (keuzelijst *Materiaal* bij vlakken, op ware grootte): tegels 60×60, 50×50, 30×30 en

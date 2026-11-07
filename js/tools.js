@@ -580,6 +580,7 @@ export class ShapeTool extends Tool {
     if (this.kind === 'line') {
       return { ...base, kind: 'line', points: [this.p0, this.p1].map(roundPt) };
     }
+    if (this.app.state.shapeStroke === false) base.stroke = false; // vlak zonder omtrek
     if (this.kind === 'circle') {
       return { ...base, kind: 'circle', points: [this.p0, this.p1].map(roundPt), fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch };
     }
@@ -671,6 +672,7 @@ export class ShapeTool extends Tool {
     };
     if (st.height) item.height = st.height;
     if (closed) Object.assign(item, { fill: st.fill, fillAlpha: st.fillAlpha, hatch: st.hatch });
+    if (closed && this.app.state.shapeStroke === false) item.stroke = false;
     this.commitItem(item);
   }
 
