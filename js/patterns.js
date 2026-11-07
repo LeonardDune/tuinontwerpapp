@@ -34,6 +34,10 @@ export const HATCHES = {
   gras: { name: 'Gras', size: 0.6, bg: '#b3d19a', group: 'Groen en water' },
   beplanting: { name: 'Beplanting', size: 1, bg: '#bdd4a6', group: 'Groen en water' },
   water: { name: 'Water', size: 1.2, bg: '#a7cbe9', group: 'Groen en water' },
+  // overkappingen (zodat ze ook als vrije vorm, bijv. om een hoek, getekend kunnen worden)
+  veranda: { name: 'Veranda / glazen dak met profielen', size: 0.8, bg: '#c9dce6', joint: '#4a4f55', group: 'Overkapping' },
+  pergola: { name: 'Pergola (houten dwarsbalken)', size: 0.45, joint: '#8a6a45', group: 'Overkapping' },
+  lamellen: { name: 'Lamellendak', size: 0.2, bg: '#8a9096', joint: '#3c4146', group: 'Overkapping' },
   // overig
   arcering: { name: 'Arcering', size: 0.5, group: 'Overig' },
 };
@@ -104,6 +108,26 @@ function makeTile(kind, color) {
       }
       break;
     }
+    case 'veranda':
+      // profiel (ca. 6 cm) per 80 cm; daartussen glas met een lichte schittering
+      g.fillRect(0, 0, T * 0.075, T);
+      g.globalAlpha = 0.35; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(T * 0.3, T * 0.1); g.lineTo(T * 0.55, T * 0.35); g.stroke();
+      g.globalAlpha = 1;
+      break;
+    case 'pergola':
+      // dwarsbalk van 5 cm per 45 cm, met de rand van het hout
+      g.globalAlpha = 0.55; g.fillRect(T * 0.05, 0, T * 0.11, T); g.globalAlpha = 1;
+      g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(T * 0.05, 0); g.lineTo(T * 0.05, T); g.moveTo(T * 0.16, 0); g.lineTo(T * 0.16, T); g.stroke();
+      break;
+    case 'lamellen':
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(1, 0); g.lineTo(1, T); g.stroke();
+      g.globalAlpha = 0.4; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(T * 0.5, 0); g.lineTo(T * 0.5, T); g.stroke();
+      g.globalAlpha = 1;
+      break;
     case 'hout':
       g.lineWidth = 1.2;
       for (let r = 0; r < 4; r++) {

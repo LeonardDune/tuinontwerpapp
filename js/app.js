@@ -2056,6 +2056,7 @@ class App {
     html += '<span class="sepv"></span>';
     if (items.length > 1 && !wholeGroup) html += `<button type="button" class="tgl" data-sel="group" title="Groeperen: blijven los, maar bewegen als één geheel (Ctrl/Cmd+G)">Groeperen</button>`;
     if (gidsSel.length && !this.openGroup) html += `<button type="button" class="tgl" data-sel="ungroup" title="Groep opheffen (Ctrl/Cmd+Shift+G)">Groep opheffen</button>`;
+    if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.asHatch) html += `<button type="button" class="tgl" data-sel="toshape" title="Omzetten naar een vlak met hetzelfde materiaal: dan kun je de hoeken verslepen en het samenvoegen">Omzetten naar vlak</button>`;
     if (items.filter((i) => mergeable(i)).length > 1) html += `<button type="button" class="tgl" data-sel="merge" title="Samenvoegen tot één vlak (de instellingen van het grootste vak blijven)">Samenvoegen</button>`;
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
@@ -2388,6 +2389,14 @@ class App {
       case 'merge':
         this.mergeSelection(found);
         return;
+      case 'toshape': {
+        const st = found.filter(({ item }) => item.type === 'stencil' && STENCIL_MAP[item.symbol]?.asHatch);
+        if (!st.length) return;
+        this.store.mutate(() => { for (const { item } of st) { stencilToShape(item); invalidateItem(item); } }, 'toshape');
+        this.toast('Omgezet naar een vlak: versleep de hoekpunten (+ = punt erbij) of voeg het samen met een ander vlak.', 3500);
+        this.setSelection(new Set(st.map(({ item }) => item.id)));
+        break;
+      }
       case 'duplicate': {
         const off = 16 / this.cam.zoom;
         const idMap = {};
@@ -2477,6 +2486,7 @@ class App {
     const big = parts[areas.indexOf(Math.max(...areas))].item;
     const others = new Set(parts.map(({ item }) => item.id).filter((id) => id !== big.id));
     this.store.mutate((doc) => {
+      if (big.type === 'stencil') stencilToShape(big);
       big.kind = 'polygon';
       big.points = ring.map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000]);
       if (isRectRing(big.points)) big.rect = true; else delete big.rect;
@@ -3161,10 +3171,31 @@ window.app = new App();
 
 /** Kan dit element samengevoegd worden? (gesloten vlak, geen muur) */
 function mergeable(i) {
+  if (i.type === 'stencil') return !!STENCIL_MAP[i.symbol]?.asHatch;
   return i.type === 'shape' && !i.wall && (i.kind === 'polygon' || (i.kind === 'circle' && i.points.length === 2)) && (i.kind === 'circle' || i.points.length >= 3);
 }
 
+function stencilCorners(i) {
+  const c = Math.cos(i.rot || 0), s = Math.sin(i.rot || 0);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [i.x + (u * i.w / 2) * c - (v * i.h / 2) * s, i.y + (u * i.w / 2) * s + (v * i.h / 2) * c]);
+}
+
+/** Stencil van een overkapping omzetten naar een vlak met hetzelfde materiaal (houdt id, hoogte en dekking). */
+function stencilToShape(i) {
+  const def = STENCIL_MAP[i.symbol];
+  const keep = { id: i.id, height: i.height, opacity: i.opacity, gid: i.gid };
+  const pts = stencilCorners(i).map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000]);
+  for (const k of Object.keys(i)) delete i[k];
+  Object.assign(i, {
+    type: 'shape', kind: 'polygon', rect: true, points: pts, color: '#4a4f55', width: 0.03,
+    hatch: def.asHatch, hatchRot: Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]),
+  });
+  for (const [k, v] of Object.entries(keep)) if (v != null) i[k] = v;
+  return i;
+}
+
 function mergePolygon(i) {
+  if (i.type === 'stencil') return stencilCorners(i);
   if (i.kind !== 'circle') return i.points.map((p) => [p[0], p[1]]);
   const [c, e] = i.points;
   const r = Math.hypot(e[0] - c[0], e[1] - c[1]);

@@ -95,6 +95,24 @@ const R = (id, x0, y0, x1, y1, extra = {}) => ({ type: 'shape', id, kind: 'polyg
   await page.click('#selection-bar [data-sel="merge"]');
   assert((await item('P1')).rect === true && (await item('P1')).points.length === 4, 'twee even hoge rechthoeken worden weer een rechthoek (met maatgrepen)');
 
+  console.log('Veranda om de hoek (stencils samenvoegen)');
+  await setup([
+    { type: 'stencil', id: 'V1', symbol: 'verandaterras', x: 2.5, y: 1.75, w: 5, h: 3.5, rot: 0, color: '#4a4f55', height: 2.6 },
+    { type: 'stencil', id: 'V2', symbol: 'verandaterras', x: 6.5, y: 3.5, w: 3, h: 7, rot: 0, color: '#4a4f55' },
+    { type: 'stencil', id: 'T', symbol: 'tafelrond', x: 2, y: 2, w: 2.4, h: 2.4, rot: 0, color: '#7a6a58' },
+  ], ['V1', 'V2', 'T']);
+  assert(await page.locator('#selection-bar [data-sel="merge"]').count() === 1, 'knop Samenvoegen bij twee veranda-stencils (de tafel doet niet mee)');
+  await page.click('#selection-bar [data-sel="merge"]');
+  const v = await item('V2');
+  assert(v && v.type === 'shape' && v.hatch === 'veranda' && v.points.length === 6 && !(await item('V1')) && await item('T'), `één L-vormige veranda met glazen dak (${v && v.points.length} hoeken), de tafel blijft staan`);
+  await page.evaluate(() => { const a = window.app; a.setSelection(new Set()); a.render(); });
+  await page.screenshot({ path: path.join(OUT, 'veranda-om-de-hoek.png') });
+  await page.click('#btn-undo');
+  await page.evaluate(() => window.app.setSelection(new Set(['V1'])));
+  await page.click('#selection-bar [data-sel="toshape"]');
+  const v1 = await item('V1');
+  assert(v1.type === 'shape' && v1.rect && v1.hatch === 'veranda' && v1.height === 2.6, 'los stencil omzetten naar vlak (hoogte blijft)');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle groep-tests geslaagd.');

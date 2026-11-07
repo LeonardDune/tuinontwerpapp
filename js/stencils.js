@@ -765,7 +765,7 @@ export const STENCILS = [
 
   // --- Pergola's en overkappingen (B = lengte, D = diepte; c = kleur van hout of metaal) ---
   {
-    id: 'overkapping', name: 'Houten pergola (dwarsbalken)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
+    id: 'overkapping', asHatch: 'pergola', name: 'Houten pergola (dwarsbalken)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
     draw(g, w, h, c, lw, paper, it) {
       const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true });
       rafters(g, w, h, c, lw);
@@ -773,7 +773,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'pergolagang', name: 'Pergolagang (over een pad)', cat: 'Pergola\'s & klimplanten', round: false, w: 7, h: 2.4, color: '#8a6a45', climb: true,
+    id: 'pergolagang', asHatch: 'pergola', name: 'Pergolagang (over een pad)', cat: 'Pergola\'s & klimplanten', round: false, w: 7, h: 2.4, color: '#8a6a45', climb: true,
     draw(g, w, h, c, lw, paper, it) {
       const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true, span: 2.4 });
       rafters(g, w, h, c, lw, 0.6);
@@ -781,7 +781,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'pergolamuur', name: 'Muurpergola (aan de gevel)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
+    id: 'pergolamuur', asHatch: 'pergola', name: 'Muurpergola (aan de gevel)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#8a6a45', climb: true,
     draw(g, w, h, c, lw, paper, it) {
       // boven = gevelkant: muurregel tegen de gevel, palen alleen aan de voorkant
       const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: false });
@@ -791,7 +791,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'pergolalatten', name: 'Pergola met lattenrooster', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#9c7a52', climb: true,
+    id: 'pergolalatten', asHatch: 'pergola', name: 'Pergola met lattenrooster', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#9c7a52', climb: true,
     draw(g, w, h, c, lw, paper, it) {
       const posts = pergolaFrame(g, w, h, c, lw, { front: true, back: true });
       rafters(g, w, h, c, lw, 0.6);
@@ -802,7 +802,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'lamellendak', name: 'Lamellenoverkapping (aluminium)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#3c4146',
+    id: 'lamellendak', asHatch: 'lamellen', name: 'Lamellenoverkapping (aluminium)', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#3c4146',
     draw(g, w, h, c, lw) {
       const f = 0.16;
       g.fillStyle = hexA(c, 0.12);
@@ -824,7 +824,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'veranda', name: 'Overkapping met dicht dak', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#4a4f55',
+    id: 'veranda', asHatch: 'veranda', name: 'Overkapping met dicht dak', cat: 'Pergola\'s & klimplanten', round: false, w: 4, h: 3, color: '#4a4f55',
     draw(g, w, h, c, lw) {
       // boven = gevelkant; het dak loopt af naar de goot aan de voorkant
       g.fillStyle = hexA('#9fb8c8', 0.3);
@@ -850,7 +850,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'verandaterras', name: 'Veranda (terras met overkapping)', cat: 'Pergola\'s & klimplanten', round: false, w: 5, h: 3.5, color: '#4a4f55',
+    id: 'verandaterras', asHatch: 'veranda', name: 'Veranda (terras met overkapping)', cat: 'Pergola\'s & klimplanten', round: false, w: 5, h: 3.5, color: '#4a4f55',
     draw(g, w, h, c, lw) {
       // boven = gevel. Een vlonder onder een glazen dak, palen en goot aan de voorkant,
       // glazen schuifwanden aan de zijkanten.
