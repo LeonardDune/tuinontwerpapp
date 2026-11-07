@@ -124,11 +124,14 @@ function drawBed(g, item, rc) {
     }
     g.restore();
   }
-  tracePath(g, item);
-  g.strokeStyle = item.color || '#3f7a2e';
-  g.lineWidth = item.width || paperToWorld(0.3, rc.scale);
-  g.setLineDash([g.lineWidth * 4, g.lineWidth * 2]);
-  g.stroke();
+  if (item.stroke !== false) {
+    tracePath(g, item);
+    g.strokeStyle = item.color || '#3f7a2e';
+    g.lineWidth = item.width || paperToWorld(0.3, rc.scale);
+    g.setLineDash([g.lineWidth * 4, g.lineWidth * 2]);
+    g.globalAlpha *= item.strokeAlpha ?? 1;
+    g.stroke();
+  }
   g.restore();
   if (view === 'groepen' && mix.length && rc.bedAreas?.[item.id] != null) {
     const n = plantCount(rc.bedAreas[item.id], mix, roles);
@@ -188,7 +191,7 @@ function drawGroup(g, item, rc) {
   tracePath(g, item);
   g.strokeStyle = view === 'groepen' ? hexA('#2f4a25', 0.7) : hexA('#2f4a25', 0.45);
   g.lineWidth = paperToWorld(0.2, rc.scale);
-  g.stroke();
+  if (item.stroke !== false) { g.globalAlpha *= item.strokeAlpha ?? 1; g.stroke(); }
   g.restore();
   if (view === 'groepen' && mix.length) {
     const A = rc.groupAreas?.[item.id] ?? polygonArea(poly);

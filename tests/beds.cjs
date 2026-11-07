@@ -191,6 +191,14 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(mig.s1 && !mig.s2 && mig.roles.join() === 'siergras', 'plantstencils krijgen een bouwsteen, andere stencils niet');
   assert(mig.bed === true, 'plantvak uit V2.1 wordt een plantvak (bed)');
 
+  console.log('Omtrek van een plantvak');
+  await page.evaluate(() => { const a = window.app; a.setTool('lasso'); a.setSelection(new Set(['v1'])); });
+  assert(await page.locator('#selection-bar [data-act="stroke"]').count() === 1, 'plantvak heeft de knop "Omtrek aan/uit"');
+  await page.click('#selection-bar [data-act="stroke"]');
+  assert(await page.evaluate(() => window.app.store.findItem('v1').item.stroke) === false, 'omtrek van het plantvak uit');
+  await page.click('#selection-bar [data-act="stroke"]');
+  assert(await page.locator('#selection-bar input[data-k="strokeAlpha"]').count() === 1, 'en weer aan, met schuif voor doorzichtigheid');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle plantvak-tests geslaagd.');

@@ -1993,7 +1993,7 @@ class App {
       const w = sh.width ? Math.round((sh.width / sc) * 1000 * 100) / 100 : 0.35;
       html += field('lw', 'Lijn', String(w).replace('.', ','), 'mm');
       // omtrek van vlakken uitzetten of doorzichtig maken (de vulling blijft)
-      const outl = items.filter((i) => i.type === 'shape' && !i.wall && !i.group && !isBed(i) && (i.kind === 'polygon' || i.kind === 'circle'));
+      const outl = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
       if (outl.length) {
         const on = outl[0].stroke !== false;
         html += `<button type="button" class="tgl ${on ? 'on' : ''}" data-act="stroke" title="Omtrek tonen of verbergen">${on ? 'Omtrek aan' : 'Omtrek uit'}</button>`;
