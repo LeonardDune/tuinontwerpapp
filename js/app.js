@@ -19,6 +19,7 @@ import {
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool } from './select.js';
 import { syncOpenings } from './walls.js';
 import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
@@ -2925,8 +2926,15 @@ class App {
   }
 
   registerServiceWorker() {
+    const ver = document.getElementById('app-version');
+    if (ver) ver.textContent = `Versie ${APP_VERSION} (${APP_DATE}). Zie je een oudere versie? Herlaad de pagina.`;
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js').catch(() => {});
+      // een nieuwe versie heeft het overgenomen terwijl de app openstond
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController) this.toast('Er is een nieuwe versie van de app. Herlaad de pagina om hem te gebruiken.', 10000);
+      });
     }
   }
 }

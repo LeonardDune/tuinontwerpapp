@@ -1,5 +1,5 @@
 // Service worker: de app werkt offline. Kaarttegels en adreszoeken gaan altijd via het netwerk.
-const VERSION = 'tuinontwerp-v31';
+const VERSION = 'tuinontwerp-v32';
 const SHELL = [
   './',
   'index.html',
@@ -41,6 +41,7 @@ const SHELL = [
   'js/storage.js',
   'js/tools.js',
   'js/units.js',
+  'js/version.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -56,11 +57,13 @@ self.addEventListener('activate', (event) => {
 });
 
 // Eigen bestanden: eerst netwerk (zodat updates direct binnenkomen), anders de cache.
+// 'no-cache': altijd bij de server navragen of er een nieuwere versie is, ook als de browser het bestand
+// nog bewaard heeft (GitHub Pages laat browsers bestanden tot 10 minuten bewaren).
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(event.request, copy));
