@@ -119,6 +119,17 @@ function chair(g, x, y, s, rot) {
 }
 
 const POT_GREEN = '#4f7f36';
+const LEAF = '#4f7f36';
+
+/** Groen bladkussen onder de bloemen van een vaste plant. */
+function leafBase(g, rx, ry, seed, lw) {
+  g.save();
+  g.strokeStyle = LEAF; g.fillStyle = hexA('#6b8f4a', 0.35); g.lineWidth = lw * 0.7;
+  blob(g, rx, ry, seed, 10, 0.14); g.fill(); g.stroke();
+  g.globalAlpha = 0.45; g.lineWidth = lw * 0.6;
+  blob(g, rx * 0.55, ry * 0.55, seed + 3, 7, 0.25); g.stroke();
+  g.restore();
+}
 const SOIL = '#6b4f3a';
 
 /** Ronde pot in bovenaanzicht: rand in de potkleur, aarde binnenin. */
@@ -294,7 +305,7 @@ function climbOver(g, w, h, lw, it, posts) {
 }
 
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -440,7 +451,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'vasteplant', name: 'Vaste plant', cat: 'Heesters & planten', round: true, w: 0.5, h: 0.5, color: '#8e5bb5',
+    id: 'vasteplant', name: 'Vaste plant (algemeen)', cat: 'Vaste planten', round: true, w: 0.5, h: 0.5, color: '#8e5bb5',
     draw(g, w, h, c) {
       g.fillStyle = hexA(c, 0.3);
       for (let i = 0; i < 5; i++) {
@@ -477,6 +488,173 @@ export const STENCILS = [
         for (let x = -w / 2 + w / 4; x < w / 2; x += w / 4) { g.fillStyle = '#5a8f3c'; dot(g, x, y, Math.min(w, h) * 0.04); }
       }
       g.globalAlpha = 1;
+    },
+  },
+
+  // --- Vaste planten per bloeivorm (c = bloemkleur; het blad blijft groen) ---
+  {
+    id: 'vp_aar', name: 'Vaste plant – aar / kaars (salvia, veronicastrum)', cat: 'Vaste planten', round: true, w: 0.5, h: 0.5, color: '#7b5ab5',
+    draw(g, w, h, c, lw) {
+      leafBase(g, w * 0.46, h * 0.46, 41, lw);
+      const r = rng(43);
+      g.fillStyle = hexA(c, 0.8);
+      for (let i = 0; i < 9; i++) {
+        const a = r() * TAU, d = 0.06 + r() * 0.3;
+        g.beginPath(); g.ellipse(Math.cos(a) * w * d, Math.sin(a) * h * d, w * 0.035, w * 0.11, a + Math.PI / 2, 0, TAU); g.fill(); g.stroke();
+      }
+    },
+  },
+  {
+    id: 'vp_knop', name: 'Vaste plant – knop / bol (allium, echinops)', cat: 'Vaste planten', round: true, w: 0.4, h: 0.4, color: '#9b6fb5',
+    draw(g, w, h, c, lw) {
+      leafBase(g, w * 0.45, h * 0.45, 51, lw);
+      const r = rng(53);
+      for (let i = 0; i < 6; i++) {
+        const a = r() * TAU, d = r() * 0.3, x = Math.cos(a) * w * d, y = Math.sin(a) * h * d, rr = w * (0.07 + r() * 0.03);
+        g.fillStyle = hexA(c, 0.75);
+        g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill(); g.stroke();
+        g.save(); g.globalAlpha = 0.6; g.lineWidth = lw * 0.5;
+        g.beginPath();
+        for (let k = 0; k < 8; k++) { const b = (k / 8) * TAU; g.moveTo(x, y); g.lineTo(x + Math.cos(b) * rr, y + Math.sin(b) * rr); }
+        g.stroke(); g.restore();
+      }
+    },
+  },
+  {
+    id: 'vp_pluim', name: 'Vaste plant – pluim (astilbe, filipendula)', cat: 'Vaste planten', round: true, w: 0.6, h: 0.6, color: '#e39ab5',
+    draw(g, w, h, c, lw) {
+      leafBase(g, w * 0.46, h * 0.46, 61, lw);
+      const r = rng(63);
+      g.fillStyle = hexA(c, 0.55);
+      for (let i = 0; i < 5; i++) {
+        const a = r() * TAU, d = 0.05 + r() * 0.25;
+        const x = Math.cos(a) * w * d, y = Math.sin(a) * h * d;
+        g.save(); g.translate(x, y); g.rotate(a);
+        cloud(g, w * 0.13, w * 0.07, 9, 0.25); g.fill(); g.stroke();
+        g.restore();
+      }
+    },
+  },
+  {
+    id: 'vp_scherm', name: 'Vaste plant – scherm (duizendblad, sedum)', cat: 'Vaste planten', round: true, w: 0.5, h: 0.5, color: '#e8c35a',
+    draw(g, w, h, c, lw) {
+      leafBase(g, w * 0.46, h * 0.46, 71, lw);
+      const r = rng(73);
+      for (let i = 0; i < 5; i++) {
+        const a = r() * TAU, d = r() * 0.28, x = Math.cos(a) * w * d, y = Math.sin(a) * h * d, rr = w * (0.09 + r() * 0.03);
+        g.fillStyle = hexA(c, 0.35);
+        g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill(); g.stroke();
+        g.fillStyle = hexA(c, 0.95);
+        for (let k = 0; k < 7; k++) { const b = (k / 7) * TAU + a; dot(g, x + Math.cos(b) * rr * 0.6, y + Math.sin(b) * rr * 0.6, rr * 0.16); }
+        dot(g, x, y, rr * 0.16);
+      }
+    },
+  },
+  {
+    id: 'vp_schijf', name: 'Vaste plant – schijf / margriet (echinacea, rudbeckia)', cat: 'Vaste planten', round: true, w: 0.5, h: 0.5, color: '#d9822b',
+    draw(g, w, h, c, lw) {
+      leafBase(g, w * 0.46, h * 0.46, 81, lw);
+      const r = rng(83);
+      for (let i = 0; i < 4; i++) {
+        const a = r() * TAU, d = 0.05 + r() * 0.24, x = Math.cos(a) * w * d, y = Math.sin(a) * h * d, rr = w * (0.13 + r() * 0.02);
+        g.fillStyle = hexA(c, 0.8);
+        for (let k = 0; k < 10; k++) {
+          const b = (k / 10) * TAU;
+          g.beginPath(); g.ellipse(x + Math.cos(b) * rr * 0.55, y + Math.sin(b) * rr * 0.55, rr * 0.45, rr * 0.14, b, 0, TAU); g.fill();
+        }
+        g.fillStyle = hexA('#5b3a1e', 0.95); dot(g, x, y, rr * 0.3);
+      }
+    },
+  },
+  {
+    id: 'vp_kussen', name: 'Vaste plant – kussen (geranium, kattenkruid)', cat: 'Vaste planten', round: true, w: 0.6, h: 0.6, color: '#6c7fc8',
+    draw(g, w, h, c, lw) {
+      g.save();
+      g.strokeStyle = LEAF; g.fillStyle = hexA('#6b8f4a', 0.4);
+      cloud(g, w / 2, h / 2, 13, 0.1); g.fill(); g.stroke();
+      g.globalAlpha = 0.5; g.lineWidth = lw * 0.6;
+      cloud(g, w * 0.3, h * 0.3, 9, 0.12); g.stroke();
+      g.restore();
+      const r = rng(93);
+      g.fillStyle = hexA(c, 0.9);
+      for (let i = 0; i < 16; i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.4; dot(g, Math.cos(a) * w * d, Math.sin(a) * h * d, w * 0.025); }
+    },
+  },
+  {
+    id: 'vp_blad', name: 'Bladplant (hosta, bergenia)', cat: 'Vaste planten', round: true, w: 0.7, h: 0.7, color: '#5f8f7a',
+    draw(g, w, h, c, lw) {
+      const r = rng(101);
+      g.fillStyle = hexA(c, 0.4);
+      for (const [n, sc, off] of [[7, 1, 0], [5, 0.6, 0.4]]) {
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * TAU + off + (r() - 0.5) * 0.2;
+          const L = w * 0.25 * sc;
+          g.save(); g.translate(Math.cos(a) * L, Math.sin(a) * L); g.rotate(a);
+          g.beginPath(); g.ellipse(0, 0, L * 0.95, L * 0.55, 0, 0, TAU); g.fill(); g.stroke();
+          g.globalAlpha = 0.6; g.lineWidth = lw * 0.5;
+          g.beginPath(); g.moveTo(-L * 0.9, 0); g.lineTo(L * 0.85, 0); g.stroke();
+          g.restore();
+        }
+      }
+    },
+  },
+  {
+    id: 'varen', name: 'Varen', cat: 'Vaste planten', round: true, w: 0.7, h: 0.7, color: '#4f8a3a',
+    draw(g, w, h, c, lw) {
+      g.fillStyle = hexA(c, 0.12);
+      g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill();
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU + 0.2, R = w * 0.48;
+        g.save(); g.rotate(a);
+        g.lineWidth = lw * 0.9;
+        g.beginPath(); g.moveTo(w * 0.03, 0); g.quadraticCurveTo(R * 0.6, R * 0.08, R, R * 0.02); g.stroke();
+        g.fillStyle = hexA(c, 0.5); g.lineWidth = lw * 0.5;
+        for (let k = 1; k <= 7; k++) {
+          const t = k / 8, x = R * t, s = (1 - t * 0.7) * R * 0.13;
+          for (const side of [-1, 1]) {
+            g.beginPath(); g.ellipse(x + s * 0.3, side * s * 0.75, s * 0.75, s * 0.32, side * 0.6, 0, TAU); g.fill(); g.stroke();
+          }
+        }
+        g.restore();
+      }
+    },
+  },
+  {
+    id: 'vp_zwaard', name: 'Zwaardbladige plant (iris, daglelie)', cat: 'Vaste planten', round: true, w: 0.6, h: 0.6, color: '#e0a030',
+    draw(g, w, h, c, lw) {
+      g.save();
+      g.strokeStyle = LEAF; g.fillStyle = hexA('#6b9c4a', 0.45); g.lineWidth = lw * 0.7;
+      const n = 12;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU, R = w * (i % 2 ? 0.48 : 0.4), bw = w * 0.035;
+        g.save(); g.rotate(a);
+        g.beginPath(); g.moveTo(0, -bw); g.quadraticCurveTo(R * 0.6, -bw * 1.4 + R * 0.1, R, R * 0.12); g.quadraticCurveTo(R * 0.6, bw * 1.4 + R * 0.1, 0, bw); g.closePath();
+        g.fill(); g.stroke();
+        g.restore();
+      }
+      g.restore();
+      const r = rng(111);
+      g.fillStyle = hexA(c, 0.9);
+      for (let i = 0; i < 4; i++) {
+        const a = r() * TAU, d = 0.08 + r() * 0.18, x = Math.cos(a) * w * d, y = Math.sin(a) * h * d;
+        for (let k = 0; k < 3; k++) { const b = (k / 3) * TAU + a; g.beginPath(); g.ellipse(x + Math.cos(b) * w * 0.03, y + Math.sin(b) * w * 0.03, w * 0.045, w * 0.022, b, 0, TAU); g.fill(); }
+      }
+    },
+  },
+  {
+    id: 'bolgewas', name: 'Bolgewassen (tulpen, narcissen)', cat: 'Vaste planten', round: true, w: 0.4, h: 0.4, color: '#d9577a',
+    draw(g, w, h, c, lw) {
+      g.save();
+      g.setLineDash([lw * 2, lw * 2]);
+      g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.stroke();
+      g.restore();
+      const r = rng(121);
+      for (let i = 0; i < 9; i++) {
+        const a = r() * TAU, d = Math.sqrt(r()) * 0.38, x = Math.cos(a) * w * d, y = Math.sin(a) * h * d;
+        g.fillStyle = hexA(c, 0.85);
+        g.beginPath(); g.arc(x, y, w * 0.05, 0, TAU); g.fill(); g.stroke();
+      }
     },
   },
 
