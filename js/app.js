@@ -444,6 +444,8 @@ class App {
       pointerType: e.pointerType,
       time: e.timeStamp,
       shift: e.shiftKey,
+      // erbij selecteren: Shift, Ctrl of Cmd ingedrukt, of de knop "Meer selecteren" aan
+      add: e.shiftKey || e.ctrlKey || e.metaKey || !!this.state.selAdd,
     };
   }
 
@@ -1419,7 +1421,8 @@ class App {
       add(this.slider('Grootte', 4, 60, 1, this.state.eraserSize, (v) => { this.state.eraserSize = v; }, (v) => `${v} px`));
       add(this.hint('Gumt op de actieve laag. Afbeeldingen en kaarten worden niet gegumd (gebruik de lasso).'));
     } else if (t === 'lasso') {
-      add(this.hint('Tik op een element of omcirkel er meerdere. Slepen = verplaatsen · ronde greep = draaien · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Klikt vast aan zijden, uitlijning, gelijke afstand en hoek. Dubbeltik op een groep = één element aanpassen.'));
+      add(this.toggle('Meer selecteren', !!this.state.selAdd, (v) => { this.state.selAdd = v; }));
+      add(this.hint('Tik op een element of omcirkel er meerdere. Meer selecteren: Shift/Ctrl/Cmd + tik, of zet "Meer selecteren" aan (tik nog eens = eruit). Slepen = verplaatsen · ronde greep = draaien · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Klikt vast aan zijden, uitlijning, gelijke afstand en hoek. Dubbeltik op een groep = één element aanpassen.'));
     } else if (t === 'wall') {
       const seg = document.createElement('div');
       seg.className = 'seg';

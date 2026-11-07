@@ -169,6 +169,16 @@ export class SelectTool extends Tool {
   down(e) {
     const now = e.time;
     this.downS = e.s;
+    // erbij selecteren: tikken en omcirkelen voegen toe (of halen weg), niet verschuiven
+    if (e.add && this.selection.size) {
+      const h = this.handleAt(e.s);
+      // slepen op de selectie verschuift nog steeds; een tik zonder slepen voegt toe of haalt weg
+      if (h) { this.addTap = h.kind === 'move'; this.startDrag(h, e); return; }
+      this.mode = 'lasso';
+      this.path = [e.w];
+      this.pathS = [e.s];
+      return;
+    }
     if (this.selection.size) {
       const h = this.handleAt(e.s);
       if (h) {
@@ -217,7 +227,13 @@ export class SelectTool extends Tool {
       if (this.moved) this.app.store.commit('edit');
       else this.app.store.cancel();
       if (!this.moved) this.lastTap = { kind: this.drag.kind, i: this.drag.i, t: e.time };
-      if (!this.moved && this.pendingOpen) {
+      if (!this.moved && this.addTap) {
+        const hit = this.pickAt(e.w);
+        if (hit) {
+          this.pathS = [e.s];
+          this.finishLasso(e);
+        }
+      } else if (!this.moved && this.pendingOpen) {
         this.lastTap = null;
         this.app.openGroup = this.pendingOpen.gid;
         this.app.setSelection(new Set([this.pendingOpen.id]));
@@ -233,6 +249,7 @@ export class SelectTool extends Tool {
       }
     }
     this.pendingOpen = null;
+    this.addTap = false;
     this.mode = null;
     this.path = null;
     this.drag = null;
@@ -308,6 +325,19 @@ export class SelectTool extends Tool {
           if (inside / pts.length >= 0.5) ids.add(item.id);
         }
       }
+    }
+    if (e.add) {
+      // tik: erbij of eraf (een groep in zijn geheel); omcirkelen: erbij
+      const cur = new Set(this.selection);
+      const tap = this.pathS.length < 4 || extent < 8;
+      for (const id of ids) {
+        const g = app.store.findItem(id)?.item.gid;
+        const members = g && g !== app.openGroup ? app.store.doc.layers.flatMap((l) => l.items.filter((i) => i.gid === g).map((i) => i.id)) : [id];
+        if (tap && cur.has(id)) for (const m of members) cur.delete(m);
+        else for (const m of members) cur.add(m);
+      }
+      app.setSelection(cur);
+      return;
     }
     app.setSelection(ids);
   }
