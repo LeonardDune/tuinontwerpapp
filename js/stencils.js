@@ -326,6 +326,65 @@ function drawBin(g, w, h, c, lw) {
   rr(-w * 0.15, h / 2 - h * 0.11, w * 0.3, h * 0.06, w * 0.02); g.stroke();
 }
 
+/** Plat groen dak van boven: daktrim in de kleur van het hout, grindstrook langs de rand, begroeiing. */
+function greenRoof(g, w, h, c, lw, kind) {
+  const trim = Math.min(0.06, w * 0.03), gravel = Math.min(0.2, Math.min(w, h) * 0.08);
+  // overstek met daktrim
+  g.fillStyle = hexA(c, 0.85);
+  g.lineWidth = lw * 1.4;
+  g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+  // grindstrook
+  const gx = -w / 2 + trim, gy = -h / 2 + trim, gw = w - 2 * trim, gh = h - 2 * trim;
+  g.fillStyle = hexA('#cfc6b4', 1);
+  g.beginPath(); g.rect(gx, gy, gw, gh); g.fill();
+  // begroeiing
+  const ix = gx + gravel, iy = gy + gravel, iw = gw - 2 * gravel, ih = gh - 2 * gravel;
+  g.fillStyle = hexA(kind === 'mos' ? '#6f8f3a' : '#7f9f4a', 1);
+  g.beginPath(); g.rect(ix, iy, iw, ih); g.fill();
+  g.save();
+  g.beginPath(); g.rect(ix, iy, iw, ih); g.clip();
+  const r = rng(kind === 'mos' ? 17 : 29);
+  if (!fillOverride.paper) {
+    const n = Math.min(1500, Math.round(iw * ih * (kind === 'mos' ? 220 : 160)));
+    for (let k = 0; k < n; k++) {
+      const x = ix + r() * iw, y = iy + r() * ih, s = 0.02 + r() * 0.035;
+      if (kind === 'mos') {
+        const tones = ['#55752c', '#8aa84a', '#a3b85a', '#4a6a2a'];
+        g.fillStyle = hexA(tones[Math.floor(r() * tones.length)], 0.7);
+        g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
+      } else {
+        // sedum: rozetjes in groen, met hier en daar rood en geel
+        const t = r();
+        const col = t < 0.05 ? '#b5523a' : t < 0.09 ? '#e2c044' : t < 0.55 ? '#5f8a35' : '#9cbf5a';
+        g.fillStyle = hexA(col, 0.85);
+        for (let q = 0; q < 5; q++) {
+          const a = (q / 5) * TAU + t * 3;
+          g.beginPath(); g.ellipse(x + Math.cos(a) * s * 0.5, y + Math.sin(a) * s * 0.5, s * 0.5, s * 0.25, a, 0, TAU); g.fill();
+        }
+      }
+    }
+  }
+  g.restore();
+  g.save();
+  g.lineWidth = lw * 0.6; g.strokeStyle = hexA('#8a8070', 1);
+  g.beginPath(); g.rect(ix, iy, iw, ih); g.stroke();
+  // grindkorrels in de strook
+  if (!fillOverride.paper) {
+    g.fillStyle = hexA('#9c9282', 0.7);
+    const per = Math.round((gw + gh) * 2 / 0.04);
+    for (let k = 0; k < per; k++) {
+      const side = Math.floor(r() * 4), t = r(), d = r() * gravel;
+      const x = side < 2 ? gx + t * gw : side === 2 ? gx + d : gx + gw - d;
+      const y = side >= 2 ? gy + t * gh : side === 0 ? gy + d : gy + gh - d;
+      g.beginPath(); g.arc(x, y, 0.008 + r() * 0.008, 0, TAU); g.fill();
+    }
+  }
+  g.restore();
+  // regenpijp in de hoek
+  g.fillStyle = hexA('#555a60', 0.9);
+  g.beginPath(); g.arc(w / 2 - trim * 2, h / 2 - trim * 2, Math.max(0.04, trim * 0.8), 0, TAU); g.fill(); g.stroke();
+}
+
 export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
@@ -1234,6 +1293,14 @@ export const STENCILS = [
       g.lineWidth = lw * 0.6;
       g.beginPath(); g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, h / 2); g.moveTo(w / 2, -h / 2); g.lineTo(-w / 2, h / 2); g.stroke();
     },
+  },
+  {
+    id: 'schuurgroen', name: 'Schuur met groen dak (sedum / mos)', cat: 'Bouw & water', round: false, w: 3, h: 2.5, color: '#6b4f3a',
+    draw(g, w, h, c, lw) { greenRoof(g, w, h, c, lw, 'sedum'); },
+  },
+  {
+    id: 'schuurmos', name: 'Schuurtje met mosdak', cat: 'Bouw & water', round: false, w: 2, h: 1.6, color: '#6b4f3a',
+    draw(g, w, h, c, lw) { greenRoof(g, w, h, c, lw, 'mos'); },
   },
   {
     id: 'kas', name: 'Kas', cat: 'Bouw & water', round: false, w: 2.5, h: 3, color: '#4a7c8c',

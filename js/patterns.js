@@ -45,6 +45,7 @@ export const HATCHES = {
   // groen en water
   gras: { name: 'Gras', size: 0.6, bg: '#b3d19a', group: 'Groen en water' },
   beplanting: { name: 'Beplanting', size: 1, bg: '#bdd4a6', group: 'Groen en water' },
+  sedum: { name: 'Groen dak (sedum)', size: 0.6, bg: '#8aa852', joint: '#4f7a2e', group: 'Groen en water' },
   water: { name: 'Water', size: 1.2, bg: '#a7cbe9', group: 'Groen en water' },
   // overkappingen (zodat ze ook als vrije vorm, bijv. om een hoek, getekend kunnen worden)
   veranda: { name: 'Veranda / glazen dak met profielen', size: 0.8, bg: '#c9dce6', joint: '#4a4f55', group: 'Overkapping' },
@@ -320,6 +321,18 @@ function makeTile(kind, color) {
       }
       break;
     }
+    case 'sedum':
+      // rozetjes sedum (in de lijnkleur), los verdeeld
+      for (let i = 0; i < 22; i++) {
+        const x = rnd() * T, y = rnd() * T, sz = 3 + rnd() * 3;
+        g.globalAlpha = 0.45 + rnd() * 0.4;
+        for (let q = 0; q < 5; q++) {
+          const a = (q / 5) * Math.PI * 2 + i;
+          for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) { g.beginPath(); g.ellipse(x + dx + Math.cos(a) * sz * 0.5, y + dy + Math.sin(a) * sz * 0.5, sz * 0.5, sz * 0.25, a, 0, Math.PI * 2); g.fill(); }
+        }
+      }
+      g.globalAlpha = 1;
+      break;
     case 'hout':
       g.lineWidth = 1.2;
       for (let r = 0; r < 4; r++) {

@@ -66,6 +66,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const bins = await page.evaluate(async () => { const { STENCIL_MAP } = await import('./js/stencils.js'); return ['kliko', 'kliko140', 'kliko3'].map((id) => STENCIL_MAP[id] && [STENCIL_MAP[id].w, STENCIL_MAP[id].h]); });
   assert(bins.every(Boolean) && bins[0][0] === 0.58 && bins[0][1] === 0.74, 'kliko 240 L (58 × 74 cm), 140 L en een rij van drie');
 
+  console.log('Schuur met groen dak');
+  const sheds = await page.evaluate(async () => { const { STENCIL_MAP } = await import('./js/stencils.js'); const { HATCHES } = await import('./js/patterns.js'); return [!!STENCIL_MAP.schuurgroen, !!STENCIL_MAP.schuurmos, !!HATCHES.sedum]; });
+  assert(sheds.every(Boolean), 'schuur met sedumdak, schuurtje met mosdak en materiaal "Groen dak (sedum)"');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pot-tests geslaagd.');
