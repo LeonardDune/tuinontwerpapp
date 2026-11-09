@@ -118,7 +118,8 @@ function drawBed(g, item, rc) {
   g.fill();
   if (view !== 'groepen') {
     g.save();
-    g.clip();
+    // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
+    if (item.clipPlants) g.clip();
     for (const p of cachedLayout(item, poly, rc, groups)) {
       drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
     }
@@ -169,6 +170,8 @@ function drawGroup(g, item, rc) {
   const color = mixColor(mix, rc);
   const lw = paperToWorld(0.15, rc.scale);
   g.save();
+  // het vlak van de groep blijft binnen het vak; de planten zelf mogen eroverheen groeien
+  g.save();
   if (bed) {
     tracePath(g, bed);
     g.clip();
@@ -176,9 +179,10 @@ function drawGroup(g, item, rc) {
   tracePath(g, item);
   g.fillStyle = hexA(color, view === 'groepen' ? 0.45 : 0.12);
   g.fill();
+  g.restore();
   if (view !== 'groepen') {
     g.save();
-    g.clip();
+    if (bed?.clipPlants) { tracePath(g, bed); g.clip(); tracePath(g, item); g.clip(); }
     // latere groepen in hetzelfde vak liggen erboven
     const later = (rc.groupsByBed?.[item.bedId] || []);
     const idx = later.indexOf(item);

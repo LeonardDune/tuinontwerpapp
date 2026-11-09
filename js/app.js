@@ -1982,6 +1982,7 @@ class App {
         if (isBed(it)) {
           const hasGroups = (st?.groups || 0) > 0;
           html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
+          html += `<button type="button" class="tgl ${it.clipPlants ? 'on' : ''}" data-act="clipPlants" title="Planten groeien normaal over de rand van het vak. Zet dit aan om ze strak binnen de rand te tekenen (bijv. voor een technische tekening).">Binnen de rand</button>`;
           if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
         }
       } else if (it.type === 'shape' && !it.wall && (it.kind === 'polygon' || it.kind === 'circle') && it.points.length >= (it.kind === 'circle' ? 2 : 3)) {
@@ -2097,6 +2098,7 @@ class App {
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
+    bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
   }
@@ -2260,6 +2262,12 @@ class App {
           const st = items.filter((i) => i.type === 'stencil');
           const on = !st[0]?.see;
           for (const i of st) { if (on) i.see = true; else delete i.see; }
+          break;
+        }
+        case 'clipPlants': {
+          const beds = items.filter((i) => isBed(i));
+          const on = !beds[0]?.clipPlants;
+          for (const i of beds) { if (on) i.clipPlants = true; else delete i.clipPlants; }
           break;
         }
         case 'border':
