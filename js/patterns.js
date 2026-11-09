@@ -45,6 +45,7 @@ export const HATCHES = {
   // groen en water
   gras: { name: 'Gras', size: 0.6, bg: '#b3d19a', group: 'Groen en water' },
   beplanting: { name: 'Beplanting', size: 1, bg: '#bdd4a6', group: 'Groen en water' },
+  aarde: { name: 'Aarde (plantvak)', size: 0.5, bg: '#7b5f45', joint: '#4f3a28', group: 'Groen en water' },
   sedum: { name: 'Groen dak (sedum)', size: 0.6, bg: '#8aa852', joint: '#4f7a2e', group: 'Groen en water' },
   water: { name: 'Water', size: 1.2, bg: '#a7cbe9', group: 'Groen en water' },
   // overkappingen (zodat ze ook als vrije vorm, bijv. om een hoek, getekend kunnen worden)
@@ -321,6 +322,16 @@ function makeTile(kind, color) {
       }
       break;
     }
+    case 'aarde':
+      // kluitjes en korrels in verschillende tinten, naadloos over de tegelrand
+      for (let i = 0; i < 70; i++) {
+        const x = rnd() * T, y = rnd() * T, r = 0.8 + rnd() * 2.6, a = rnd() * 3;
+        g.globalAlpha = 0.25 + rnd() * 0.45;
+        g.fillStyle = rnd() < 0.3 ? '#a68767' : color;
+        for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) { g.beginPath(); g.ellipse(x + dx, y + dy, r, r * (0.6 + rnd() * 0.4), a, 0, Math.PI * 2); g.fill(); }
+      }
+      g.globalAlpha = 1;
+      break;
     case 'sedum':
       // rozetjes sedum (in de lijnkleur), los verdeeld
       for (let i = 0; i < 22; i++) {

@@ -9,7 +9,7 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -1982,6 +1982,7 @@ class App {
         if (isBed(it)) {
           const hasGroups = (st?.groups || 0) > 0;
           html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
+          html += `<select data-k="soil" title="Ondergrond van het plantvak">${Object.entries(SOILS).map(([k, v]) => `<option value="${k}" ${(it.soil || 'aarde') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
           html += `<button type="button" class="tgl ${it.clipPlants ? 'on' : ''}" data-act="clipPlants" title="Planten groeien normaal over de rand van het vak. Zet dit aan om ze strak binnen de rand te tekenen (bijv. voor een technische tekening).">Binnen de rand</button>`;
           if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
         }
@@ -2264,6 +2265,9 @@ class App {
           for (const i of st) { if (on) i.see = true; else delete i.see; }
           break;
         }
+        case 'soil':
+          for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }
+          break;
         case 'clipPlants': {
           const beds = items.filter((i) => isBed(i));
           const on = !beds[0]?.clipPlants;

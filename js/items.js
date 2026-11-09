@@ -100,6 +100,15 @@ function mixCodes(mix, rc) {
   return (mix || []).filter((m) => roles[m.role]).map((m) => roles[m.role].code).join('+');
 }
 
+/** Ondergrond van een plantvak. */
+export const SOILS = {
+  aarde: { name: 'Aarde', hatch: 'aarde', alpha: 0.7 },
+  donker: { name: 'Donkere aarde / compost', hatch: 'aarde', alpha: 0.95 },
+  schors: { name: 'Boomschors', hatch: 'houtsnippers', alpha: 0.6, joint: '#5a4330' },
+  grind: { name: 'Grind', hatch: 'grind', alpha: 0.7, joint: '#77705f' },
+  licht: { name: 'Licht (geen kleur)' },
+};
+
 /** Plantvak: rand, basismix (zonder de groepen) als symbolen of als vlak met code en aantal. */
 function drawBed(g, item, rc) {
   const roles = rc.roles || rolesMap(rc.doc);
@@ -110,12 +119,24 @@ function drawBed(g, item, rc) {
   g.save();
   tracePath(g, item);
   const mix = item.planting?.mix || [];
-  if (view === 'groepen' && mix.length) {
-    g.fillStyle = hexA(mixColor(mix, rc), 0.18);
+  // ondergrond: aarde (standaard), boomschors, grind of licht (zoals vroeger)
+  const soil = SOILS[item.soil || 'aarde'] || SOILS.aarde;
+  if (soil.hatch) {
+    const hd = HATCHES[soil.hatch];
+    g.save();
+    g.globalAlpha *= soil.alpha;
+    g.fillStyle = hd.bg; g.fill();
+    const pat = hatchPattern(g, soil.hatch, soil.joint || hd.joint || '#4f3a28', 0, item.points[0]);
+    if (pat) { g.fillStyle = pat; g.fill(); }
+    g.restore();
   } else {
     g.fillStyle = 'rgba(122, 154, 90, 0.10)';
+    g.fill();
   }
-  g.fill();
+  if (view === 'groepen' && mix.length) {
+    g.fillStyle = hexA(mixColor(mix, rc), 0.18);
+    g.fill();
+  }
   if (view !== 'groepen') {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
