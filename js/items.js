@@ -125,8 +125,8 @@ function drawBed(g, item, rc) {
   if (soil.hatch) {
     const hd = HATCHES[soil.hatch];
     g.save();
+    g.fillStyle = mixHex(hd.bg, rc.paper || '#fbfaf6', 1 - soil.alpha); g.fill();
     g.globalAlpha *= soil.alpha;
-    g.fillStyle = hd.bg; g.fill();
     const pat = hatchPattern(g, soil.hatch, soil.joint || hd.joint || '#4f3a28', 0, item.points[0]);
     if (pat) { g.fillStyle = pat; g.fill(); }
     g.restore();
@@ -308,10 +308,11 @@ function drawShape(g, item, rc) {
   if (closed && item.hatch && item.hatch !== 'none') {
     const hd = HATCHES[item.hatch];
     if ((hd?.bg || item.matColor) && !item.fill) {
-      // kleur van het materiaal (klinkerrood, grind, gras …): standaard zacht, zelf gekozen kleur voller
+      // kleur van het materiaal (klinkerrood, grind, gras …). Dicht: wat eronder ligt is niet te zien
+      // (doorzichtig maken kan met Dekking). Alleen overkappingen (glas, lamellen) blijven doorschijnend.
+      const paper = rc.paper || '#fbfaf6';
       g.save();
-      g.globalAlpha *= item.matColor ? 0.85 : 0.45;
-      g.fillStyle = item.matColor || hd.bg;
+      if (hd?.group === 'Overkapping') { g.globalAlpha *= item.matColor ? 0.85 : 0.45; g.fillStyle = item.matColor || hd.bg; } else g.fillStyle = mixHex(item.matColor || hd.bg, paper, item.matColor ? 0.15 : 0.55);
       g.fill();
       g.restore();
     }
@@ -775,4 +776,12 @@ function drawBorder(g, item) {
     g.stroke();
   }
   g.restore();
+}
+
+/** Kleur a gemengd met b (k = aandeel van b), als dichte kleur. */
+function mixHex(a, b, k) {
+  if (!/^#[0-9a-f]{6}$/i.test(a) || !/^#[0-9a-f]{6}$/i.test(b)) return a;
+  const p = (c) => { const h = c.replace('#', ''); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
+  const x = p(a), y = p(b);
+  return `rgb(${x.map((v, i) => Math.round(v * (1 - k) + y[i] * k)).join(',')})`;
 }

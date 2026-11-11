@@ -56,6 +56,24 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.selectOption('#selection-bar select[data-k="border"]', 'geen');
   assert(!(await page.evaluate(() => window.app.store.findItem('B').item.border)), 'rand weer uit');
 
+  console.log('Dekking');
+  const cover = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Dekking');
+    d.layers[0].items.push({ type: 'shape', id: 'zwart', kind: 'polygon', rect: true, points: [[0, 0], [4, 0], [4, 4], [0, 4]], color: '#000', width: 0.02, fill: '#000000', fillAlpha: 1 });
+    d.layers[0].items.push({ type: 'shape', id: 'grind', kind: 'polygon', rect: true, points: [[1, 1], [3, 1], [3, 3], [1, 3]], color: '#333', width: 0.02, hatch: 'grind' });
+    a.openDoc(d, true); a.cam.zoom = 80; a.cam.rot = 0; a.cam.x = 200; a.cam.y = 200; a.cameraChanged(); a.settings.grid = false;
+    const px = () => { a.render(); const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width; let sum = 0, n = 0;
+      for (let k = 0; k < 40; k++) { const p = a.cam.toScreen([1.2 + (k % 8) * 0.2, 1.2 + Math.floor(k / 8) * 0.3]); const v = g.getImageData(Math.round(p[0] * dpr), Math.round(p[1] * dpr), 1, 1).data; sum += (v[0] + v[1] + v[2]) / 3; n++; }
+      return Math.round(sum / n); };
+    const full = px();
+    a.store.mutate(() => { a.store.findItem('grind').item.opacity = 0.4; });
+    const half = px();
+    return { full, half };
+  });
+  assert(cover.full > 150, `grind op 100% dekking is dicht: het zwarte vlak eronder schijnt niet door (helderheid ${cover.full})`);
+  assert(cover.half < cover.full - 40, `met Dekking 40% schijnt het wel door (${cover.half})`);
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle verband-tests geslaagd.');
