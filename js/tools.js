@@ -2,6 +2,7 @@
 // e = { s: [x, y] scherm, w: [x, y] wereld, pressure, pointerType, time }
 
 import { isPlantStencil, ensureStencilRole } from './planting.js';
+import { FENCES } from './fences.js';
 import { snapPoint, drawSnapMarker } from './snap.js';
 
 export { snapPoint, drawSnapMarker };
@@ -1042,14 +1043,20 @@ export class WallTool extends ShapeTool {
     this.app.updatePolygonUI(false);
     if (pts.length < 2 || (closed && pts.length < 3)) { this.app.requestRender(); return; }
     this.commitItem({
-      type: 'shape', id: uid(), kind: closed ? 'polygon' : 'line', points: pts.map(roundPt),
-      wall: true, color: '#2f2f2f', width: this.thickness(),
+      type: 'shape', id: uid(), kind: closed ? 'polygon' : 'line', points: pts.map(roundPt), ...this.props(),
     });
+  }
+
+  /** Muur of hekwerk (state.fenceType). */
+  props() {
+    const F = FENCES[this.app.state.fenceType];
+    if (F) return { wall: true, fence: this.app.state.fenceType, color: F.color, width: F.t, height: F.height };
+    return { wall: true, color: '#2f2f2f', width: this.thickness() };
   }
 
   drawWorld(g, rc) {
     if (!this.poly || this.poly.length < 2) return;
-    drawItem(g, { type: 'shape', kind: 'line', points: this.poly, wall: true, color: '#2f2f2f', width: this.thickness() }, rc);
+    drawItem(g, { type: 'shape', kind: 'line', points: this.poly, ...this.props() }, rc);
   }
 }
 

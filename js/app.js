@@ -5,6 +5,7 @@ import { Camera } from './camera.js';
 import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
+import { FENCES } from './fences.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
@@ -1424,6 +1425,17 @@ class App {
       add(this.toggle('Meer selecteren', !!this.state.selAdd, (v) => { this.state.selAdd = v; }));
       add(this.hint('Tik op een element of omcirkel er meerdere. Meer selecteren: Shift/Ctrl/Cmd + tik, of zet "Meer selecteren" aan (tik nog eens = eruit). Slepen = verplaatsen · ronde greep = draaien · grepen = maat · hoekpunten verslepen, + = punt erbij, dubbeltik = punt weg. Klikt vast aan zijden, uitlijning, gelijke afstand en hoek. Dubbeltik op een groep = één element aanpassen.'));
     } else if (t === 'wall') {
+      // soort: muur of een van de hekwerken
+      const sel = document.createElement('select');
+      sel.title = 'Muur of soort hekwerk';
+      const ft = FENCES[this.state.fenceType] ? this.state.fenceType : '';
+      sel.innerHTML = `<option value="">Muur</option><optgroup label="Tuinafscheiding">${Object.entries(FENCES).filter(([, f]) => f.use === 'tuin').map(([k, f]) => `<option value="${k}" ${k === ft ? 'selected' : ''}>${f.name}</option>`).join('')}</optgroup><optgroup label="Terrasafscheiding">${Object.entries(FENCES).filter(([, f]) => f.use === 'terras').map(([k, f]) => `<option value="${k}" ${k === ft ? 'selected' : ''}>${f.name}</option>`).join('')}</optgroup>`;
+      sel.addEventListener('change', () => { this.state.fenceType = sel.value || null; this.persistSettings(); this.renderOptions(); this.requestRender(); });
+      add(sel);
+    }
+    if (t === 'wall' && FENCES[this.state.fenceType]) {
+      add(this.hint('Tik de punten van het hek; dubbeltik/Enter = stoppen. Poorten: Stencils › Hekwerk en poorten.'));
+    } else if (t === 'wall') {
       const seg = document.createElement('div');
       seg.className = 'seg';
       const cur = this.state.wallThickness || 0.3;
@@ -1433,7 +1445,7 @@ class App {
       }
       add(seg);
       add(this.numberField('Dikte (m)', cur, (v) => { if (v > 0.01) this.state.wallThickness = v; this.renderOptions(); }, 'Muurdikte in meters, bijv. 0,3 voor een buitenmuur of 0,1 voor een binnenwand'));
-      add(this.hint('Tik of sleep de punten van de muur (hartlijn); tik op het eerste punt om rond te sluiten, dubbeltik of Enter om te stoppen. Deuren en ramen vind je bij Stencils › Huis; ze klikken in de muur.'));
+      add(this.hint('Tik de punten (hartlijn). Eerste punt = rondsluiten, dubbeltik/Enter = stoppen. Deuren en ramen: Stencils › Huis.'));
     } else if (['line', 'rect', 'circle', 'polygon'].includes(t)) {
       if (t === 'rect') {
         const seg = document.createElement('div');
@@ -1795,9 +1807,18 @@ class App {
         name.textContent = def.name;
         b.appendChild(name);
         const size = document.createElement('small');
-        size.textContent = def.round && def.w === def.h ? `Ø ${String(def.w).replace('.', ',')} m` : `${String(def.w).replace('.', ',')} × ${String(def.h).replace('.', ',')} m`;
+        size.textContent = def.fenceTool ? 'tekenen als lijn' : def.round && def.w === def.h ? `Ø ${String(def.w).replace('.', ',')} m` : `${String(def.w).replace('.', ',')} × ${String(def.h).replace('.', ',')} m`;
         b.appendChild(size);
         b.addEventListener('click', () => {
+          if (def.fenceTool) {
+            // hekwerk teken je als lijn, net als een muur
+            this.state.fenceType = def.fenceTool;
+            this.persistSettings();
+            $('#dlg-stencils').close();
+            this.setTool('wall');
+            this.toast(`${FENCES[def.fenceTool].name}: tik punt voor punt, dubbeltik of Enter om te stoppen. Poorten vind je in dezelfde lijst; ze klikken in het hek.`, 4500);
+            return;
+          }
           this.state.stencil = def.id;
           this.persistSettings();
           $('#dlg-stencils').close();
@@ -1940,7 +1961,7 @@ class App {
     const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('nl-NL', { maximumFractionDigits: d });
     const field = (key, label, value, unit, steps = false) => `<label class="pf">${label}${steps ? `<button type="button" class="step" data-step="${key}:-1" title="−15°">−</button>` : ''}<input data-k="${key}" inputmode="decimal" value="${value}">${steps ? `<button type="button" class="step" data-step="${key}:1" title="+15°">+</button>` : ''}<span>${unit}</span></label>`;
     const typeName = (i) => {
-      if (i.wall) return 'Muur';
+      if (i.wall) return i.fence ? (FENCES[i.fence]?.name || 'Hek') : 'Muur';
       if (isGroup(i)) return 'Groep';
       if (isBed(i)) return 'Plantvak';
       if (isRect(i)) return 'Rechthoek';
@@ -2004,7 +2025,8 @@ class App {
     const colored = items.find((i) => i.color);
     if (colored) html += `<label class="pf" title="Lijnkleur">Kleur<input type="color" data-k="color" value="${colored.color.length === 7 ? colored.color : '#1d2b36'}"></label>`;
     const walls = shapes.filter((i) => i.wall);
-    if (walls.length) html += field('wallT', 'Dikte', fmt(walls[0].width), 'm');
+    if (walls.length && !walls[0].fence) html += field('wallT', 'Dikte', fmt(walls[0].width), 'm');
+    if (walls.length) html += `<select data-k="fence" title="Muur of soort hekwerk"><option value="">Muur</option>${Object.entries(FENCES).map(([k, f]) => `<option value="${k}" ${walls[0].fence === k ? 'selected' : ''}>${f.name}</option>`).join('')}</select>`;
     if (shapes.length > walls.length) {
       const sh = shapes.find((i) => !i.wall);
       const w = sh.width ? Math.round((sh.width / sc) * 1000 * 100) / 100 : 0.35;
@@ -2265,6 +2287,15 @@ class App {
           for (const i of st) { if (on) i.see = true; else delete i.see; }
           break;
         }
+        case 'fence':
+          for (const i of items) {
+            if (!(i.type === 'shape' && i.wall)) continue;
+            const F = FENCES[raw];
+            if (F) { i.fence = raw; i.width = F.t; i.color = F.color; i.height = F.height; } else { delete i.fence; i.width = 0.3; i.color = '#2f2f2f'; delete i.height; }
+            invalidateItem(i);
+          }
+          syncOpenings(this.store.doc, new Set(items.filter((i) => i.wall).map((i) => i.id)));
+          break;
         case 'soil':
           for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }
           break;

@@ -80,7 +80,7 @@ export function plantContext(doc) {
   let any = false;
   for (const layer of doc.layers) {
     for (const it of layer.items) {
-      if (it.wall && it.type === 'shape' && layer.visible) walls.push(it);
+      if (it.wall && !it.fence && it.type === 'shape' && layer.visible) walls.push(it);
       if (isBed(it)) { bedsById[it.id] = it; any = true; } else if (isGroup(it)) (groupsByBed[it.bedId] ||= []).push(it);
     }
   }

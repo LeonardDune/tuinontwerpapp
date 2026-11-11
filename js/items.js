@@ -2,6 +2,7 @@
 
 import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern, HATCHES } from './patterns.js';
+import { drawFence } from './fences.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
 import {
@@ -341,6 +342,7 @@ function drawShape(g, item, rc) {
 
 /** Muur: gevuld en gearceerd vlak met de dikte van de muur (item.width), aansluitingen netjes afgesneden. */
 function drawWall(g, item, rc) {
+  if (item.fence) return drawFence(g, item.points, item.kind === 'polygon', item.fence, paperToWorld(0.25, rc.scale), item.color);
   const lw = paperToWorld(0.3, rc.scale);
   const shape = wallShape(item, rc.walls || [item], lw);
   g.save();

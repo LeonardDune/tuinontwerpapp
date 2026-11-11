@@ -1,6 +1,8 @@
 // Stencils: symbolen op ware grootte (meters). Elk symbool tekent zichzelf
 // rond (0, 0) met breedte w en hoogte h. lw is de lijndikte in meters.
 
+import { drawFence } from './fences.js';
+
 const TAU = Math.PI * 2;
 
 function rng(seed) {
@@ -385,7 +387,7 @@ function greenRoof(g, w, h, c, lw, kind) {
   g.beginPath(); g.arc(w / 2 - trim * 2, h / 2 - trim * 2, Math.max(0.04, trim * 0.8), 0, TAU); g.fill(); g.stroke();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Huis: deuren en ramen', 'Overig'];
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -1219,6 +1221,76 @@ export const STENCILS = [
 
   // --- Huis: deuren, ramen en puien (bovenaanzicht; h = muurdikte, ze klikken in een muur) ---
   {
+    id: 'hek_schutting', name: 'Houten schutting', cat: 'Hekwerk en poorten', fenceTool: 'schutting', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'schutting', lw); },
+  },
+  {
+    id: 'hek_houtbeton', name: 'Hout-betonschutting', cat: 'Hekwerk en poorten', fenceTool: 'houtbeton', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'houtbeton', lw); },
+  },
+  {
+    id: 'hek_lamellen', name: 'Lamellenschutting', cat: 'Hekwerk en poorten', fenceTool: 'lamellen', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'lamellen', lw); },
+  },
+  {
+    id: 'hek_dubbelstaaf', name: 'Dubbelstaafmat / gaashek', cat: 'Hekwerk en poorten', fenceTool: 'dubbelstaaf', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'dubbelstaaf', lw); },
+  },
+  {
+    id: 'hek_vlecht', name: 'Wilgentenen vlechtscherm', cat: 'Hekwerk en poorten', fenceTool: 'vlecht', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'vlecht', lw); },
+  },
+  {
+    id: 'hek_groen', name: 'Groenscherm (klimop)', cat: 'Hekwerk en poorten', fenceTool: 'groen', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'groen', lw); },
+  },
+  {
+    id: 'hek_gabion', name: 'Schanskorf (gabion)', cat: 'Hekwerk en poorten', fenceTool: 'gabion', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'gabion', lw); },
+  },
+  {
+    id: 'hek_spijlen', name: 'Spijlenhek (terras)', cat: 'Hekwerk en poorten', fenceTool: 'spijlen', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'spijlen', lw); },
+  },
+  {
+    id: 'hek_glas', name: 'Glazen windscherm (terras)', cat: 'Hekwerk en poorten', fenceTool: 'glas', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'glas', lw); },
+  },
+  {
+    id: 'hek_hekje', name: 'Laag houten hekje (terras)', cat: 'Hekwerk en poorten', fenceTool: 'hekje', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'hekje', lw); },
+  },
+  {
+    id: 'hek_touw', name: 'Palen met touw (terras)', cat: 'Hekwerk en poorten', fenceTool: 'touw', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'touw', lw); },
+  },
+  {
+    id: 'poort', name: 'Tuinpoort (1,0 m)', cat: 'Hekwerk en poorten', opening: true, swing: true, w: 1.0, h: 0.05, color: '#6b4f33',
+    draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); gatePosts(g, w, h, c, lw); doorLeaf(g, -w / 2, h / 2, w, 1, lw * 1.6); },
+  },
+  {
+    id: 'poortdubbel', name: 'Dubbele poort / inrijpoort (3,0 m)', cat: 'Hekwerk en poorten', opening: true, swing: true, w: 3.0, h: 0.05, color: '#6b4f33',
+    draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); gatePosts(g, w, h, c, lw); doorLeaf(g, -w / 2, h / 2, w / 2, 1, lw * 1.6); doorLeaf(g, w / 2, h / 2, w / 2, -1, lw * 1.6); },
+  },
+  {
+    id: 'schuifpoort', name: 'Schuifpoort (4,0 m)', cat: 'Hekwerk en poorten', opening: true, w: 4.0, h: 0.05, color: '#3c4146',
+    draw(g, w, h, c, lw, paper) {
+      openingMask(g, w, h, lw, paper); gatePosts(g, w, h, c, lw);
+      // het poortblad schuift langs het hek (open getekend, iets naast de lijn)
+      const y = h / 2 + 0.06;
+      g.save(); g.lineWidth = lw * 2; g.beginPath(); g.moveTo(-w / 2 - w * 0.9, y); g.lineTo(-w / 2 + 0.05, y); g.stroke(); g.restore();
+      arrow(g, w * 0.1, -w * 0.3, y + Math.min(0.25, w * 0.06), lw);
+    },
+  },
+  {
+    id: 'hekjeterras', name: 'Terrashekje (0,9 m)', cat: 'Hekwerk en poorten', opening: true, swing: true, w: 0.9, h: 0.04, color: '#2b2b2b',
+    draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); gatePosts(g, w, h, c, lw); doorLeaf(g, -w / 2, h / 2, w, 1, lw * 1.2); },
+  },
+  {
+    id: 'doorgang', name: 'Doorgang zonder poort', cat: 'Hekwerk en poorten', opening: true, w: 1.2, h: 0.05, color: '#6b4f33',
+    draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); gatePosts(g, w, h, c, lw); },
+  },
+  {
     id: 'deur', name: 'Binnendeur', cat: 'Huis: deuren en ramen', opening: true, swing: true, w: 0.93, h: 0.3, color: '#2f2f2f',
     draw(g, w, h, c, lw, paper) { openingMask(g, w, h, lw, paper); doorLeaf(g, -w / 2, h / 2, w, 1, lw); },
   },
@@ -1458,6 +1530,16 @@ function openingMask(g, w, h, lw, paper) {
   g.moveTo(-w / 2, -h / 2); g.lineTo(-w / 2, h / 2);
   g.moveTo(w / 2, -h / 2); g.lineTo(w / 2, h / 2);
   g.stroke();
+  g.restore();
+}
+
+/** Stevige palen aan beide kanten van een poort. */
+function gatePosts(g, w, h, c, lw) {
+  const p = Math.max(0.08, h * 1.6);
+  g.save();
+  g.fillStyle = hexA(c, 0.95);
+  g.lineWidth = lw * 0.6;
+  for (const x of [-w / 2, w / 2]) { g.beginPath(); g.rect(x - p / 2, -p / 2, p, p); g.fill(); g.stroke(); }
   g.restore();
 }
 
