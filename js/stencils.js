@@ -387,6 +387,77 @@ function greenRoof(g, w, h, c, lw, kind) {
   g.beginPath(); g.arc(w / 2 - trim * 2, h / 2 - trim * 2, Math.max(0.04, trim * 0.8), 0, TAU); g.fill(); g.stroke();
 }
 
+// ---------- leibomen ----------
+
+/** Platte kroon langs de breedte: één doorlopende, golvende bladrand. */
+function espalierBand(g, w, h, c, lw, seed, oy) {
+  const r = rng(seed);
+  const hh = h * 0.42;
+  const n = Math.max(3, Math.round(w / Math.max(h * 0.6, 0.18)));
+  const step = w / n;
+  const top = [], bot = [];
+  for (let i = 0; i <= n; i++) { top.push(hh * (0.8 + r() * 0.3)); bot.push(hh * (0.8 + r() * 0.3)); }
+  g.save();
+  g.fillStyle = hexA(c, 0.35);
+  g.lineWidth = lw * 0.8;
+  g.beginPath();
+  g.moveTo(-w / 2, oy);
+  for (let i = 0; i < n; i++) {
+    const x0 = -w / 2 + i * step;
+    g.quadraticCurveTo(x0 + step / 2, oy - top[i] * 1.35, x0 + step, oy - top[i + 1] * (i === n - 1 ? 0 : 0.85));
+  }
+  for (let i = n; i > 0; i--) {
+    const x0 = -w / 2 + i * step;
+    g.quadraticCurveTo(x0 - step / 2, oy + bot[i] * 1.35, x0 - step, oy + bot[i - 1] * (i === 1 ? 0 : 0.85));
+  }
+  g.closePath();
+  g.fill(); g.stroke();
+  g.restore();
+}
+
+/** Gesteltakken: waaier vanuit de stam, of horizontale etages. */
+function espalierArms(g, w, h, c, lw, ty, kind) {
+  g.save();
+  g.strokeStyle = hexA('#5b4a32', 0.75); g.lineWidth = lw * 0.9;
+  g.beginPath();
+  if (kind === 'waaier') {
+    for (const f of [-0.48, -0.32, -0.16, 0.16, 0.32, 0.48]) { g.moveTo(0, ty); g.quadraticCurveTo(w * f * 0.4, ty - h * 0.25, w * f, -h * 0.15); }
+  } else {
+    g.moveTo(-w / 2 + 0.08, 0); g.lineTo(w / 2 - 0.08, 0);
+  }
+  g.stroke();
+  g.restore();
+}
+
+/** Spandraden (met haken tegen de muur). */
+function espalierWires(g, w, y, lw, hooks) {
+  g.save();
+  g.strokeStyle = hexA('#7a7a7a', 0.8); g.lineWidth = lw * 0.5;
+  g.beginPath(); g.moveTo(-w / 2, y); g.lineTo(w / 2, y); g.stroke();
+  if (hooks) {
+    g.fillStyle = hexA('#555555', 0.9);
+    for (let x = -w / 2 + 0.05; x <= w / 2; x += 0.75) { g.beginPath(); g.arc(x, y, 0.015, 0, TAU); g.fill(); }
+  }
+  g.restore();
+}
+
+function espalierTrunk(g, x, y, c, lw, h) {
+  g.save();
+  g.fillStyle = hexA('#5b4a32', 0.95);
+  g.beginPath(); g.arc(x, y, Math.max(0.035, h * 0.08), 0, TAU); g.fill();
+  g.restore();
+}
+
+function espalierFruit(g, w, h, seed) {
+  if (fillOverride.paper) return;
+  const r = rng(seed);
+  g.save();
+  g.fillStyle = hexA('#c0392b', 0.85);
+  const n = Math.round(w * 4);
+  for (let i = 0; i < n; i++) { g.beginPath(); g.arc(-w / 2 + 0.1 + r() * (w - 0.2), (r() - 0.5) * h * 0.6, 0.025, 0, TAU); g.fill(); }
+  g.restore();
+}
+
 export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
@@ -468,6 +539,77 @@ export const STENCILS = [
       g.moveTo(-w * 0.08, 0); g.lineTo(w * 0.08, 0);
       g.moveTo(0, -h * 0.08); g.lineTo(0, h * 0.08);
       g.stroke();
+    },
+  },
+
+  // --- Leibomen (B = breedte langs het rek of de muur, D = diepte van het blad) ---
+  {
+    id: 'leifruitmuur', name: 'Leifruit tegen een muur (waaier / etages)', cat: 'Bomen', round: false, w: 3, h: 0.4, color: '#5a8f3c',
+    draw(g, w, h, c, lw) {
+      // bovenkant = muur: draden met muurhaken, daarvoor de platte kroon en de stam
+      espalierWires(g, w, -h / 2 + h * 0.12, lw, true);
+      espalierBand(g, w, h, c, lw, 11, -h * 0.05);
+      espalierArms(g, w, h, c, lw, h * 0.22, 'waaier');
+      espalierFruit(g, w, h, 13);
+      espalierTrunk(g, 0, h * 0.25, c, lw, h);
+    },
+  },
+  {
+    id: 'leifruitrek', name: 'Leifruit vrijstaand aan een rek', cat: 'Bomen', round: false, w: 3, h: 0.45, color: '#5a8f3c',
+    draw(g, w, h, c, lw) {
+      espalierBand(g, w, h, c, lw, 23, 0);
+      espalierArms(g, w, h, c, lw, 0, 'etages');
+      espalierWires(g, w, 0, lw, false);
+      // palen van het rek aan de uiteinden (en om de 2,5 m)
+      const n = Math.max(1, Math.round(w / 2.5));
+      g.save(); g.fillStyle = hexA('#6b4f33', 0.95); g.lineWidth = lw * 0.6;
+      for (let i = 0; i <= n; i++) { const x = -w / 2 + (w * i) / n; g.beginPath(); g.rect(x - 0.04, -0.04, 0.08, 0.08); g.fill(); g.stroke(); }
+      g.restore();
+      espalierFruit(g, w, h, 29);
+      espalierTrunk(g, 0, 0, c, lw, h);
+    },
+  },
+  {
+    id: 'leiboom', name: 'Leiboom op stam (scherm, bijv. leilinde)', cat: 'Bomen', round: false, w: 2, h: 0.6, color: '#4f7f36',
+    draw(g, w, h, c, lw) {
+      espalierBand(g, w, h, c, lw, 37, 0);
+      espalierArms(g, w, h, c, lw, 0, 'etages');
+      // bamboe raamwerk
+      g.save(); g.strokeStyle = hexA('#b59a62', 0.9); g.lineWidth = lw * 0.6; g.setLineDash([lw * 3, lw * 2]);
+      g.beginPath(); g.rect(-w / 2 + 0.05, -0.03, w - 0.1, 0.06); g.stroke(); g.restore();
+      espalierTrunk(g, 0, 0, c, lw, h * 1.6);
+    },
+  },
+  {
+    id: 'dakleiboom', name: 'Dakleiboom (platte kroon)', cat: 'Bomen', round: false, w: 2.5, h: 2.5, color: '#4f7f36',
+    draw(g, w, h, c, lw) {
+      // vierkant dak: raamwerk van takken in een raster, blad eroverheen
+      g.fillStyle = hexA(c, 0.28);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill();
+      g.save(); g.lineWidth = lw * 0.5; g.globalAlpha = 0.5;
+      g.beginPath();
+      for (let k = 1; k < 5; k++) { const x = -w / 2 + (w * k) / 5, y = -h / 2 + (h * k) / 5; g.moveTo(x, -h / 2); g.lineTo(x, h / 2); g.moveTo(-w / 2, y); g.lineTo(w / 2, y); }
+      g.stroke(); g.restore();
+      // golvende bladrand rondom (de kroon is plat en vierkant gesnoeid)
+      const b = Math.min(w, h) * 0.06, n = Math.max(4, Math.round(Math.max(w, h) / 0.35));
+      g.save(); g.fillStyle = hexA(c, 0.22); g.lineWidth = lw * 0.9;
+      g.beginPath(); g.moveTo(-w / 2, -h / 2);
+      const side = (x0, y0, x1, y1, nx, ny) => { for (let k = 0; k < n; k++) { const t0 = k / n, t1 = (k + 1) / n, tm = (t0 + t1) / 2; g.quadraticCurveTo(x0 + (x1 - x0) * tm + nx * b, y0 + (y1 - y0) * tm + ny * b, x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1); } };
+      side(-w / 2, -h / 2, w / 2, -h / 2, 0, -1); side(w / 2, -h / 2, w / 2, h / 2, 1, 0); side(w / 2, h / 2, -w / 2, h / 2, 0, 1); side(-w / 2, h / 2, -w / 2, -h / 2, -1, 0);
+      g.closePath(); g.fill(); g.stroke(); g.restore();
+      espalierTrunk(g, 0, 0, c, lw, Math.min(w, h) * 0.3);
+    },
+  },
+  {
+    id: 'fruitsnoer', name: 'Fruitsnoer (laag, langs een pad)', cat: 'Bomen', round: false, w: 4, h: 0.3, color: '#5a8f3c',
+    draw(g, w, h, c, lw) {
+      espalierWires(g, w, 0, lw, false);
+      espalierBand(g, w, h, c, lw, 53, 0);
+      g.save(); g.lineWidth = lw * 1.4; g.strokeStyle = hexA('#6b4f33', 0.9);
+      g.beginPath(); g.moveTo(-w / 2 + 0.1, 0); g.lineTo(w / 2 - 0.1, 0); g.stroke(); g.restore();
+      const n = Math.max(1, Math.round(w / 1.5));
+      for (let i = 0; i < n; i++) espalierTrunk(g, -w / 2 + (w * (i + 0.5)) / n, 0, c, lw, h * 0.8);
+      espalierFruit(g, w, h, 59);
     },
   },
 

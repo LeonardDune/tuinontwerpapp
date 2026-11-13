@@ -36,6 +36,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const r = await page.evaluate(() => { const a = window.app; const it = a.store.doc.layers[0].items.at(-1); const role = a.store.doc.planting.roles.find((x) => x.id === it.role); return role && { form: role.form, role: role.role }; });
   assert(r && r.form === 'aar' && r.role === 'structuur', 'aar wordt een bouwsteen met bloeivorm "aar" (structuur)');
 
+  console.log('Leibomen');
+  const lei = await page.evaluate(async () => { const { STENCILS } = await import('./js/stencils.js'); const { isPlantStencil } = await import('./js/planting.js'); return STENCILS.filter((x) => ['leifruitmuur', 'leifruitrek', 'leiboom', 'dakleiboom', 'fruitsnoer'].includes(x.id)).map((x) => x.cat === 'Bomen' && isPlantStencil(x.id)); });
+  assert(lei.length === 5 && lei.every(Boolean), 'vijf leibomen bij Bomen, elk een bouwsteen in de beplanting');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle vaste-planten-tests geslaagd.');
