@@ -55,7 +55,9 @@ function drawItemInner(g, item, rc) {
     case 'stencil':
       if (item.role && rc.month) drawStencilMonth(g, item, rc);
       // poort in een hek: het hek laat zelf een opening open, dus geen 'gum' in papierkleur
-      return drawStencil(g, item, paperToWorld(0.25, rc.scale), rc.paper, { noMask: !!(item.wallId && rc.fenceIds?.has(item.wallId)) });
+      // alleen in een (zichtbare, gemetselde) muur gumt een deur of poort de muur weg; in een hek of los
+      // in de tuin niet, anders wordt wat eronder ligt (gras, bestrating) wit
+      return drawStencil(g, item, paperToWorld(0.25, rc.scale), rc.paper, { noMask: rc.wallIds ? !(item.wallId && rc.wallIds.has(item.wallId)) : false });
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
     case 'plant': return drawPlant(g, item, rc);
@@ -418,14 +420,25 @@ function drawWall(g, item, rc) {
   if (item.fence) {
     // openingen (poorten, hekjes) in het hek: daar wordt het hek niet getekend
     const gaps = {};
-    for (const op of rc.openingsByWall?.[item.id] || []) {
-      const seg = op.wallSeg ?? 0;
-      const n = item.kind === 'polygon' ? item.points.length : item.points.length - 1;
-      if (seg < 0 || seg >= n) continue;
+    const n = item.kind === 'polygon' ? item.points.length : item.points.length - 1;
+    const addGap = (op, seg) => {
       const a = item.points[seg], b = item.points[(seg + 1) % item.points.length];
       const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       const s0 = ((op.x - a[0]) * (b[0] - a[0]) + (op.y - a[1]) * (b[1] - a[1])) / L;
       (gaps[seg] ||= []).push([s0 - op.w / 2, s0 + op.w / 2]);
+    };
+    for (const op of rc.openingsByWall?.[item.id] || []) {
+      const seg = op.wallSeg ?? 0;
+      if (seg >= 0 && seg < n) addGap(op, seg);
+    }
+    // losse poorten/hekjes die wel op het hek liggen (niet gekoppeld): daar ook een opening
+    for (const op of rc.looseOpenings || []) {
+      for (let seg = 0; seg < n; seg++) {
+        const a = item.points[seg], b = item.points[(seg + 1) % item.points.length];
+        const d = distToSegment([op.x, op.y], a, b);
+        const ang = Math.abs(Math.sin((op.rot || 0) - Math.atan2(b[1] - a[1], b[0] - a[0])));
+        if (d < Math.max(0.12, item.width) && ang < 0.1) { addGap(op, seg); break; }
+      }
     }
     return drawFence(g, item.points, item.kind === 'polygon', item.fence, paperToWorld(0.25, rc.scale), item.color, gaps);
   }

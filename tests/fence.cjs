@@ -65,6 +65,17 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.screenshot({ path: path.join(OUT, 'poort-op-gras.png') });
   assert(Math.abs(gapPx.gap[0] - gapPx.grass[0]) + Math.abs(gapPx.gap[1] - gapPx.grass[1]) + Math.abs(gapPx.gap[2] - gapPx.grass[2]) < 40 && gapPx.gap[1] > gapPx.gap[0], `in de poortopening zie je het gras (${gapPx.gap} vs gras ${gapPx.grass})`);
 
+  console.log('Los (niet gekoppeld) hekje op een hek: ook niet wit');
+  const loosePx = await page.evaluate(() => {
+    const a = window.app;
+    a.store.mutate((doc) => { const gt = doc.layers[0].items.find((i) => i.id === 'gate'); delete gt.wallId; delete gt.wallSeg; delete gt.wallT; delete gt.wallSide; });
+    a.render();
+    const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width;
+    const at = (w) => { const p = a.cam.toScreen(w); return [...g.getImageData(Math.round(p[0] * dpr), Math.round(p[1] * dpr), 1, 1).data].slice(0, 3); };
+    return { gap: at([3.25, -0.01]), grass: at([3.25, -0.6]) };
+  });
+  assert(Math.abs(loosePx.gap[0] - loosePx.grass[0]) + Math.abs(loosePx.gap[1] - loosePx.grass[1]) + Math.abs(loosePx.gap[2] - loosePx.grass[2]) < 40, `ook zonder koppeling: gras in de opening (${loosePx.gap})`);
+
   console.log('Alle soorten tekenen');
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js'); const { FENCES } = await import('./js/fences.js');
