@@ -41,6 +41,19 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(/Bodembedekkers/.test(sk) && /12 m²/.test(sk), `paneel: oppervlakte per soort ("${sk.split('\n')[0]}")`);
   await page.screenshot({ path: path.join(OUT, 'plantvak-type.png') });
 
+  console.log('Naam');
+  await page.evaluate((id) => { const a = window.app; a.plantPanel.close(); a.setTool('lasso'); a.setSelection(new Set([id])); }, bed.id);
+  await page.fill('#selection-bar input[data-k="bedName"]', 'Border oost');
+  await page.press('#selection-bar input[data-k="bedName"]', 'Enter');
+  assert(await page.evaluate((id) => window.app.store.findItem(id).item.name, bed.id) === 'Border oost', 'plantvak heet "Border oost"');
+  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.render(); });
+  await page.screenshot({ path: path.join(OUT, 'plantvak-naam.png') });
+  await page.evaluate((id) => window.app.setSelection(new Set([id])), bed.id);
+  await page.fill('#selection-bar input[data-k="bedName"]', '');
+  await page.press('#selection-bar input[data-k="bedName"]', 'Enter');
+  assert(!(await page.evaluate((id) => window.app.store.findItem(id).item.name, bed.id)), 'naam leegmaken haalt hem weg');
+  await page.click('#btn-undo');
+
   console.log('Bodembedekkers en beloopbaar groen dekken de aarde af');
   const cover = await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js');

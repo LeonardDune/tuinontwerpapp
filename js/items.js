@@ -153,7 +153,6 @@ function drawBed(g, item, rc) {
     g.restore();
   }
   if (bt && bt.spacing && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
-  else if (bt && !bt.spacing && (!mix.length || view === 'groepen')) bedSketchLabel(g, poly, groups, bt, rc);
   if (view !== 'groepen') {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
@@ -175,7 +174,10 @@ function drawBed(g, item, rc) {
   if (view === 'groepen' && mix.length && rc.bedAreas?.[item.id] != null) {
     const n = plantCount(rc.bedAreas[item.id], mix, roles);
     drawLabel(g, `${mixCodes(mix, rc)} · ${n} st.`, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');
-  }
+  }  // naam en type van het vak (boven het label met de mix, als dat er staat)
+  const mixLabel = view === 'groepen' && mix.length && rc.bedAreas?.[item.id] != null;
+  bedLabel(g, item, poly, groups, bt && (!mix.length || view === 'groepen') ? bt : null, rc, mixLabel ? paperToWorld(4.5, rc.scale) : 0);
+
 }
 
 /** Schetssymbolen voor het type plantvak: hoe hoger, hoe grotere en donkerdere bollen. */
@@ -211,16 +213,24 @@ function drawBedSketch(g, item, poly, groups, bt, rc, lw) {
   g.lineWidth = lw * 0.8;
   g.stroke();
   g.restore();
-  bedSketchLabel(g, poly, groups, bt, rc);
 }
 
-/** Label van het type plantvak dat in het vak past: lang, korter, of alleen de afkorting. */
-function bedSketchLabel(g, poly, groups, bt, rc) {
+/**
+ * Label van een plantvak: de naam (als die er is) en het type, zo lang als in het vak past.
+ * dy: verschuiving omhoog in meters (als er al een ander label op die plek staat).
+ */
+function bedLabel(g, item, poly, groups, bt, rc, dy = 0) {
+  if (rc.zoom * Math.sqrt(Math.abs(polygonArea(poly))) < 40) return;
   let minX = Infinity, maxX = -Infinity;
   for (const [x] of poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
   const wpx = (maxX - minX) * rc.zoom;
-  const full = `${bt.name} (${bt.range})`, mid = `${bt.label} ${bt.range}`, txt = [full, mid, bt.label, bt.short].find((t) => t.length * 7.5 < wpx * 0.9);
-  if (txt && rc.zoom * Math.sqrt(Math.abs(polygonArea(poly))) > 40) drawLabel(g, txt, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');
+  const types = bt ? [`${bt.name} (${bt.range})`, `${bt.label} ${bt.range}`, bt.label, bt.short] : [];
+  const name = (item.name || '').trim();
+  const cands = name ? [...types.map((t) => `${name} · ${t}`), name] : types;
+  const txt = cands.find((t) => t.length * 7.5 < wpx * 0.9) || (name ? name : null);
+  if (!txt) return;
+  const p = labelPoint(poly, groups);
+  drawLabel(g, txt, [p[0], p[1] - dy], rc, false, 2.2, '#2f4a25');
 }
 
 /** Punt in het vak buiten de groepen voor het label. */

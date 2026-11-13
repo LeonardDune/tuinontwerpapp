@@ -103,7 +103,7 @@ export class PlantPanel {
             <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}">Planten</button>
             <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}">Groepen</button>
           </div>
-          <small class="scope">${bed ? 'Overzicht: <b>dit plantvak</b>' : 'Overzicht: hele tuin'}</small>
+          <small class="scope">${bed ? `Overzicht: <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Overzicht: hele tuin'}</small>
         </div>
       </section>
       <section>
