@@ -458,7 +458,58 @@ function espalierFruit(g, w, h, seed) {
   g.restore();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
+// ---------- water ----------
+const WATER = '#7fb2d9';
+
+function basinRound(g, rx, ry, rim, c, lw) {
+  g.fillStyle = hexA(c, 0.95);
+  g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, TAU); g.fill(); g.stroke();
+  g.fillStyle = hexA(WATER, 1);
+  g.beginPath(); g.ellipse(0, 0, rx - rim, ry - rim, 0, 0, TAU); g.fill();
+  g.save(); g.lineWidth = lw * 0.6; g.stroke(); g.restore();
+}
+
+function basinRect(g, w, h, rim, c, lw) {
+  g.fillStyle = hexA(c, 0.95);
+  g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+  g.fillStyle = hexA(WATER, 1);
+  g.beginPath(); g.rect(-w / 2 + rim, -h / 2 + rim, w - 2 * rim, h - 2 * rim); g.fill();
+  g.save(); g.lineWidth = lw * 0.6; g.stroke(); g.restore();
+}
+
+/** Kringen in het water. */
+function ripples(g, x, y, R, lw, n, r0 = 0) {
+  if (fillOverride.paper) return;
+  g.save();
+  g.strokeStyle = hexA('#ffffff', 0.85); g.lineWidth = lw * 0.6;
+  for (let i = 1; i <= n; i++) {
+    const r = r0 + ((R - r0) * i) / (n + 0.5);
+    g.beginPath(); g.arc(x, y, r, -0.4 + i * 0.7, Math.PI * 1.3 + i * 0.7); g.stroke();
+  }
+  g.restore();
+}
+
+/** Bruiser / borrelaar in het midden. */
+function bubbler(g, x, y, r, lw) {
+  if (fillOverride.paper) return;
+  g.save();
+  g.fillStyle = hexA('#ffffff', 0.95); g.strokeStyle = hexA('#3d7fb5', 0.9); g.lineWidth = lw * 0.5;
+  g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.stroke();
+  g.restore();
+}
+
+/** Waterlelieblad met bloem. */
+function lily(g, x, y, r) {
+  if (fillOverride.paper) return;
+  g.save();
+  g.fillStyle = hexA('#4f8a3a', 0.85);
+  g.beginPath(); g.moveTo(x, y); g.arc(x, y, r, 0.3, TAU - 0.1); g.closePath(); g.fill();
+  g.fillStyle = hexA('#f2c6d6', 0.95);
+  g.beginPath(); g.arc(x + r * 0.2, y - r * 0.1, r * 0.3, 0, TAU); g.fill();
+  g.restore();
+}
+
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -1544,6 +1595,113 @@ export const STENCILS = [
         g.stroke();
       }
       g.globalAlpha = 1;
+    },
+  },
+  // --- Water (c = kleur van de rand: steen, cortenstaal, beton) ---
+  {
+    id: 'waterschaal', name: 'Waterschaal (rond)', cat: 'Water', round: true, w: 0.9, h: 0.9, color: '#8c8c8c',
+    draw(g, w, h, c, lw) {
+      const rim = Math.max(0.05, w * 0.08);
+      basinRound(g, w / 2, h / 2, rim, c, lw);
+      ripples(g, 0, 0, Math.min(w, h) / 2 - rim, lw, 3);
+      bubbler(g, 0, 0, Math.min(w, h) * 0.05, lw);
+    },
+  },
+  {
+    id: 'waterzuil', name: 'Bronzuil op grindbed', cat: 'Water', round: true, w: 1.2, h: 1.2, color: '#9a968e',
+    draw(g, w, h, c, lw) {
+      // verzonken bak met grind, zuil in het midden waar het water overheen stroomt
+      g.fillStyle = hexA('#cfc6b4', 1);
+      g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill(); g.stroke();
+      if (!fillOverride.paper) {
+        const r = rng(71); g.fillStyle = hexA('#9c9282', 0.8);
+        for (let i = 0; i < 90; i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.48; g.beginPath(); g.arc(Math.cos(a) * w * d, Math.sin(a) * h * d, 0.008 + r() * 0.01, 0, TAU); g.fill(); }
+      }
+      const zr = Math.min(w, h) * 0.17;
+      g.fillStyle = hexA(c, 0.95);
+      g.beginPath(); g.arc(0, 0, zr, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = hexA('#7fb2d9', 0.8);
+      g.beginPath(); g.arc(0, 0, zr * 0.75, 0, TAU); g.fill();
+      ripples(g, 0, 0, zr * 2.2, lw, 2, zr * 1.1);
+      bubbler(g, 0, 0, zr * 0.25, lw);
+    },
+  },
+  {
+    id: 'watertafel', name: 'Watertafel (vierkant)', cat: 'Water', round: false, w: 1.0, h: 1.0, color: '#8a4b2a',
+    draw(g, w, h, c, lw) {
+      basinRect(g, w, h, Math.max(0.03, Math.min(w, h) * 0.04), c, lw);
+      ripples(g, 0, 0, Math.min(w, h) * 0.4, lw, 3);
+      bubbler(g, 0, 0, Math.min(w, h) * 0.04, lw);
+    },
+  },
+  {
+    id: 'waterbak', name: 'Waterbak / spiegelvijver (rechthoekig)', cat: 'Water', round: false, w: 2.4, h: 0.8, color: '#5b5f63',
+    draw(g, w, h, c, lw) {
+      basinRect(g, w, h, Math.max(0.04, Math.min(w, h) * 0.06), c, lw);
+      // waterspuwer aan de korte kant met een straal en kringen
+      g.save(); g.fillStyle = hexA(c, 1); g.beginPath(); g.rect(-w / 2 + 0.02, -0.04, 0.12, 0.08); g.fill(); g.stroke(); g.restore();
+      g.save(); g.strokeStyle = hexA('#3d7fb5', 0.8); g.lineWidth = lw * 0.8; g.setLineDash([lw * 2, lw * 2]);
+      g.beginPath(); g.moveTo(-w / 2 + 0.14, 0); g.lineTo(-w / 2 + Math.min(0.6, w * 0.25), 0); g.stroke(); g.restore();
+      ripples(g, -w / 2 + Math.min(0.6, w * 0.25), 0, Math.min(h * 0.4, 0.4), lw, 3);
+    },
+  },
+  {
+    id: 'waterwand', name: 'Waterwand (water langs een muurtje)', cat: 'Water', round: false, w: 1.5, h: 0.5, color: '#5b5f63',
+    draw(g, w, h, c, lw) {
+      // bovenkant = de wand; daarvoor het opvangbekken
+      const wt = Math.min(0.12, h * 0.25);
+      g.fillStyle = hexA(c, 0.95);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, wt); g.fill(); g.stroke();
+      g.fillStyle = hexA('#7fb2d9', 0.7);
+      g.beginPath(); g.rect(-w / 2, -h / 2 + wt, w, h - wt); g.fill(); g.stroke();
+      // waterval van de wand: fijne lijntjes
+      g.save(); g.strokeStyle = hexA('#ffffff', 0.9); g.lineWidth = lw * 0.5; g.beginPath();
+      for (let x = -w / 2 + 0.04; x < w / 2; x += 0.05) { g.moveTo(x, -h / 2 + wt); g.lineTo(x, -h / 2 + wt + (h - wt) * 0.35); }
+      g.stroke(); g.restore();
+    },
+  },
+  {
+    id: 'fontein', name: 'Fontein in rond bassin', cat: 'Water', round: true, w: 2.0, h: 2.0, color: '#b9b4ab',
+    draw(g, w, h, c, lw) {
+      const rim = Math.max(0.08, w * 0.06);
+      basinRound(g, w / 2, h / 2, rim, c, lw);
+      ripples(g, 0, 0, Math.min(w, h) / 2 - rim, lw, 4);
+      // straal: spetters rond het midden
+      g.save(); g.strokeStyle = hexA('#ffffff', 0.95); g.lineWidth = lw * 0.6; g.beginPath();
+      for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; g.moveTo(Math.cos(a) * w * 0.03, Math.sin(a) * h * 0.03); g.lineTo(Math.cos(a) * w * 0.12, Math.sin(a) * h * 0.12); }
+      g.stroke(); g.restore();
+      bubbler(g, 0, 0, Math.min(w, h) * 0.03, lw);
+    },
+  },
+  {
+    id: 'vijverrond', name: 'Verhoogde vijver, rond (gemetselde rand)', cat: 'Water', round: true, w: 2.0, h: 2.0, color: '#9a4a38',
+    draw(g, w, h, c, lw) {
+      const rim = Math.max(0.1, w * 0.1);
+      basinRound(g, w / 2, h / 2, rim, c, lw);
+      // stenen in de rand
+      g.save(); g.lineWidth = lw * 0.5; g.strokeStyle = hexA('#3a2018', 0.7); g.beginPath();
+      const n = Math.round(Math.PI * w / 0.21);
+      for (let i = 0; i < n; i++) { const a = (i / n) * TAU; g.moveTo(Math.cos(a) * (w / 2 - rim), Math.sin(a) * (h / 2 - rim)); g.lineTo(Math.cos(a) * w / 2, Math.sin(a) * h / 2); }
+      g.stroke(); g.restore();
+      ripples(g, -w * 0.1, h * 0.05, Math.min(w, h) * 0.25, lw, 2);
+      lily(g, w * 0.15, -h * 0.12, Math.min(w, h) * 0.08);
+      lily(g, w * 0.02, h * 0.2, Math.min(w, h) * 0.06);
+    },
+  },
+  {
+    id: 'vijverrecht', name: 'Vijver, rechthoekig (strak)', cat: 'Water', round: false, w: 3.0, h: 1.5, color: '#5b5f63',
+    draw(g, w, h, c, lw) {
+      basinRect(g, w, h, Math.max(0.05, Math.min(w, h) * 0.05), c, lw);
+      ripples(g, w * 0.15, 0, Math.min(w, h) * 0.3, lw, 3);
+      lily(g, -w * 0.25, -h * 0.1, Math.min(w, h) * 0.1);
+      lily(g, -w * 0.15, h * 0.15, Math.min(w, h) * 0.07);
+    },
+  },
+  {
+    id: 'vogelbad', name: 'Vogelbad', cat: 'Water', round: true, w: 0.5, h: 0.5, color: '#9a968e',
+    draw(g, w, h, c, lw) {
+      basinRound(g, w / 2, h / 2, Math.max(0.03, w * 0.1), c, lw);
+      ripples(g, 0, 0, w * 0.3, lw, 2);
     },
   },
   {

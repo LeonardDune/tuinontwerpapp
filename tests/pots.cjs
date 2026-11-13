@@ -70,6 +70,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const sheds = await page.evaluate(async () => { const { STENCIL_MAP } = await import('./js/stencils.js'); const { HATCHES } = await import('./js/patterns.js'); return [!!STENCIL_MAP.schuurgroen, !!STENCIL_MAP.schuurmos, !!HATCHES.sedum]; });
   assert(sheds.every(Boolean), 'schuur met sedumdak, schuurtje met mosdak en materiaal "Groen dak (sedum)"');
 
+  console.log('Water');
+  const water = await page.evaluate(async () => { const { STENCILS } = await import('./js/stencils.js'); return STENCILS.filter((x) => x.cat === 'Water').map((x) => x.id); });
+  assert(['waterschaal', 'waterzuil', 'watertafel', 'waterbak', 'waterwand', 'fontein', 'vijverrond', 'vijverrecht', 'vogelbad'].every((id) => water.includes(id)), `categorie Water met ${water.length} ornamenten`);
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pot-tests geslaagd.');
