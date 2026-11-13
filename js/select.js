@@ -555,11 +555,42 @@ export class SelectTool extends Tool {
         yb = ya + Math.sign(yb - ya || 1) * Math.abs(f.h) * k;
       }
       if (!this.snap && !d.uniform && d.refs?.length) {
-        const ms = matchSize(d.refs, xb - xa, yb - ya, f.ang, 8 / cam.zoom);
-        const eq = [];
-        if (ms.w != null && d.hx !== 0.5) { xb = xa + Math.sign(xb - xa || 1) * ms.w; eq.push('breedte'); }
-        if (ms.h != null && d.hy !== 0.5) { yb = ya + Math.sign(yb - ya || 1) * ms.h; eq.push('diepte'); }
-        if (eq.length) this.sizeMatch = `gelijke ${eq.join(' en ')}`;
+        const tol = 8 / cam.zoom;
+        const ms = matchSize(d.refs, xb - xa, yb - ya, f.ang, tol);
+        // de versleepte zijde op één lijn met een zijde (of het midden) van een ander element
+        const c = Math.cos(f.ang), sn = Math.sin(f.ang);
+        const ou = f.o[0] * c + f.o[1] * sn, ov = -f.o[0] * sn + f.o[1] * c;
+        const align = (target, k0, k1) => {
+          let best = null;
+          for (const r of d.refs) {
+            const vals = r.parallel ? [r[k0], r[k1], (r[k0] + r[k1]) / 2] : [(r[k0] + r[k1]) / 2];
+            for (const v of vals) { const dd = v - target; if (Math.abs(dd) < tol && (!best || Math.abs(dd) < Math.abs(best.d))) best = { d: dd, at: v, r }; }
+          }
+          return best;
+        };
+        const eq = [], lines = [];
+        if (d.hx !== 0.5) {
+          const al = align(ou + xb, 'u0', 'u1');
+          const sz = ms.w != null ? xa + Math.sign(xb - xa || 1) * ms.w - xb : null;
+          if (al && (sz == null || Math.abs(al.d) <= Math.abs(sz))) {
+            xb += al.d; eq.push('lijnt uit');
+            if (sz != null && Math.abs(al.d - sz) < 1e-9) eq.push('gelijke breedte');
+            const v0 = ov + Math.min(ya, yb), v1 = ov + Math.max(ya, yb);
+            lines.push({ axis: 'u', at: al.at, from: Math.min(v0, al.r.v0) - 0.3, to: Math.max(v1, al.r.v1) + 0.3 });
+          } else if (sz != null) { xb += sz; eq.push('gelijke breedte'); }
+        }
+        if (d.hy !== 0.5) {
+          const al = align(ov + yb, 'v0', 'v1');
+          const sz = ms.h != null ? ya + Math.sign(yb - ya || 1) * ms.h - yb : null;
+          if (al && (sz == null || Math.abs(al.d) <= Math.abs(sz))) {
+            yb += al.d; if (!eq.includes('lijnt uit')) eq.push('lijnt uit');
+            if (sz != null && Math.abs(al.d - sz) < 1e-9) eq.push('gelijke diepte');
+            const u0 = ou + Math.min(xa, xb), u1 = ou + Math.max(xa, xb);
+            lines.push({ axis: 'v', at: al.at, from: Math.min(u0, al.r.u0) - 0.3, to: Math.max(u1, al.r.u1) + 0.3 });
+          } else if (sz != null) { yb += sz; eq.push('gelijke diepte'); }
+        }
+        if (eq.length) this.sizeMatch = eq.join(', ');
+        if (lines.length) this.guides = { th: f.ang, lines, gaps: [] };
       }
       const min = 0.02;
       if (Math.abs(xb - xa) < min) xb = xa + min * Math.sign(xb - xa || 1);

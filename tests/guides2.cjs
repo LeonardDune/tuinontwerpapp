@@ -57,6 +57,20 @@ const rot = (pts, deg, c) => pts.map(([x, y]) => { const r = deg * Math.PI / 180
   p = await pts('D');
   assert(near(p[1][0] - p[0][0], 2) && /gelijke breedte/.test(info), `breedte klikt op die van het andere vak: 2 m ("${info}")`);
 
+  console.log('Zijde uitlijnen bij het verslepen van een greep');
+  // klinkervak naast een vak dat lager doorloopt: onderzijde naar de onderzijde van het buurvak slepen
+  await setup([R('B', 0, 0, 2, 3), R('K', 2.5, 0, 4.5, 2.2)], 'K');
+  const hb = await page.evaluate(() => window.app.tool.handles().list.find((h) => h.kind === 'frame' && h.hx === 0.5 && h.hy === 1).s);
+  const [, ty] = await S(3.5, 2.94);
+  await page.mouse.move(box.x + hb[0], box.y + hb[1]); await page.mouse.down();
+  await page.mouse.move(box.x + hb[0], ty, { steps: 8 });
+  const ainfo = await page.evaluate(() => window.app.tool.liveInfo);
+  const aguides = await page.evaluate(() => window.app.tool.guides);
+  await page.screenshot({ path: path.join(OUT, 'greep-uitlijnen.png') });
+  await page.mouse.up();
+  p = await pts('K');
+  assert(Math.abs(Math.max(...p.map((q) => q[1])) - 3) < 1e-6 && /lijnt uit/.test(ainfo) && aguides?.lines?.length, `onderzijde klikt op één lijn met het buurvak (y = 3, "${ainfo}")`);
+
   console.log('Gelijke hoek');
   await setup([R('E', 0, 0, 2, 1, { points: rot([[0, 0], [2, 0], [2, 1], [0, 1]], 33, [1, 0.5]) }), R('F', 4, 0, 6, 1, { points: rot([[4, 0], [6, 0], [6, 1], [4, 1]], 20.5, [5, 0.5]) })], 'F');
   const h = await page.evaluate(() => { const g = window.app.tool.handles(); const r = g.list.find((x) => x.kind === 'rotate'); return { r: r.s, c: window.app.cam.toScreen(r.pivot) }; });
