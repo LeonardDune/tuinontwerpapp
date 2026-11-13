@@ -97,6 +97,13 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.press('#selection-bar input[data-k="gap"]', 'Enter');
   pad = await page.evaluate(() => window.app.store.findItem('P').item);
   assert(pad.gap === 0.05 && pad.w < 2.6, `5 cm: stenen dicht bij elkaar, pad ${pad.w.toFixed(2)} m`);
+  const gaps = await page.evaluate(async () => {
+    const { padStones } = await import('./js/stencils.js');
+    const out = {};
+    for (const g of [0.01, 0.05, 0.3]) { const st = padStones(3, 0.7, g, 7); out[g] = st.slice(1).map((s2, i) => s2.left - st[i].right); }
+    return out;
+  });
+  assert(Object.entries(gaps).every(([g, list]) => list.every((d) => Math.abs(d - Number(g)) < 1e-9)), `tussenruimte is echt de afstand tussen de stenen (1 cm: ${gaps['0.01'].map((d) => (d * 100).toFixed(2)).join(', ')} cm)`);
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();

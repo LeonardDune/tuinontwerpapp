@@ -510,7 +510,8 @@ function lily(g, x, y, r) {
 }
 
 /** Losse flagstone: onregelmatige natuursteen met afgeronde hoeken, kleurverschil en lagen. */
-function flagstone(g, w, h, c, lw, seed) {
+/** Hoekpunten van een losse flagstone (vast per seed). Geeft ook de toevalsgenerator terug voor de textuur. */
+function flagstonePts(w, h, seed) {
   const r = rng(1009 + Math.round(seed) * 7919);
   const n = 6 + Math.floor(r() * 4);
   const off = r() * TAU;
@@ -520,6 +521,27 @@ function flagstone(g, w, h, c, lw, seed) {
     const k = 0.72 + r() * 0.28;
     pts.push([Math.cos(a) * w / 2 * k, Math.sin(a) * h / 2 * k]);
   }
+  return { pts, r };
+}
+
+/** Punten op de getekende rand (met de afgeronde hoeken), om de echte maat te meten. */
+function flagstoneOutline(pts) {
+  const n = pts.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n], z = pts[(i - 1 + n) % n];
+    const p0 = [a[0] + (z[0] - a[0]) * 0.15, a[1] + (z[1] - a[1]) * 0.15];
+    const p1 = [a[0] + (b[0] - a[0]) * 0.15, a[1] + (b[1] - a[1]) * 0.15];
+    out.push(p0, [0.25 * p0[0] + 0.5 * a[0] + 0.25 * p1[0], 0.25 * p0[1] + 0.5 * a[1] + 0.25 * p1[1]], p1);
+  }
+  return out;
+}
+
+function flagstone(g, w, h, c, lw, seed, scale = 1) {
+  const fp = flagstonePts(w, h, seed);
+  const r = fp.r;
+  const pts = fp.pts.map(([x, y]) => [x * scale, y * scale]);
+  const n = pts.length;
+  w *= scale; h *= scale;
   const path = () => {
     // rechte breukranden met licht afgeronde hoeken
     g.beginPath();
@@ -563,6 +585,31 @@ export function padLayout(w, h, gap) {
   const gp = gap ?? 0.12;
   const n = Math.max(1, Math.floor((w + gp) / (L + gp) + 1e-6));
   return { n, L, gap: gp };
+}
+
+/**
+ * Stenen van een stapstenenpad. Elke steen wordt gemeten zoals hij ligt (vorm en draaiing) en zo
+ * geschaald dat hij precies L lang is langs het pad; de tussenruimte is dan echt de afstand tussen
+ * twee stenen (left/right = echte randen langs het pad).
+ */
+export function padStones(w, h, gapIn, seed) {
+  const { n, L, gap } = padLayout(w, h, gapIn);
+  const total = n * L + (n - 1) * gap;
+  const r = rng(31 + seed * 17);
+  const out = [];
+  let cursor = -total / 2;
+  for (let i = 0; i < n; i++) {
+    const y = (i % 2 ? 1 : -1) * h * 0.08 + (r() - 0.5) * h * 0.06;
+    const sw = L, sh = h * (0.8 + r() * 0.2), rot = (r() - 0.5) * 0.5, sd = seed * 10 + i + 3;
+    const c0 = Math.cos(rot), s0 = Math.sin(rot);
+    const xs = flagstoneOutline(flagstonePts(sw, sh, sd).pts).map(([px, py]) => px * c0 - py * s0);
+    const lo = Math.min(...xs), hi = Math.max(...xs);
+    const k = L / Math.max(1e-6, hi - lo);
+    const x = cursor - lo * k;
+    out.push({ x, y, sw, sh, rot, sd, k, left: x + lo * k, right: x + hi * k });
+    cursor += L + gap;
+  }
+  return out;
 }
 
 export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
@@ -1674,14 +1721,9 @@ export const STENCILS = [
     id: 'flagstonepad', name: 'Pad van stapstenen (flagstones)', cat: 'Stapstenen', round: false, w: 3.0, h: 0.7, color: '#c9c0ae', reshape: true, gapAdjust: true,
     draw(g, w, h, c, lw, paper, it) {
       // stenen van ca. 85% van de padbreedte, met een instelbare tussenruimte, afwisselend iets links en rechts
-      const { n, L, gap } = padLayout(w, h, it?.gap);
-      const total = n * L + (n - 1) * gap;
-      const r = rng(31 + (it?.seed ?? 0) * 17);
-      for (let i = 0; i < n; i++) {
-        const x = -total / 2 + L / 2 + i * (L + gap), y = (i % 2 ? 1 : -1) * h * 0.08 + (r() - 0.5) * h * 0.06;
-        const sw = L * (1.06 + r() * 0.06), sh = h * (0.8 + r() * 0.2);
-        g.save(); g.translate(x, y); g.rotate((r() - 0.5) * 0.5);
-        flagstone(g, sw, sh, c, lw, (it?.seed ?? 0) * 10 + i + 3);
+      for (const st of padStones(w, h, it?.gap, it?.seed ?? 0)) {
+        g.save(); g.translate(st.x, st.y); g.rotate(st.rot);
+        flagstone(g, st.sw, st.sh, c, lw, st.sd, st.k);
         g.restore();
       }
     },
