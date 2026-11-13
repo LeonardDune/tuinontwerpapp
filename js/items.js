@@ -54,7 +54,8 @@ function drawItemInner(g, item, rc) {
       return drawDim(g, item.a, item.b, item.offset || 0, rc, { color: item.color });
     case 'stencil':
       if (item.role && rc.month) drawStencilMonth(g, item, rc);
-      return drawStencil(g, item, paperToWorld(0.25, rc.scale), rc.paper);
+      // poort in een hek: het hek laat zelf een opening open, dus geen 'gum' in papierkleur
+      return drawStencil(g, item, paperToWorld(0.25, rc.scale), rc.paper, { noMask: !!(item.wallId && rc.fenceIds?.has(item.wallId)) });
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
     case 'plant': return drawPlant(g, item, rc);
@@ -414,7 +415,20 @@ function drawShape(g, item, rc) {
 
 /** Muur: gevuld en gearceerd vlak met de dikte van de muur (item.width), aansluitingen netjes afgesneden. */
 function drawWall(g, item, rc) {
-  if (item.fence) return drawFence(g, item.points, item.kind === 'polygon', item.fence, paperToWorld(0.25, rc.scale), item.color);
+  if (item.fence) {
+    // openingen (poorten, hekjes) in het hek: daar wordt het hek niet getekend
+    const gaps = {};
+    for (const op of rc.openingsByWall?.[item.id] || []) {
+      const seg = op.wallSeg ?? 0;
+      const n = item.kind === 'polygon' ? item.points.length : item.points.length - 1;
+      if (seg < 0 || seg >= n) continue;
+      const a = item.points[seg], b = item.points[(seg + 1) % item.points.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const s0 = ((op.x - a[0]) * (b[0] - a[0]) + (op.y - a[1]) * (b[1] - a[1])) / L;
+      (gaps[seg] ||= []).push([s0 - op.w / 2, s0 + op.w / 2]);
+    }
+    return drawFence(g, item.points, item.kind === 'polygon', item.fence, paperToWorld(0.25, rc.scale), item.color, gaps);
+  }
   const lw = paperToWorld(0.3, rc.scale);
   const shape = wallShape(item, rc.walls || [item], lw);
   g.save();

@@ -1958,10 +1958,12 @@ export const STENCIL_MAP = Object.fromEntries(STENCILS.map((s) => [s.id, s]));
 // ---- hulpjes voor deuren en ramen
 
 /** Muur ter plekke van de opening wegvlakken (papierkleur) en de dagkanten tekenen. */
+let maskOff = false; // poort in een hek: het hek laat zelf ruimte, dus niets uitgummen
+
 function openingMask(g, w, h, lw, paper) {
   g.save();
   g.fillStyle = paper || '#fbfaf6';
-  g.fillRect(-w / 2, -h / 2 - lw, w, h + lw * 2);
+  if (!maskOff) g.fillRect(-w / 2, -h / 2 - lw, w, h + lw * 2);
   g.lineWidth = lw * 1.4;
   g.beginPath();
   g.moveTo(-w / 2, -h / 2); g.lineTo(-w / 2, h / 2);
@@ -2017,7 +2019,7 @@ function arrow(g, x0, x1, y, lw) {
 }
 
 /** Teken een stencil-item (wereldcoördinaten). paper: achtergrondkleur (voor openingen in muren). */
-export function drawStencil(g, item, lw, paper) {
+export function drawStencil(g, item, lw, paper, opts = {}) {
   const def = STENCIL_MAP[item.symbol];
   if (!def) return;
   g.save();
@@ -2049,10 +2051,12 @@ export function drawStencil(g, item, lw, paper) {
   fillOverride.line = item.fillColor || item.fillAlpha != null ? c : null;
   fillOverride.color = item.fillColor || null;
   fillOverride.alpha = item.fillAlpha ?? null;
+  maskOff = !!opts.noMask;
   try {
     def.draw(g, item.w, item.h, c, lw, paper, view);
   } finally {
     fillOverride.line = null;
+    maskOff = false;
   }
   g.restore();
 }

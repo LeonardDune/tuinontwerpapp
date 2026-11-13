@@ -50,6 +50,21 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const g2 = (await items()).find((i) => i.symbol === 'poort');
   assert(Math.abs(g2.h - 0.03) < 1e-9, 'de poort past zich aan de dikte van het hek aan');
 
+  console.log('Opening van de poort toont de ondergrond (niet wit)');
+  const gapPx = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Poort op gras');
+    d.layers[0].items.push({ type: 'shape', id: 'gras', kind: 'polygon', rect: true, points: [[-2, -2], [8, -2], [8, 2], [-2, 2]], color: '#333', width: 0.02, hatch: 'gras' });
+    d.layers[0].items.push({ type: 'shape', id: 'hek', kind: 'line', wall: true, fence: 'hekje', color: '#7a6a58', width: 0.04, points: [[0, 0], [6, 0]] });
+    d.layers[0].items.push({ type: 'stencil', id: 'gate', symbol: 'hekjeterras', x: 3, y: 0, w: 0.9, h: 0.04, rot: 0, color: '#2b2b2b', wallId: 'hek', wallSeg: 0, wallT: 0.5, wallSide: 1 });
+    a.openDoc(d, true); a.cam.zoom = 120; a.cam.rot = 0; a.cam.x = 200; a.cam.y = 300; a.cameraChanged(); a.settings.grid = false; a.setSelection(new Set()); a.render();
+    const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width;
+    const at = (w) => { const p = a.cam.toScreen(w); return [...g.getImageData(Math.round(p[0] * dpr), Math.round(p[1] * dpr), 1, 1).data].slice(0, 3); };
+    return { gap: at([3.25, -0.01]), grass: at([3.25, -0.6]) };
+  });
+  await page.screenshot({ path: path.join(OUT, 'poort-op-gras.png') });
+  assert(Math.abs(gapPx.gap[0] - gapPx.grass[0]) + Math.abs(gapPx.gap[1] - gapPx.grass[1]) + Math.abs(gapPx.gap[2] - gapPx.grass[2]) < 40 && gapPx.gap[1] > gapPx.gap[0], `in de poortopening zie je het gras (${gapPx.gap} vs gras ${gapPx.grass})`);
+
   console.log('Alle soorten tekenen');
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js'); const { FENCES } = await import('./js/fences.js');

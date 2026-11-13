@@ -70,14 +70,17 @@ export function plantContext(doc) {
   const rolesKey = (doc.planting?.roles || []).map((r) => `${r.id}:${r.height}:${r.d || ''}`).join(',');
   const bedsById = {}, groupsByBed = {};
   const walls = [];
+  const fenceIds = new Set(), openingsByWall = {};
   let any = false;
   for (const layer of doc.layers) {
     for (const it of layer.items) {
       if (it.wall && !it.fence && it.type === 'shape' && layer.visible) walls.push(it);
+      if (it.fence) fenceIds.add(it.id);
+      if (it.type === 'stencil' && it.wallId) (openingsByWall[it.wallId] ||= []).push(it);
       if (isBed(it)) { bedsById[it.id] = it; any = true; } else if (isGroup(it)) (groupsByBed[it.bedId] ||= []).push(it);
     }
   }
-  const ctx = { roles, rolesKey, bedsById, groupsByBed, bedAreas: {}, groupAreas: {}, walls };
+  const ctx = { roles, rolesKey, bedsById, groupsByBed, bedAreas: {}, groupAreas: {}, walls, fenceIds, openingsByWall };
   if (!any) return ctx;
   const key = JSON.stringify(doc.layers.map((l) => [l.visible, l.items.filter((it) => isBed(it) || isGroup(it)).map((it) => [it.id, it.points, it.bedId])]));
   if (statsCache.key !== key) {

@@ -32,7 +32,7 @@ function hexA(color, a) {
  * Teken een hek langs pts (wereld, meters). type: sleutel uit FENCES. color: eigen kleur (optioneel).
  * paper: papierkleur (voor afdekken), lw: lijndikte in meters.
  */
-export function drawFence(g, pts, closed, type, lw, color = null) {
+export function drawFence(g, pts, closed, type, lw, color = null, gaps = {}) {
   const F = FENCES[type] || FENCES.schutting;
   const c = color || F.color;
   const t = F.t;
@@ -43,9 +43,23 @@ export function drawFence(g, pts, closed, type, lw, color = null) {
   g.lineJoin = 'round';
   g.lineCap = 'butt';
   const rnd = rng(7);
-  for (const [a, b] of segs) {
+  segs.forEach(([A, B], si) => {
+    const L0 = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    if (L0 < 1e-6) return;
+    const uu = [(B[0] - A[0]) / L0, (B[1] - A[1]) / L0];
+    // stukken tussen de openingen (poorten): daar komt het hek
+    const holes = (gaps[si] || []).map(([s0, s1]) => [Math.max(0, s0), Math.min(L0, s1)]).filter(([s0, s1]) => s1 > s0).sort((p, q) => p[0] - q[0]);
+    const pieces = [];
+    let cur = 0;
+    for (const [s0, s1] of holes) { if (s0 > cur + 1e-6) pieces.push([cur, s0]); cur = Math.max(cur, s1); }
+    if (cur < L0 - 1e-6) pieces.push([cur, L0]);
+    for (const [p0, p1] of pieces) drawPiece([A[0] + uu[0] * p0, A[1] + uu[1] * p0], [A[0] + uu[0] * p1, A[1] + uu[1] * p1], holes.length > 0);
+  });
+  g.restore();
+
+  function drawPiece(a, b) {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (L < 1e-6) continue;
+    if (L < 1e-6) return;
     const u = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], nn = [-u[1], u[0]];
     const P = (s, o) => [a[0] + u[0] * s + nn[0] * o, a[1] + u[1] * s + nn[1] * o];
     const strip = (o0, o1, s0 = 0, s1 = L) => { g.beginPath(); const q = [P(s0, o0), P(s1, o0), P(s1, o1), P(s0, o1)]; q.forEach((p, k) => (k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); };
@@ -147,5 +161,4 @@ export function drawFence(g, pts, closed, type, lw, color = null) {
       }
     }
   }
-  g.restore();
 }
