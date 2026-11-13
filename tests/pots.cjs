@@ -92,18 +92,20 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.fill('#selection-bar input[data-k="gap"]', '30');
   await page.press('#selection-bar input[data-k="gap"]', 'Enter');
   let pad = await page.evaluate(() => window.app.store.findItem('P').item);
-  assert(pad.gap === 0.3 && /4 stenen/.test(await page.locator('#selection-bar .pinfo').innerText()) && Math.abs(pad.w - 3.3) < 0.01, `30 cm tussenruimte: nog steeds 4 stenen, pad ${pad.w.toFixed(2)} m lang`);
+  const n30 = await page.locator('#selection-bar .pinfo').innerText();
+  assert(pad.gap === 0.3 && pad.w === 3 && pad.h === 0.7, `30 cm tussenruimte: pad blijft 3,00 × 0,70 m (${n30})`);
   await page.fill('#selection-bar input[data-k="gap"]', '5');
   await page.press('#selection-bar input[data-k="gap"]', 'Enter');
   pad = await page.evaluate(() => window.app.store.findItem('P').item);
-  assert(pad.gap === 0.05 && pad.w < 2.6, `5 cm: stenen dicht bij elkaar, pad ${pad.w.toFixed(2)} m`);
+  assert(pad.gap === 0.05 && pad.w === 3, `5 cm: pad blijft even groot (${await page.locator('#selection-bar .pinfo').innerText()})`);
   const gaps = await page.evaluate(async () => {
     const { padStones } = await import('./js/stencils.js');
     const out = {};
-    for (const g of [0.01, 0.05, 0.3]) { const st = padStones(3, 0.7, g, 7); out[g] = st.slice(1).map((s2, i) => s2.left - st[i].right); }
+    for (const g of [0.01, 0.05, 0.3]) { const st = padStones(3, 0.7, g, 7); out[g] = st.slice(1).map((s2, i) => s2.left - st[i].right); out['ends' + g] = [st[0].left, st[st.length - 1].right]; }
     return out;
   });
-  assert(Object.entries(gaps).every(([g, list]) => list.every((d) => Math.abs(d - Number(g)) < 1e-9)), `tussenruimte is echt de afstand tussen de stenen (1 cm: ${gaps['0.01'].map((d) => (d * 100).toFixed(2)).join(', ')} cm)`);
+  assert([0.01, 0.05, 0.3].every((g) => Math.abs(gaps['ends' + g][0] + 1.5) < 1e-9 && Math.abs(gaps['ends' + g][1] - 1.5) < 1e-9), 'de stenen vullen het pad precies van begin tot eind');
+  assert(Object.entries(gaps).filter(([g]) => !g.startsWith('ends')).every(([g, list]) => list.every((d) => Math.abs(d - Number(g)) < 1e-9)), `tussenruimte is echt de afstand tussen de stenen (1 cm: ${gaps['0.01'].map((d) => (d * 100).toFixed(2)).join(', ')} cm)`);
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();

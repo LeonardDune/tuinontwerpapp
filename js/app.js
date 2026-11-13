@@ -2364,12 +2364,10 @@ class App {
           for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }
           break;
         case 'gap': {
-          // tussenruimte in cm; het aantal stenen blijft gelijk, het pad wordt langer of korter
+          // tussenruimte in cm; het pad blijft even groot (aantal en lengte van de stenen passen zich aan)
           const v = /[a-z]/i.test(String(raw)) ? len(raw) : num(raw) / 100;
           if (!(v >= 0) || !it || !STENCIL_MAP[it.symbol]?.gapAdjust) break;
-          const pl = padLayout(it.w, it.h, it.gap);
           it.gap = Math.round(v * 1000) / 1000;
-          it.w = Math.round((pl.n * pl.L + (pl.n - 1) * it.gap + 0.02) * 1000) / 1000;
           break;
         }
         case 'reshape':

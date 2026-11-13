@@ -579,11 +579,17 @@ function flagstone(g, w, h, c, lw, seed, scale = 1) {
   g.restore();
 }
 
-/** Indeling van een stapstenenpad: aantal stenen, steenlengte en tussenruimte (standaard 12 cm). */
+/**
+ * Indeling van een stapstenenpad binnen breedte w: aantal stenen, steenlengte en tussenruimte
+ * (standaard 12 cm). De stenen vullen het pad precies van begin tot eind; de steenlengte wijkt
+ * daarvoor iets af van de standaard (ca. 85% van de padbreedte).
+ */
 export function padLayout(w, h, gap) {
-  const L = Math.max(0.2, Math.min(0.9, h * 0.85));
-  const gp = gap ?? 0.12;
-  const n = Math.max(1, Math.floor((w + gp) / (L + gp) + 1e-6));
+  const L0 = Math.max(0.2, Math.min(0.9, h * 0.85));
+  const gp = Math.max(0, gap ?? 0.12);
+  let n = Math.max(1, Math.round((w + gp) / (L0 + gp)));
+  while (n > 1 && (w - (n - 1) * gp) / n < L0 * 0.5) n--;
+  const L = Math.max(0.05, (w - (n - 1) * gp) / n);
   return { n, L, gap: gp };
 }
 
