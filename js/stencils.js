@@ -557,6 +557,14 @@ function flagstone(g, w, h, c, lw, seed) {
   g.restore();
 }
 
+/** Indeling van een stapstenenpad: aantal stenen, steenlengte en tussenruimte (standaard 12 cm). */
+export function padLayout(w, h, gap) {
+  const L = Math.max(0.2, Math.min(0.9, h * 0.85));
+  const gp = gap ?? 0.12;
+  const n = Math.max(1, Math.floor((w + gp) / (L + gp) + 1e-6));
+  return { n, L, gap: gp };
+}
+
 export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
@@ -1663,15 +1671,16 @@ export const STENCILS = [
     draw(g, w, h, c, lw, paper, it) { flagstone(g, w, h, c, lw, it?.seed ?? 11); },
   },
   {
-    id: 'flagstonepad', name: 'Pad van stapstenen (flagstones)', cat: 'Stapstenen', round: false, w: 3.0, h: 0.7, color: '#c9c0ae', reshape: true,
+    id: 'flagstonepad', name: 'Pad van stapstenen (flagstones)', cat: 'Stapstenen', round: false, w: 3.0, h: 0.7, color: '#c9c0ae', reshape: true, gapAdjust: true,
     draw(g, w, h, c, lw, paper, it) {
-      // stenen op een staplengte van ca. 60 cm, afwisselend iets links en rechts
-      const n = Math.max(2, Math.round(w / 0.62));
+      // stenen van ca. 85% van de padbreedte, met een instelbare tussenruimte, afwisselend iets links en rechts
+      const { n, L, gap } = padLayout(w, h, it?.gap);
+      const total = n * L + (n - 1) * gap;
       const r = rng(31 + (it?.seed ?? 0) * 17);
       for (let i = 0; i < n; i++) {
-        const x = -w / 2 + (w * (i + 0.5)) / n, y = (i % 2 ? 1 : -1) * h * 0.12 + (r() - 0.5) * h * 0.1;
-        const sw = Math.min(w / n * 0.85, 0.65) * (0.85 + r() * 0.2), sh = h * (0.6 + r() * 0.25);
-        g.save(); g.translate(x, y); g.rotate((r() - 0.5) * 0.6);
+        const x = -total / 2 + L / 2 + i * (L + gap), y = (i % 2 ? 1 : -1) * h * 0.08 + (r() - 0.5) * h * 0.06;
+        const sw = L * (1.06 + r() * 0.06), sh = h * (0.8 + r() * 0.2);
+        g.save(); g.translate(x, y); g.rotate((r() - 0.5) * 0.5);
         flagstone(g, sw, sh, c, lw, (it?.seed ?? 0) * 10 + i + 3);
         g.restore();
       }

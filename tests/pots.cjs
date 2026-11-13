@@ -85,6 +85,19 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.click('#selection-bar [data-act="reshape"]');
   assert(await page.evaluate(() => window.app.store.findItem('F').item.seed) !== 5, '"Andere vorm" geeft de steen een nieuwe vorm');
 
+  console.log('Stapstenenpad: tussenruimte');
+  await page.evaluate(() => { const a = window.app; a.store.mutate((doc) => { doc.layers[0].items.push({ type: 'stencil', id: 'P', symbol: 'flagstonepad', x: 0, y: 2, w: 3, h: 0.7, rot: 0, color: '#c9c0ae', seed: 1 }); }); a.setSelection(new Set(['P'])); });
+  const n0 = await page.locator('#selection-bar .pinfo').innerText();
+  assert(await page.inputValue('#selection-bar input[data-k="gap"]') === '12' && /4 stenen/.test(n0), `pad: tussenruimte 12 cm, ${n0}`);
+  await page.fill('#selection-bar input[data-k="gap"]', '30');
+  await page.press('#selection-bar input[data-k="gap"]', 'Enter');
+  let pad = await page.evaluate(() => window.app.store.findItem('P').item);
+  assert(pad.gap === 0.3 && /4 stenen/.test(await page.locator('#selection-bar .pinfo').innerText()) && Math.abs(pad.w - 3.3) < 0.01, `30 cm tussenruimte: nog steeds 4 stenen, pad ${pad.w.toFixed(2)} m lang`);
+  await page.fill('#selection-bar input[data-k="gap"]', '5');
+  await page.press('#selection-bar input[data-k="gap"]', 'Enter');
+  pad = await page.evaluate(() => window.app.store.findItem('P').item);
+  assert(pad.gap === 0.05 && pad.w < 2.6, `5 cm: stenen dicht bij elkaar, pad ${pad.w.toFixed(2)} m`);
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pot-tests geslaagd.');

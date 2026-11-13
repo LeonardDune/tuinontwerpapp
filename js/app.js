@@ -8,7 +8,7 @@ import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
-import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW } from './stencils.js';
+import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
 import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
@@ -2068,6 +2068,10 @@ class App {
       html += range('fillAlpha', 'Sterkte', Math.round((filled[0].fillAlpha ?? 0.35) * 100), 'Hoe sterk de vulkleur is');
     }
     html += range('opacity', 'Dekking', Math.round((items[0].opacity ?? 1) * 100), 'Doorzichtigheid van het element');
+    if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.gapAdjust) {
+      const pl = padLayout(it.w, it.h, it.gap);
+      html += field('gap', 'Tussenruimte', String(Math.round(pl.gap * 100)), 'cm') + `<span class="pinfo">${pl.n} stenen</span>`;
+    }
     if (items.some((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.reshape)) html += `<button type="button" class="tgl" data-act="reshape" title="Een andere, willekeurige vorm voor deze steen(en)">Andere vorm</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
     // begroeiing van pergola's en de soort klimplant
@@ -2347,6 +2351,15 @@ class App {
         case 'soil':
           for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }
           break;
+        case 'gap': {
+          // tussenruimte in cm; het aantal stenen blijft gelijk, het pad wordt langer of korter
+          const v = /[a-z]/i.test(String(raw)) ? len(raw) : num(raw) / 100;
+          if (!(v >= 0) || !it || !STENCIL_MAP[it.symbol]?.gapAdjust) break;
+          const pl = padLayout(it.w, it.h, it.gap);
+          it.gap = Math.round(v * 1000) / 1000;
+          it.w = Math.round((pl.n * pl.L + (pl.n - 1) * it.gap + 0.02) * 1000) / 1000;
+          break;
+        }
         case 'reshape':
           for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.reshape) i.seed = Math.floor(Math.random() * 100000);
           break;
