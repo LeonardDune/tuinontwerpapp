@@ -151,7 +151,7 @@ export class PlantPanel {
     const m2 = (v) => `${v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)} m²`;
     $('.sketch', el).innerHTML = (Object.keys(sk).length || open
       ? `<ul class="sk">${Object.entries(BED_TYPES).filter(([k]) => sk[k]).map(([k, v]) => `<li><i style="background:${v.color}"></i>${v.name} <small>${v.range}</small><b>${m2(sk[k])}</b></li>`).join('')}${open ? `<li><i style="background:#cdb9a4"></i>Nog open<b>${m2(open)}</b></li>` : ''}</ul>`
-      : '') + '<p class="hint">Kies bij een plantvak het <b>Type</b> (bodembedekkers, laag, middelhoog, hoog, heesters) voor de ruwe schets. Welke planten erin komen, voeg je later toe met de bouwstenen hieronder.</p>';
+      : '') + '<p class="hint">Kies bij een plantvak het <b>Type</b> (beloopbaar groen, bodembedekkers, laag, middelhoog, hoog, heesters) voor de ruwe schets. Welke planten erin komen, voeg je later toe met de bouwstenen hieronder.</p>';
 
     // bouwstenen
     const ul = $('.roles', el);

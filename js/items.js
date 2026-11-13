@@ -140,7 +140,20 @@ function drawBed(g, item, rc) {
   }
   // schets: type plantvak (bodembedekkers, laag, middel, hoog) zolang er nog geen bouwstenen in zitten
   const bt = BED_TYPES[item.btype];
-  if (bt && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
+  if (bt?.cover) {
+    // bodembedekkers en beloopbaar groen dekken het hele vak af: geen aarde meer te zien
+    g.save();
+    tracePath(g, item);
+    g.fillStyle = mixHex(bt.cover, rc.paper || '#fbfaf6', 0.1);
+    g.fill();
+    if (bt.texture) {
+      const pat = hatchPattern(g, bt.texture, '#5f8a45', 0, item.points[0]);
+      if (pat) { g.globalAlpha *= 0.7; g.fillStyle = pat; g.fill(); }
+    }
+    g.restore();
+  }
+  if (bt && bt.spacing && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
+  else if (bt && !bt.spacing && (!mix.length || view === 'groepen')) bedSketchLabel(g, poly, groups, bt, rc);
   if (view !== 'groepen') {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
@@ -198,7 +211,13 @@ function drawBedSketch(g, item, poly, groups, bt, rc, lw) {
   g.lineWidth = lw * 0.8;
   g.stroke();
   g.restore();
-  // label dat in het vak past: lang, korter, of alleen de afkorting
+  bedSketchLabel(g, poly, groups, bt, rc);
+}
+
+/** Label van het type plantvak dat in het vak past: lang, korter, of alleen de afkorting. */
+function bedSketchLabel(g, poly, groups, bt, rc) {
+  let minX = Infinity, maxX = -Infinity;
+  for (const [x] of poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
   const wpx = (maxX - minX) * rc.zoom;
   const full = `${bt.name} (${bt.range})`, mid = `${bt.label} ${bt.range}`, txt = [full, mid, bt.label, bt.short].find((t) => t.length * 7.5 < wpx * 0.9);
   if (txt && rc.zoom * Math.sqrt(Math.abs(polygonArea(poly))) > 40) drawLabel(g, txt, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');

@@ -41,6 +41,20 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(/Bodembedekkers/.test(sk) && /12 m²/.test(sk), `paneel: oppervlakte per soort ("${sk.split('\n')[0]}")`);
   await page.screenshot({ path: path.join(OUT, 'plantvak-type.png') });
 
+  console.log('Bodembedekkers en beloopbaar groen dekken de aarde af');
+  const cover = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Dekken');
+    ['laag', 'bodem', 'beloopbaar'].forEach((t, i) => d.layers[0].items.push({ type: 'shape', id: t, kind: 'polygon', rect: true, bed: true, btype: t, planting: { mix: [] }, points: [[i * 4, 0], [i * 4 + 3, 0], [i * 4 + 3, 3], [i * 4, 3]], color: '#3f7a2e', width: 0.03 }));
+    a.openDoc(d, true); a.cam.zoom = 50; a.cam.rot = 0; a.cam.x = 100; a.cam.y = 150; a.cameraChanged(); a.settings.grid = false; a.plantPanel.close(); a.render();
+    const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width;
+    // tel aardekleurige pixels (bruin: rood > groen) in elk vak
+    return ['laag', 'bodem', 'beloopbaar'].map((t, i) => { const p0 = a.cam.toScreen([i * 4 + 0.3, 0.3]), p1 = a.cam.toScreen([i * 4 + 2.7, 2.7]);
+      const dd = g.getImageData(Math.round(p0[0] * dpr), Math.round(p0[1] * dpr), Math.round((p1[0] - p0[0]) * dpr), Math.round((p1[1] - p0[1]) * dpr)).data;
+      let n = 0, tot = 0; for (let k = 0; k < dd.length; k += 4) { tot++; if (dd[k] > dd[k + 1] + 8) n++; } return n / tot; });
+  });
+  assert(cover[0] > 0.05 && cover[1] < 0.01 && cover[2] < 0.01, `aarde zichtbaar bij lage beplanting (${(cover[0] * 100).toFixed(0)}%), niet bij bodembedekkers (${(cover[1] * 100).toFixed(1)}%) en beloopbaar groen (${(cover[2] * 100).toFixed(1)}%)`);
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle plantvak-type-tests geslaagd.');

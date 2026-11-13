@@ -42,7 +42,8 @@ export const FORMS = {
  * spacing = afstand tussen de schetssymbolen (m), r = straal van een symbool, color = bladkleur.
  */
 export const BED_TYPES = {
-  bodem: { name: 'Bodembedekkers', label: 'Bodembedekkers', short: 'BB', range: '< 30 cm', h: 0.2, spacing: 0.32, r: 0.17, color: '#9cc27a' },
+  beloopbaar: { name: 'Beloopbaar groen', examples: 'gras, tijm, kamille, klaver', label: 'Beloopbaar', short: 'BG', range: '< 10 cm', h: 0.05, cover: '#a9c98a', texture: 'gras', color: '#8fb86e' },
+  bodem: { name: 'Bodembedekkers', label: 'Bodembedekkers', short: 'BB', range: '< 30 cm', h: 0.2, spacing: 0.32, r: 0.17, color: '#9cc27a', cover: '#a7c98b' },
   laag: { name: 'Lage beplanting', label: 'Laag', short: 'L', range: '30–60 cm', h: 0.45, spacing: 0.5, r: 0.26, color: '#7fae5c' },
   middel: { name: 'Middelhoge beplanting', label: 'Middelhoog', short: 'M', range: '60–120 cm', h: 0.9, spacing: 0.75, r: 0.4, color: '#5f9444' },
   hoog: { name: 'Hoge beplanting', label: 'Hoog', short: 'H', range: '120–200 cm', h: 1.6, spacing: 1.05, r: 0.58, color: '#477a34' },

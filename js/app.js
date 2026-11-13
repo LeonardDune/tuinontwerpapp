@@ -1556,7 +1556,7 @@ class App {
       const sel = document.createElement('select');
       sel.title = 'Type plantvak voor de schets (later kun je de planten zelf kiezen)';
       const cur = BED_TYPES[this.state.bedType] ? this.state.bedType : '';
-      sel.innerHTML = [['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${n}</option>`).join('');
+      sel.innerHTML = [['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.examples ? v.examples + ', ' : ''}${v.range})`])].map(([k, n]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${n}</option>`).join('');
       sel.addEventListener('change', () => { this.state.bedType = sel.value || null; this.persistSettings(); });
       wrap.appendChild(sel);
     }
@@ -2023,7 +2023,7 @@ class App {
         if (isBed(it)) {
           const hasGroups = (st?.groups || 0) > 0;
           html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
-          html += `<select data-k="btype" title="Type plantvak voor de schets: hoe hoog wordt het ongeveer">${[['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(it.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
+          html += `<select data-k="btype" title="Type plantvak voor de schets: hoe hoog wordt het ongeveer">${[['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.examples ? v.examples + ', ' : ''}${v.range})`])].map(([k, n]) => `<option value="${k}" ${(it.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
           html += `<select data-k="soil" title="Ondergrond van het plantvak">${Object.entries(SOILS).map(([k, v]) => `<option value="${k}" ${(it.soil || 'aarde') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
           html += `<button type="button" class="tgl ${it.clipPlants ? 'on' : ''}" data-act="clipPlants" title="Planten groeien normaal over de rand van het vak. Zet dit aan om ze strak binnen de rand te tekenen (bijv. voor een technische tekening).">Binnen de rand</button>`;
           if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
