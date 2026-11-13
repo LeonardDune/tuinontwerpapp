@@ -221,6 +221,8 @@ function assert(cond, msg) {
   console.log('Stencils');
   await tool('stencil');
   await page.mouse.click(X(760), Y(200));
+  assert(await page.evaluate(() => window.app.state.tool === 'lasso' && window.app.selection.size === 1), 'na plaatsen meteen geselecteerd');
+  await tool('stencil');
   await page.click('#optionsbar .stencil-current');
   await page.click('.stencil-item[data-id="tafel6"]');
   await drag([[950, 200], [1050, 200]]);

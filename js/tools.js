@@ -3,17 +3,18 @@
 
 import { isPlantStencil, ensureStencilRole } from './planting.js';
 import { FENCES } from './fences.js';
-import { snapPoint, drawSnapMarker } from './snap.js';
+import { snapPoint, drawSnapMarker, edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
+import { collectRefs, extentsOf, alignMove, toWorld, drawSmartGuides } from './smartguides.js';
 
 export { snapPoint, drawSnapMarker };
 import { nearestWallSeg, wallSegments, linkOpening } from './walls.js';
 import { BRUSHES } from './brushes.js';
 import { uid, paperToWorld } from './model.js';
-import { drawItem, hitItem, transformItem } from './items.js';
+import { drawItem, hitItem, transformItem, itemOutline } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { formatLength, formatAngle, parseLength, formatArea } from './units.js';
 import {
-  dist, angleOf, DEG, snapAngle, pointInPolygon, matMul, matTranslate, matScale,
+  dist, DEG, pointInPolygon, matMul, matTranslate, matScale,
   simplify, distToSegment, clamp, polygonArea,
 } from './geom.js';
 
@@ -954,55 +955,124 @@ export class TextTool extends Tool {
 // ------------------------------------------------------------- stencils
 
 export class StencilTool extends Tool {
-  down(e) {
-    this.layer = this.app.editableLayer();
-    if (!this.layer) return;
+  /** Nieuw stencil op wereldpunt w (nog niet in de tekening). */
+  make(e) {
     const def = STENCIL_MAP[this.app.state.stencil];
-    if (!def) return;
-    this.snap = pick(this.app, e);
+    if (!def) return null;
     const size = this.app.stencilSize(def.id);
-    this.item = {
+    const item = {
       type: 'stencil', id: uid(), symbol: def.id,
-      x: this.snap.p[0], y: this.snap.p[1], w: size.w, h: size.h, rot: -this.app.cam.rot,
+      x: e.w[0], y: e.w[1], w: size.w, h: size.h, rot: -this.app.cam.rot,
       color: this.app.state.stencilOwnColor ? this.app.state.color : def.color,
       ...(def.defaults || {}),
     };
     const hh = this.app.state.stencilHeights?.[def.id];
-    if (hh != null) this.item.height = hh;
-    this.startS = e.s;
-    if (def.opening) this.toWall(e.w);
+    if (hh != null) item.height = hh;
+    return item;
+  }
+
+  /**
+   * Zet het stencil op de plek van de aanwijzer, met snappen: tegen en evenwijdig aan een zijde in
+   * de buurt (aansluiten), anders uitlijnen met andere elementen; deuren en ramen in de muur.
+   */
+  place(item, e) {
+    const app = this.app;
+    const def = STENCIL_MAP[item.symbol];
+    this.snapEdge = null; this.guides = null; this.liveInfo = null;
+    if (def.opening) { this.toWall(item, e.w); return; }
+    this.snap = pick(app, e);
+    item.x = this.snap.p[0]; item.y = this.snap.p[1];
+    if (!app.settings.snap || this.snap.kind === 'point') return;
+    if (!this.targets) {
+      this.targets = edgeTargets(app, new Set());
+      this.refs = null;
+    }
+    const tol = 14 / app.cam.zoom;
+    const half = Math.max(item.w, item.h) / 2;
+    if (!def.round && this.targets.length) {
+      // dichtstbijzijnde zijde in de buurt: evenwijdig draaien en ertegenaan leggen
+      let best = null;
+      for (const t of this.targets) {
+        const d = distToSegment([item.x, item.y], t.a, t.b);
+        if (d < half + tol * 2 && (!best || d < best.d)) best = { d, t };
+      }
+      if (best) {
+        const ta = Math.atan2(best.t.b[1] - best.t.a[1], best.t.b[0] - best.t.a[0]);
+        // de stand die het dichtst bij de huidige draaiing ligt (per 90°)
+        let r = ta;
+        while (r - item.rot > Math.PI / 4) r -= Math.PI / 2;
+        while (item.rot - r > Math.PI / 4) r += Math.PI / 2;
+        item.rot = r;
+        const fl = flushEdge(itemEdges(item), this.targets, Math.max(tol, half), 0.2 * DEG);
+        if (fl) {
+          item.x += fl.off[0]; item.y += fl.off[1];
+          const own = itemEdges(item).flatMap((s) => [s.a, s.b]);
+          const sl = slideAlong(own, this.targets.flatMap((s) => [s.a, s.b]), fl.u, tol);
+          if (sl) { item.x += sl[0]; item.y += sl[1]; }
+          this.snapEdge = fl.t;
+          this.liveInfo = sl ? 'Sluit aan, hoeken gelijk' : 'Sluit aan';
+          return;
+        }
+        this.snapEdge = best.t;
+        this.liveInfo = 'Evenwijdig';
+      }
+    }
+    // uitlijnen met andere elementen (zijkanten, midden, gelijke afstand)
+    const th = item.rot || 0;
+    if (!this.refs || this.refsTh !== th) { this.refs = collectRefs(app, new Set(), th); this.refsTh = th; }
+    if (this.refs.length) {
+      const ext = extentsOf(itemOutline(item), th);
+      const g = alignMove(this.refs, ext, 8 / app.cam.zoom);
+      const w = toWorld(g.du, g.dv, th);
+      item.x += w[0]; item.y += w[1];
+      if (g.lines.length || g.gaps.length) this.guides = { th, lines: g.lines, gaps: g.gaps };
+    }
+  }
+
+  down(e) {
+    this.layer = this.app.editableLayer();
+    if (!this.layer) return;
+    this.targets = null;
+    this.item = this.make(e);
+    if (!this.item) return;
+    this.place(this.item, e);
   }
 
   /** Deur/raam: in de dichtstbijzijnde muur leggen en eraan koppelen (richting en dikte van de muur). */
-  toWall(w) {
+  toWall(item, w) {
     const res = nearestWallSeg(this.app.store.doc, w, 40 / this.app.cam.zoom);
     this.onWall = !!res;
     if (!res) {
-      this.item.x = w[0]; this.item.y = w[1];
-      delete this.item.wallId; delete this.item.wallSeg; delete this.item.wallT; delete this.item.wallSide;
+      item.x = w[0]; item.y = w[1];
+      delete item.wallId; delete item.wallSeg; delete item.wallT; delete item.wallSide;
       return;
     }
     // de deur draait open naar de kant van de muur waar je tikt
     const [a, b] = wallSegments(res.wall)[res.seg];
     const side = (b[0] - a[0]) * (w[1] - a[1]) - (b[1] - a[1]) * (w[0] - a[0]);
-    linkOpening(this.item, res, side);
+    linkOpening(item, res, side);
   }
 
   move(e) {
-    if (!this.item) return;
-    if (STENCIL_MAP[this.item.symbol]?.opening) {
-      this.toWall(e.w);
-      return;
-    }
-    if (dist(e.s, this.startS) > 18) {
-      this.item.rot = snapAngle(angleOf([this.item.x, this.item.y], e.w), 15 * DEG, 4 * DEG);
-    }
+    // slepen = de plek zoeken (met snappen); draaien en de maat doe je daarna in de balk of met de grepen
+    if (this.item) this.place(this.item, e);
+  }
+
+  hover(e) {
+    // muis: voorbeeld onder de aanwijzer, al gesnapt
+    if (this.item || e.pointerType !== 'mouse') { if (this.ghost && e.pointerType !== 'mouse') { this.ghost = null; this.app.requestRender(); } return; }
+    if (!this.ghost || this.ghost.symbol !== this.app.state.stencil) { this.targets = null; this.ghost = this.make(e); }
+    if (this.ghost) this.place(this.ghost, e);
+    this.app.requestRender();
   }
 
   up() {
     if (!this.item) return;
     const item = this.item;
     this.item = null;
+    this.ghost = null;
+    this.targets = null;
+    this.snapEdge = null; this.guides = null; this.liveInfo = null;
     item.x = round4(item.x);
     item.y = round4(item.y);
     const layerId = this.layer.id;
@@ -1015,12 +1085,31 @@ export class StencilTool extends Tool {
       }
       doc.layers.find((l) => l.id === layerId)?.items.push(item);
     }, 'stencil');
+    if (!this.app.state.stencilRepeat) {
+      // meteen geselecteerd: maat, draaiing en plek direct aan te passen
+      this.app.setTool('lasso');
+      this.app.setSelection(new Set([item.id]));
+      if (!this.app.placedHinted) {
+        this.app.placedHinted = true;
+        this.app.toast('Geplaatst en geselecteerd: pas maat en draaiing aan in de balk of met de grepen. Veel achter elkaar plaatsen? Zet "Meerdere plaatsen" aan.', 4000);
+      }
+    }
   }
 
-  cancel() { this.item = null; }
+  cancel() { this.item = null; this.ghost = null; this.targets = null; }
 
   drawWorld(g, rc) {
     if (this.item) drawItem(g, this.item, rc);
+    else if (this.ghost) { g.save(); g.globalAlpha *= 0.55; drawItem(g, this.ghost, rc); g.restore(); }
+  }
+
+  drawScreen(ctx) {
+    if (!this.item && !this.ghost) return;
+    drawEdgeMarker(ctx, this.app, this.snapEdge);
+    drawSmartGuides(ctx, this.app, this.guides);
+    if (this.snap?.kind === 'point') drawSnapMarker(ctx, this.app, this.snap);
+    const it = this.item || this.ghost;
+    if (this.liveInfo && it) { const p = this.app.cam.toScreen([it.x, it.y]); drawBubble(ctx, this.liveInfo, p[0], p[1] - 24); }
   }
 }
 

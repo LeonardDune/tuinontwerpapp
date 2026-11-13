@@ -1771,7 +1771,8 @@ class App {
     }, 'Hoogte voor schaduw en zonkaart. 0 = geen schaduw.'));
     outer.appendChild(this.toggle('Eigen kleur', this.state.stencilOwnColor, (v) => { this.state.stencilOwnColor = v; }));
     if (this.state.stencilOwnColor) outer.appendChild(this.swatches());
-    outer.appendChild(this.hint('Tik om te plaatsen, sleep om te draaien.'));
+    outer.appendChild(this.toggle('Meerdere plaatsen', !!this.state.stencilRepeat, (v) => { this.state.stencilRepeat = v; }));
+    outer.appendChild(this.hint(this.state.stencilRepeat ? 'Elke tik plaatst er een. Slepen = plek zoeken; klikt tegen en evenwijdig aan zijden.' : 'Tik of sleep om te plaatsen (klikt tegen en evenwijdig aan zijden); daarna is het geselecteerd voor maat en draaiing.'));
     return outer;
   }
 
