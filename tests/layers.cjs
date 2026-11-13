@@ -86,6 +86,24 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   sel = await page.evaluate(() => [...window.app.selection]);
   assert(sel.length === 5, 'Ctrl/Cmd+A selecteert de hele actieve laag');
 
+  console.log('Zichtbaarheid van een laag doet niets met de lagen eronder');
+  const px = await page.evaluate(async () => {
+    const a = window.app; const { newDoc, newLayer } = await import('./js/model.js');
+    const d = newDoc('Lagen apart');
+    d.layers[0].items.push({ type: 'shape', id: 'onder', kind: 'polygon', rect: true, points: [[0, 0], [3, 0], [3, 3], [0, 3]], color: '#333', width: 0.02, hatch: 'klinkers' });
+    const top = newLayer('Boven'); top.paper = 0.35; // oude tekening: trekpapier stond aan
+    top.items.push({ type: 'shape', id: 'ver', kind: 'polygon', rect: true, points: [[10, 10], [11, 10], [11, 11], [10, 11]], color: '#333', width: 0.02 });
+    d.layers.push(top);
+    a.openDoc(d, true); a.cam.zoom = 60; a.cam.rot = 0; a.cam.x = 200; a.cam.y = 200; a.cameraChanged(); a.settings.grid = false;
+    const read = () => { a.render(); const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width; const p = a.cam.toScreen([1.5, 1.5]); return [...g.getImageData(Math.round(p[0] * dpr), Math.round(p[1] * dpr), 1, 1).data].slice(0, 3).join(); };
+    const on = read();
+    a.store.mutate((doc) => { doc.layers[1].visible = false; });
+    const off = read();
+    return { on, off, slider: document.querySelectorAll('#layer-list input[data-a="paper"]').length };
+  });
+  assert(px.on === px.off, `laag erboven aan of uit: onderste laag blijft precies gelijk (${px.on})`);
+  assert(px.slider === 0, 'geen schuif "Papier" meer in het lagenpaneel');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle laag-tests geslaagd.');

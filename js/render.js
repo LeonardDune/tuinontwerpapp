@@ -32,13 +32,6 @@ export function renderScene(ctx, opts) {
 
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
-    if (layer.paper > 0) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = layer.paper;
-      ctx.fillStyle = opts.paperColor || '#fbfaf6';
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1;
-    }
     const useBuffer = layer.opacity < 1;
     let g = ctx;
     if (useBuffer) {

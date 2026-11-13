@@ -1866,7 +1866,6 @@ class App {
         </div>
         <div class="row2">
           <span>Dekking</span><input type="range" data-a="opacity" min="0" max="100" value="${Math.round(layer.opacity * 100)}">
-          <span>Papier</span><input type="range" data-a="paper" min="0" max="90" value="${Math.round(layer.paper * 100)}">
         </div>
         <div class="row3"><button data-a="select" title="Alles op deze laag selecteren om de laag te verschuiven, draaien of schalen">${icon('select', 16)}<span>Hele laag selecteren</span></button></div>`;
       $('.name', li).textContent = `${layer.name} (${layer.items.length})`;
@@ -1905,13 +1904,12 @@ class App {
   addLayer() {
     const doc = this.store.doc;
     const layer = newLayer(`Laag ${doc.layers.length + 1}`);
-    layer.paper = doc.layers.length ? 0.35 : 0;
     this.store.mutate((d) => {
       const idx = d.layers.findIndex((l) => l.id === d.activeLayer);
       d.layers.splice(idx + 1, 0, layer);
       d.activeLayer = layer.id;
     }, 'layer');
-    this.toast('Nieuwe laag met trekpapier. Pas "Papier" aan voor meer of minder doorzicht.');
+    this.toast('Nieuwe laag toegevoegd.');
   }
 
   async renameLayer(id) {
@@ -2873,8 +2871,6 @@ class App {
     layer.items.push(item);
     this.store.mutate((doc) => {
       doc.layers.unshift(layer);
-      // tekenlaag erboven met licht trekpapier, zodat de ondergrond iets terugtreedt
-      if (doc.layers.length > 1 && doc.layers[1].paper === 0) doc.layers[1].paper = 0.25;
       if (!lock) doc.activeLayer = layer.id;
     }, 'underlay');
     this.cam.fitBox({ minX: center[0] - widthM / 2, minY: center[1] - heightM / 2, maxX: center[0] + widthM / 2, maxY: center[1] + heightM / 2 }, this.width, this.height, 30);
