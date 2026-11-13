@@ -6,6 +6,6 @@
   "scripts": {
     "start": "npx http-server -p 8123 -c-1 .",
     "lint": "eslint js sw.js",
-    "test": "node tests/e2e.cjs && node tests/touch.cjs && node tests/parallel.cjs && CHECK=1 node tests/smooth.cjs && node tests/edit.cjs && node tests/planting.cjs && node tests/beds.cjs && node tests/follow.cjs && node tests/house.cjs && node tests/layers.cjs && node tests/paving.cjs && node tests/snap.cjs && node tests/style.cjs && node tests/pdok.cjs && node tests/rotate.cjs && node tests/pick.cjs && node tests/pots.cjs && node tests/pergola.cjs && node tests/flush.cjs && node tests/guides2.cjs && node tests/group.cjs && node tests/perennials.cjs && node tests/multisel.cjs && node tests/bonds.cjs && node tests/overgrow.cjs && node tests/fence.cjs && node tests/place.cjs"
+    "test": "node tests/e2e.cjs && node tests/touch.cjs && node tests/parallel.cjs && CHECK=1 node tests/smooth.cjs && node tests/edit.cjs && node tests/planting.cjs && node tests/beds.cjs && node tests/follow.cjs && node tests/house.cjs && node tests/layers.cjs && node tests/paving.cjs && node tests/snap.cjs && node tests/style.cjs && node tests/pdok.cjs && node tests/rotate.cjs && node tests/pick.cjs && node tests/pots.cjs && node tests/pergola.cjs && node tests/flush.cjs && node tests/guides2.cjs && node tests/group.cjs && node tests/perennials.cjs && node tests/multisel.cjs && node tests/bonds.cjs && node tests/overgrow.cjs && node tests/fence.cjs && node tests/place.cjs && node tests/nudge.cjs"
   }
 }

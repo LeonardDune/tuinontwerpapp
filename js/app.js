@@ -456,7 +456,7 @@ class App {
     this.mode = null;
     this.spaceDown = false;
 
-    c.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    c.addEventListener('pointerdown', (e) => { this.flushNudge(); this.onPointerDown(e); });
     c.addEventListener('pointermove', (e) => this.onPointerMove(e));
     c.addEventListener('pointerup', (e) => this.onPointerUp(e));
     c.addEventListener('pointercancel', (e) => this.onPointerUp(e));
@@ -1103,6 +1103,19 @@ class App {
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if ($('dialog[open]')) return;
+    if (down && e.key.startsWith('Arrow') && this.selection.size && !e.metaKey && !e.ctrlKey) {
+      // nudgen: kleine stapjes in de richting van de pijl (op het scherm). 1 cm, Shift 10 cm, Alt 1 mm
+      e.preventDefault();
+      const step = e.altKey ? 0.001 : e.shiftKey ? 0.1 : 0.01;
+      const sd = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (sd) {
+        const r = this.cam.rot, c = Math.cos(r), sn = Math.sin(r);
+        // schermrichting naar wereld (beeld kan gedraaid zijn)
+        this.nudge(step * (sd[0] * c + sd[1] * sn), step * (-sd[0] * sn + sd[1] * c));
+      }
+      return;
+    }
+    if (down && this.nudgeTimer && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) this.flushNudge();
     if (e.code === 'Space') {
       this.spaceDown = down;
       this.canvas.style.cursor = down ? 'grab' : '';
@@ -1210,8 +1223,8 @@ class App {
     $('#btn-guide-lock').addEventListener('click', () => this.setGuidesLocked(!this.settings.guidesLocked));
     this.syncGuideButtons();
 
-    $('#btn-undo').addEventListener('click', () => this.store.undo());
-    $('#btn-redo').addEventListener('click', () => this.store.redo());
+    $('#btn-undo').addEventListener('click', () => { this.flushNudge(); this.store.undo(); });
+    $('#btn-redo').addEventListener('click', () => { this.flushNudge(); this.store.redo(); });
     $('#btn-layers').addEventListener('click', () => {
       $('#layers-panel').hidden = !$('#layers-panel').hidden;
       if (!$('#layers-panel').hidden && !$('#plant-panel').hidden) this.plantPanel.close();
@@ -2194,6 +2207,40 @@ class App {
       }, 'suggest-groups');
       this.toast(`${res.groups.length} groepen voorgesteld. Nogmaals tikken geeft een nieuwe variant.`);
     }
+  }
+
+  /** Selectie een klein stukje verschuiven; snel achter elkaar is één stap voor ongedaan maken. */
+  nudge(dx, dy) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (!found.length) return;
+    if (found.some((f) => f.layer.locked)) { this.toast('Deze laag is vergrendeld.'); return; }
+    if (!this.nudgeTimer) { this.store.begin(); this.nudgeSum = [0, 0]; }
+    const items = found.map((f) => f.item);
+    // groepen (drifts) van een plantvak gaan mee
+    const beds = new Set(items.filter((i) => isBed(i)).map((i) => i.id));
+    const followers = beds.size ? this.store.doc.layers.flatMap((l) => l.items.filter((i) => isGroup(i) && beds.has(i.bedId) && !this.selection.has(i.id))) : [];
+    const m = matTranslate(dx, dy);
+    for (const i of [...items, ...followers]) { transformItem(i, m, 1, 0); invalidateItem(i); }
+    // deuren en ramen: mee met hun muur, of los in een muur klikken
+    const wallIds = new Set(items.filter((i) => i.wall).map((i) => i.id));
+    const moved = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !(i.wallId && wallIds.has(i.wallId)));
+    if (wallIds.size || moved.length) syncOpenings(this.store.doc, wallIds, moved, 0.05);
+    this.store.touch();
+    this.nudgeSum[0] += dx; this.nudgeSum[1] += dy;
+    const d = Math.hypot(...this.nudgeSum);
+    const txt = d < 0.0095 ? `${Math.round(d * 1000)} mm` : `${(Math.round(d * 1000) / 10).toLocaleString('nl-NL')} cm`;
+    this.toast(`Verschoven ${txt} (pijltjes: 1 cm · Shift 10 cm · Alt 1 mm)`, 1200);
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = setTimeout(() => this.flushNudge(), 700);
+    this.requestRender();
+  }
+
+  flushNudge() {
+    if (!this.nudgeTimer) return;
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = null;
+    this.store.commit('nudge');
+    this.updateSelectionUI();
   }
 
   /** Eigenschap toepassen op de selectie (exacte maten, hoek, stijl). */
