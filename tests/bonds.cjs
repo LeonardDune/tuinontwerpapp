@@ -12,9 +12,9 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
   await page.waitForFunction(() => window.app);
-  const ks = ['romaans', 'mandverband', 'achthoek', 'waalformaat', 'waaier', 'flagstones', 'visgraat', 'grootformaat', 'keper', 'oudhollands', 'kasseien', 'molenwiek', 'hardsteen', 'klinkers', 'rustiek', 'tegels30', 'stapel', 'cirkel'];
+  const ks = ['flagstonesgeel', 'flagstonesgras', 'romaans', 'mandverband', 'achthoek', 'waalformaat', 'waaier', 'flagstones', 'visgraat', 'grootformaat', 'keper', 'oudhollands', 'kasseien', 'molenwiek', 'hardsteen', 'klinkers', 'rustiek', 'tegels30', 'stapel', 'cirkel'];
   const known = await page.evaluate(async (ks) => { const { HATCHES } = await import('./js/patterns.js'); return ks.filter((k) => HATCHES[k]); }, ks);
-  assert(known.length === ks.length, `alle ${ks.length} verbanden uit het voorbeeld bestaan`);
+  assert(known.length === ks.length, `alle ${ks.length} verbanden bestaan`);
   // elk patroon tekent echt iets (de tegel is niet leeg)
   const empty = await page.evaluate(async (ks) => {
     const { hatchPattern } = await import('./js/patterns.js');

@@ -33,7 +33,9 @@ export const HATCHES = {
   cirkel: { name: 'Cirkelverband (rond terras, om een boom)', size: 0.12, bg: '#a29d94', group: 'Bestrating', radial: true },
   kinderkopjes: { name: 'Kinderkopjes / kasseien', size: 0.6, bg: '#a29d94', group: 'Bestrating' },
   romaans: { name: 'Natuursteen, Romaans verband (ashlar)', size: 1.2, bg: '#d4cbbb', group: 'Bestrating' },
-  flagstones: { name: 'Flagstones / breuksteen', size: 2.0, bg: '#cdc3b0', group: 'Bestrating' },
+  flagstones: { name: 'Flagstones / breuksteen (grijs-beige)', size: 1.6, bg: '#c9c0ae', joint: '#9a948a', group: 'Bestrating' , strong: true },
+  flagstonesgeel: { name: 'Flagstones, geel-oker (Tropical Yellow)', size: 1.6, bg: '#d4aa62', joint: '#a39a8a', group: 'Bestrating' , strong: true },
+  flagstonesgras: { name: 'Flagstones met grasvoeg', size: 1.6, bg: '#c9c0ae', joint: '#8fae6a', group: 'Bestrating' , strong: true },
   grastegels: { name: 'Grastegels (waterdoorlatend)', size: 0.5, bg: '#a9c493', group: 'Bestrating' },
   // halfverharding
   grind: { name: 'Grind', size: 0.4, bg: '#ddd3bd', group: 'Halfverharding' },
@@ -479,25 +481,70 @@ function makeTile(kind, color) {
       }
       break;
     }
-    case 'flagstones': {
-      // breuksteen: vervormd rooster; de vervorming hangt af van het hoekpunt (mod n), dus naadloos
-      const n = 4, u = T / n;
-      const jit = (i, j) => {
-        const k = ((((i % n) + n) % n) * 7 + (((j % n) + n) % n) * 13) % 17;
-        return [Math.sin(k * 2.1) * u * 0.28, Math.cos(k * 1.7) * u * 0.28];
+    case 'flagstones':
+    case 'flagstonesgeel':
+    case 'flagstonesgras': {
+      // natuurlijke breuksteen: onregelmatige stenen (Voronoi-cellen van verspreide punten, naadloos
+      // herhalend), met afgeronde hoeken, kleurverschil per steen en een voeg in de voegkleur
+      const wide = kind === 'flagstonesgras';
+      const pts = [];
+      const n = 3;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) pts.push([(i + 0.2 + rnd() * 0.6) * T / n, (j + 0.2 + rnd() * 0.6) * T / n]);
+      for (let k = 0; k < 3; k++) pts.push([rnd() * T, rnd() * T]);
+      const all = [];
+      for (const p of pts) for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) all.push([p[0] + dx, p[1] + dy]);
+      const cells = pts.map((p) => {
+        let poly = [[p[0] - T, p[1] - T], [p[0] + T, p[1] - T], [p[0] + T, p[1] + T], [p[0] - T, p[1] + T]];
+        for (const q of all) {
+          if (q[0] === p[0] && q[1] === p[1]) continue;
+          if (Math.hypot(q[0] - p[0], q[1] - p[1]) > T * 0.9) continue;
+          // halfvlak dichter bij p dan bij q
+          const m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], d = [q[0] - p[0], q[1] - p[1]];
+          const inside = (v) => (v[0] - m[0]) * d[0] + (v[1] - m[1]) * d[1] <= 0;
+          const out = [];
+          for (let k = 0; k < poly.length; k++) {
+            const a = poly[k], b = poly[(k + 1) % poly.length];
+            const ia = inside(a), ib = inside(b);
+            if (ia) out.push(a);
+            if (ia !== ib) {
+              const da = (a[0] - m[0]) * d[0] + (a[1] - m[1]) * d[1], db = (b[0] - m[0]) * d[0] + (b[1] - m[1]) * d[1];
+              const t = da / (da - db);
+              out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+            }
+          }
+          poly = out;
+        }
+        return poly;
+      });
+      // halve voegbreedte: 0,8 cm (grasvoeg 2,5 cm), tegel = 1,6 m
+      const joint = (T / 1.6) * (wide ? 0.025 : 0.008);
+      g.fillStyle = color;
+      g.fillRect(0, 0, T, T);
+      const stone = (poly, dx, dy) => {
+        const c = poly.reduce((s2, v) => [s2[0] + v[0] / poly.length, s2[1] + v[1] / poly.length], [0, 0]);
+        const sh = poly.map((v) => { const l = Math.hypot(c[0] - v[0], c[1] - v[1]) || 1; return [v[0] + (c[0] - v[0]) / l * joint * 1.4 + dx, v[1] + (c[1] - v[1]) / l * joint * 1.4 + dy]; });
+        // rechte zijden met licht afgeronde hoeken (gebroken steen)
+        g.beginPath();
+        const L = sh.length;
+        for (let k = 0; k < L; k++) {
+          const a = sh[k], b = sh[(k + 1) % L], z = sh[(k - 1 + L) % L];
+          const p0 = [a[0] + (z[0] - a[0]) * 0.12, a[1] + (z[1] - a[1]) * 0.12];
+          const p1 = [a[0] + (b[0] - a[0]) * 0.12, a[1] + (b[1] - a[1]) * 0.12];
+          if (k === 0) g.moveTo(p0[0], p0[1]); else g.lineTo(p0[0], p0[1]);
+          g.quadraticCurveTo(a[0], a[1], p1[0], p1[1]);
+        }
+        g.closePath();
       };
-      const P = (i, j) => { const d = jit(i, j); return [i * u + d[0], j * u + d[1]]; };
-      g.lineWidth = 1.6;
-      g.lineJoin = 'round';
-      for (let i = -1; i <= n; i++) {
-        for (let j = -1; j <= n; j++) {
-          const q = [P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1)];
-          const c = [(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2];
-          // iets kleiner tekenen: brede voeg
-          g.beginPath();
-          q.forEach((p, k) => { const x = c[0] + (p[0] - c[0]) * 0.9, y = c[1] + (p[1] - c[1]) * 0.9; k ? g.lineTo(x, y) : g.moveTo(x, y); });
-          g.closePath();
-          g.stroke();
+      g.globalCompositeOperation = 'destination-out';
+      for (const poly of cells) for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) { stone(poly, dx, dy); g.fill(); }
+      g.globalCompositeOperation = 'source-over';
+      // kleurverschil per steen en een paar lagen in de steen
+      for (const poly of cells) {
+        const a = rnd() * 0.22, light = rnd() < 0.5, warm = rnd() < 0.35;
+        for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) {
+          stone(poly, dx, dy);
+          g.fillStyle = warm ? `rgba(150,70,20,${a * 0.6})` : light ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a * 0.6})`;
+          g.fill();
         }
       }
       break;

@@ -993,6 +993,8 @@ export class StencilTool extends Tool {
       color: this.app.state.stencilOwnColor ? this.app.state.color : def.color,
       ...(def.defaults || {}),
     };
+    // natuursteen: elke steen een eigen vorm
+    if (def.reshape) item.seed = Math.floor(Math.random() * 100000);
     const hh = this.app.state.stencilHeights?.[def.id];
     if (hh != null) item.height = hh;
     return item;
@@ -1062,6 +1064,8 @@ export class StencilTool extends Tool {
     this.targets = null;
     this.item = this.make(e);
     if (!this.item) return;
+    // dezelfde vorm als het voorbeeld onder de muis
+    if (this.ghost && this.ghost.symbol === this.item.symbol && this.ghost.seed != null) this.item.seed = this.ghost.seed;
     this.place(this.item, e);
   }
 

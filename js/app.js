@@ -2070,6 +2070,7 @@ class App {
       html += range('fillAlpha', 'Sterkte', Math.round((filled[0].fillAlpha ?? 0.35) * 100), 'Hoe sterk de vulkleur is');
     }
     html += range('opacity', 'Dekking', Math.round((items[0].opacity ?? 1) * 100), 'Doorzichtigheid van het element');
+    if (items.some((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.reshape)) html += `<button type="button" class="tgl" data-act="reshape" title="Een andere, willekeurige vorm voor deze steen(en)">Andere vorm</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
     // begroeiing van pergola's en de soort klimplant
     const climbs = items.filter((i) => i.type === 'stencil' && (STENCIL_MAP[i.symbol]?.climb || STENCIL_MAP[i.symbol]?.climbPlant));
@@ -2135,6 +2136,7 @@ class App {
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
+    bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
     bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
@@ -2346,6 +2348,9 @@ class App {
           break;
         case 'soil':
           for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }
+          break;
+        case 'reshape':
+          for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.reshape) i.seed = Math.floor(Math.random() * 100000);
           break;
         case 'clipPlants': {
           const beds = items.filter((i) => isBed(i));

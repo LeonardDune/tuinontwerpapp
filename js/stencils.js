@@ -509,7 +509,55 @@ function lily(g, x, y, r) {
   g.restore();
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
+/** Losse flagstone: onregelmatige natuursteen met afgeronde hoeken, kleurverschil en lagen. */
+function flagstone(g, w, h, c, lw, seed) {
+  const r = rng(1009 + Math.round(seed) * 7919);
+  const n = 6 + Math.floor(r() * 4);
+  const off = r() * TAU;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = off + (i / n) * TAU + (r() - 0.5) * (TAU / n) * 0.5;
+    const k = 0.72 + r() * 0.28;
+    pts.push([Math.cos(a) * w / 2 * k, Math.sin(a) * h / 2 * k]);
+  }
+  const path = () => {
+    // rechte breukranden met licht afgeronde hoeken
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n], z = pts[(i - 1 + n) % n];
+      const p0 = [a[0] + (z[0] - a[0]) * 0.15, a[1] + (z[1] - a[1]) * 0.15];
+      const p1 = [a[0] + (b[0] - a[0]) * 0.15, a[1] + (b[1] - a[1]) * 0.15];
+      if (i === 0) g.moveTo(p0[0], p0[1]); else g.lineTo(p0[0], p0[1]);
+      g.quadraticCurveTo(a[0], a[1], p1[0], p1[1]);
+    }
+    g.closePath();
+  };
+  g.save();
+  path();
+  g.fillStyle = hexA(c, 1); g.fill();
+  if (!fillOverride.paper) {
+    g.save(); g.clip();
+    // vlekken en lagen in de steen
+    for (let i = 0; i < 5; i++) {
+      const x = (r() - 0.5) * w * 0.8, y = (r() - 0.5) * h * 0.8, rr = Math.min(w, h) * (0.15 + r() * 0.25);
+      g.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.18)' : (r() < 0.5 ? 'rgba(140,70,20,0.14)' : 'rgba(0,0,0,0.1)');
+      g.beginPath(); g.ellipse(x, y, rr, rr * 0.6, r() * 3, 0, TAU); g.fill();
+    }
+    g.strokeStyle = 'rgba(0,0,0,0.07)'; g.lineWidth = lw * 0.4;
+    const la = r() * Math.PI;
+    for (let k = -1; k <= 1; k++) {
+      const o = k * Math.min(w, h) * 0.18;
+      g.beginPath(); g.moveTo(-w * Math.cos(la) - Math.sin(la) * o, -w * Math.sin(la) + Math.cos(la) * o);
+      g.quadraticCurveTo(0 - Math.sin(la) * o + (r() - 0.5) * w * 0.1, Math.cos(la) * o, w * Math.cos(la) - Math.sin(la) * o, w * Math.sin(la) + Math.cos(la) * o); g.stroke();
+    }
+    g.restore();
+  }
+  path();
+  g.strokeStyle = hexA('#5b5248', 0.85); g.lineWidth = lw * 0.9; g.stroke();
+  g.restore();
+}
+
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -1597,6 +1645,38 @@ export const STENCILS = [
       g.globalAlpha = 1;
     },
   },
+  // --- Stapstenen en losse flagstones (c = kleur van de steen; 'Andere vorm' geeft een nieuwe vorm) ---
+  {
+    id: 'flagstone', name: 'Flagstone, middel (ca. 60 cm)', cat: 'Stapstenen', round: false, w: 0.6, h: 0.45, color: '#c9c0ae', reshape: true,
+    draw(g, w, h, c, lw, paper, it) { flagstone(g, w, h, c, lw, it?.seed ?? 1); },
+  },
+  {
+    id: 'flagstoneklein', name: 'Flagstone, klein (ca. 35 cm)', cat: 'Stapstenen', round: false, w: 0.35, h: 0.3, color: '#c9c0ae', reshape: true,
+    draw(g, w, h, c, lw, paper, it) { flagstone(g, w, h, c, lw, it?.seed ?? 4); },
+  },
+  {
+    id: 'flagstonegroot', name: 'Flagstone, groot (ca. 90 cm)', cat: 'Stapstenen', round: false, w: 0.9, h: 0.7, color: '#c9c0ae', reshape: true,
+    draw(g, w, h, c, lw, paper, it) { flagstone(g, w, h, c, lw, it?.seed ?? 7); },
+  },
+  {
+    id: 'flagstonegeel', name: 'Flagstone, geel-oker (Tropical Yellow)', cat: 'Stapstenen', round: false, w: 0.6, h: 0.5, color: '#d4aa62', reshape: true,
+    draw(g, w, h, c, lw, paper, it) { flagstone(g, w, h, c, lw, it?.seed ?? 11); },
+  },
+  {
+    id: 'flagstonepad', name: 'Pad van stapstenen (flagstones)', cat: 'Stapstenen', round: false, w: 3.0, h: 0.7, color: '#c9c0ae', reshape: true,
+    draw(g, w, h, c, lw, paper, it) {
+      // stenen op een staplengte van ca. 60 cm, afwisselend iets links en rechts
+      const n = Math.max(2, Math.round(w / 0.62));
+      const r = rng(31 + (it?.seed ?? 0) * 17);
+      for (let i = 0; i < n; i++) {
+        const x = -w / 2 + (w * (i + 0.5)) / n, y = (i % 2 ? 1 : -1) * h * 0.12 + (r() - 0.5) * h * 0.1;
+        const sw = Math.min(w / n * 0.85, 0.65) * (0.85 + r() * 0.2), sh = h * (0.6 + r() * 0.25);
+        g.save(); g.translate(x, y); g.rotate((r() - 0.5) * 0.6);
+        flagstone(g, sw, sh, c, lw, (it?.seed ?? 0) * 10 + i + 3);
+        g.restore();
+      }
+    },
+  },
   // --- Water (c = kleur van de rand: steen, cortenstaal, beton) ---
   {
     id: 'waterschaal', name: 'Waterschaal (rond)', cat: 'Water', round: true, w: 0.9, h: 0.9, color: '#8c8c8c',
@@ -1748,7 +1828,7 @@ export const STENCILS = [
     },
   },
   {
-    id: 'stapsteen', name: 'Stapsteen', cat: 'Bouw & water', round: true, w: 0.5, h: 0.4, color: '#8c8c8c',
+    id: 'stapsteen', name: 'Stapsteen (rond)', cat: 'Stapstenen', round: true, w: 0.5, h: 0.4, color: '#8c8c8c',
     draw(g, w, h, c) {
       g.fillStyle = hexA(c, 0.35);
       blob(g, w / 2, h / 2, 23, 7, 0.12);

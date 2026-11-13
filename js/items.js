@@ -312,7 +312,7 @@ function drawShape(g, item, rc) {
       // (doorzichtig maken kan met Dekking). Alleen overkappingen (glas, lamellen) blijven doorschijnend.
       const paper = rc.paper || '#fbfaf6';
       g.save();
-      if (hd?.group === 'Overkapping') { g.globalAlpha *= item.matColor ? 0.85 : 0.45; g.fillStyle = item.matColor || hd.bg; } else g.fillStyle = mixHex(item.matColor || hd.bg, paper, item.matColor ? 0.15 : 0.55);
+      if (hd?.group === 'Overkapping') { g.globalAlpha *= item.matColor ? 0.85 : 0.45; g.fillStyle = item.matColor || hd.bg; } else g.fillStyle = mixHex(item.matColor || hd.bg, paper, item.matColor ? 0.15 : hd?.strong ? 0.2 : 0.55);
       g.fill();
       g.restore();
     }

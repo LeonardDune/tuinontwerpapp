@@ -74,6 +74,17 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const water = await page.evaluate(async () => { const { STENCILS } = await import('./js/stencils.js'); return STENCILS.filter((x) => x.cat === 'Water').map((x) => x.id); });
   assert(['waterschaal', 'waterzuil', 'watertafel', 'waterbak', 'waterwand', 'fontein', 'vijverrond', 'vijverrecht', 'vogelbad'].every((id) => water.includes(id)), `categorie Water met ${water.length} ornamenten`);
 
+  console.log('Losse flagstones');
+  const fl = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js'); const { STENCILS } = await import('./js/stencils.js');
+    const d = newDoc('Flag'); d.layers[0].items.push({ type: 'stencil', id: 'F', symbol: 'flagstone', x: 0, y: 0, w: 0.6, h: 0.45, rot: 0, color: '#c9c0ae', seed: 5 });
+    a.openDoc(d, true); a.setTool('lasso'); a.setSelection(new Set(['F']));
+    return STENCILS.filter((x) => x.cat === 'Stapstenen').map((x) => x.id);
+  });
+  assert(['flagstone', 'flagstoneklein', 'flagstonegroot', 'flagstonegeel', 'flagstonepad', 'stapsteen'].every((id) => fl.includes(id)), `categorie Stapstenen (${fl.length})`);
+  await page.click('#selection-bar [data-act="reshape"]');
+  assert(await page.evaluate(() => window.app.store.findItem('F').item.seed) !== 5, '"Andere vorm" geeft de steen een nieuwe vorm');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pot-tests geslaagd.');
