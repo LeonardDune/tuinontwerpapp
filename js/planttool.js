@@ -6,7 +6,7 @@
 import { Tool, snapPoint, drawSnapMarker, drawBubble } from './tools.js';
 import { drawItem } from './items.js';
 import { uid, paperToWorld } from './model.js';
-import { roleDiameter, rolesMap, ROLES, isBed, shapePolygon, smoothClosed } from './planting.js';
+import { roleDiameter, rolesMap, ROLES, isBed, shapePolygon, smoothClosed, BED_TYPES } from './planting.js';
 import { regionAt } from './region.js';
 import { simplify, dist, polygonArea, pointInPolygon, polygonCentroid } from './geom.js';
 import { formatArea, formatLength } from './units.js';
@@ -49,6 +49,12 @@ export function newGroup(points, kind, mix, bedId, scale, extra = {}) {
 }
 
 export class PlantTool extends Tool {
+  /** Type voor de schets (bodembedekkers, laag, middel, hoog) van een nieuw plantvak. */
+  btype() {
+    const t = this.app.state.bedType;
+    return BED_TYPES[t] ? { btype: t } : {};
+  }
+
   get roles() {
     return this.app.store.doc.planting?.roles || [];
   }
@@ -175,7 +181,7 @@ export class PlantTool extends Tool {
       } else if (existing && Math.abs(area(shapePolygon(existing), 'polygon') - area(res.points, res.kind)) / area(res.points, res.kind) < 0.05) {
         this.app.toast('Hier ligt al een plantvak.');
       } else {
-        item = newBed(res.points, res.kind, this.mix(false), scale);
+        item = newBed(res.points, res.kind, this.mix(false), scale, this.btype());
       }
     } else if (this.preview) {
       item = { ...this.preview, x: r4(this.preview.x), y: r4(this.preview.y) };
@@ -192,7 +198,7 @@ export class PlantTool extends Tool {
             const bed = pointInPolygon(c, shapePolygon(this.bed)) ? this.bed : (bedAt(doc, c) || this.bed);
             item = newGroup(points, geo.kind, this.mix(), bed.id, scale, extra);
           } else {
-            item = newBed(points, geo.kind, this.mix(false), scale, extra);
+            item = newBed(points, geo.kind, this.mix(false), scale, { ...extra, ...this.btype() });
           }
         }
       }
@@ -227,7 +233,7 @@ export class PlantTool extends Tool {
     const doc = this.app.store.doc;
     const tmp = mode === 'groep' && this.bed
       ? newGroup(geo.points, geo.kind, this.mix(), this.bed.id, doc.scale)
-      : newBed(geo.points, geo.kind, this.mix(false), doc.scale);
+      : newBed(geo.points, geo.kind, this.mix(false), doc.scale, this.btype());
     tmp.id = 'voorbeeld';
     const ctx = mode === 'groep' && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };
     drawItem(g, tmp, ctx);

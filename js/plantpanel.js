@@ -3,8 +3,9 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  plantCounts, isBed, isGroup,
+  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon,
 } from './planting.js';
+import { polygonArea } from './geom.js';
 import { icon } from './icons.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -106,6 +107,10 @@ export class PlantPanel {
         </div>
       </section>
       <section>
+        <h3>Schets: soorten plantvak</h3>
+        <div class="sketch"></div>
+      </section>
+      <section>
         <h3>Kleurenschema</h3>
         <div class="row">
           <select data-k="scheme">${Object.entries(SCHEMES).map(([k, v]) => `<option value="${k}" ${p.scheme.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>
@@ -131,6 +136,22 @@ export class PlantPanel {
         <canvas class="wheel" width="300" height="300"></canvas>
         <div class="advice"></div>
       </section>`;
+
+    // schets: oppervlakte per type plantvak
+    const sk = {};
+    let open = 0;
+    for (const l of this.doc.layers) {
+      if (!l.visible) continue;
+      for (const it of l.items) {
+        if (!isBed(it) || (bed && it.id !== bed.id)) continue;
+        const a = Math.abs(polygonArea(shapePolygon(it)));
+        if (BED_TYPES[it.btype]) sk[it.btype] = (sk[it.btype] || 0) + a; else open += a;
+      }
+    }
+    const m2 = (v) => `${v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)} m²`;
+    $('.sketch', el).innerHTML = (Object.keys(sk).length || open
+      ? `<ul class="sk">${Object.entries(BED_TYPES).filter(([k]) => sk[k]).map(([k, v]) => `<li><i style="background:${v.color}"></i>${v.name} <small>${v.range}</small><b>${m2(sk[k])}</b></li>`).join('')}${open ? `<li><i style="background:#cdb9a4"></i>Nog open<b>${m2(open)}</b></li>` : ''}</ul>`
+      : '') + '<p class="hint">Kies bij een plantvak het <b>Type</b> (bodembedekkers, laag, middelhoog, hoog, heesters) voor de ruwe schets. Welke planten erin komen, voeg je later toe met de bouwstenen hieronder.</p>';
 
     // bouwstenen
     const ul = $('.roles', el);

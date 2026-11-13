@@ -27,7 +27,7 @@ import { syncOpenings } from './walls.js';
 import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { PlantPanel } from './plantpanel.js';
 import {
-  rolesMap, describeRole, ROLES as PLANT_ROLES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
+  rolesMap, describeRole, ROLES as PLANT_ROLES, BED_TYPES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
 } from './planting.js';
 import {
   isRect, itemAngle, itemSize, setItemAngle, setFrameSize, setDiameter, setLength, rotateItems,
@@ -1552,6 +1552,14 @@ class App {
       for (const b of seg2.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
       wrap.appendChild(seg2);
     }
+    if (mode === 'vak') {
+      const sel = document.createElement('select');
+      sel.title = 'Type plantvak voor de schets (later kun je de planten zelf kiezen)';
+      const cur = BED_TYPES[this.state.bedType] ? this.state.bedType : '';
+      sel.innerHTML = [['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${n}</option>`).join('');
+      sel.addEventListener('change', () => { this.state.bedType = sel.value || null; this.persistSettings(); });
+      wrap.appendChild(sel);
+    }
     if (mode === 'groep' && !beds) {
       wrap.appendChild(this.hint('Groepen komen binnen een plantvak. Teken eerst een plantvak, of zet een solitair (die mag overal).'));
       const b = document.createElement('button');
@@ -2015,6 +2023,7 @@ class App {
         if (isBed(it)) {
           const hasGroups = (st?.groups || 0) > 0;
           html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
+          html += `<select data-k="btype" title="Type plantvak voor de schets: hoe hoog wordt het ongeveer">${[['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(it.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
           html += `<select data-k="soil" title="Ondergrond van het plantvak">${Object.entries(SOILS).map(([k, v]) => `<option value="${k}" ${(it.soil || 'aarde') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
           html += `<button type="button" class="tgl ${it.clipPlants ? 'on' : ''}" data-act="clipPlants" title="Planten groeien normaal over de rand van het vak. Zet dit aan om ze strak binnen de rand te tekenen (bijv. voor een technische tekening).">Binnen de rand</button>`;
           if (hasGroups) html += `<button type="button" class="tgl" data-plan="cleargroups" title="Alle groepen in dit vak verwijderen">Wis groepen</button>`;
@@ -2347,6 +2356,9 @@ class App {
             invalidateItem(i);
           }
           syncOpenings(this.store.doc, new Set(items.filter((i) => i.wall).map((i) => i.id)));
+          break;
+        case 'btype':
+          for (const i of items) if (isBed(i)) { if (BED_TYPES[raw]) i.btype = raw; else delete i.btype; }
           break;
         case 'soil':
           for (const i of items) if (isBed(i) && SOILS[raw]) { if (raw === 'aarde') delete i.soil; else i.soil = raw; }

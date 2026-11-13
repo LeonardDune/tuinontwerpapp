@@ -6,7 +6,7 @@ import { drawFence } from './fences.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
 import {
-  drawRoleSymbol, rolesMap, layoutPoints, roleDiameter, plantOutline, hitPlant, shapePolygon, monthState, plantCount, isBed,
+  drawRoleSymbol, rolesMap, layoutPoints, roleDiameter, plantOutline, hitPlant, shapePolygon, monthState, plantCount, isBed, BED_TYPES,
 } from './planting.js';
 import { paperToWorld } from './model.js';
 import { wallShape } from './walls.js';
@@ -138,6 +138,9 @@ function drawBed(g, item, rc) {
     g.fillStyle = hexA(mixColor(mix, rc), 0.18);
     g.fill();
   }
+  // schets: type plantvak (bodembedekkers, laag, middel, hoog) zolang er nog geen bouwstenen in zitten
+  const bt = BED_TYPES[item.btype];
+  if (bt && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
   if (view !== 'groepen') {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
@@ -160,6 +163,45 @@ function drawBed(g, item, rc) {
     const n = plantCount(rc.bedAreas[item.id], mix, roles);
     drawLabel(g, `${mixCodes(mix, rc)} · ${n} st.`, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');
   }
+}
+
+/** Schetssymbolen voor het type plantvak: hoe hoger, hoe grotere en donkerdere bollen. */
+function drawBedSketch(g, item, poly, groups, bt, rc, lw) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  const sp = bt.spacing, n = ((maxX - minX) / sp + 1) * ((maxY - minY) / sp + 1);
+  if (n > 6000) return; // heel groot vak op een kleine schaal: alleen de kleur en het label
+  let seed = 1 + (item.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  g.save();
+  if (item.clipPlants) { tracePath(g, item); g.clip(); }
+  g.beginPath();
+  let row = 0;
+  for (let y = minY + sp * 0.4; y <= maxY; y += sp * 0.87, row++) {
+    for (let x = minX + sp * 0.4 + (row % 2) * sp * 0.5; x <= maxX; x += sp) {
+      const px = x + (rnd() - 0.5) * sp * 0.35, py = y + (rnd() - 0.5) * sp * 0.35;
+      if (!pointInPolygon([px, py], poly) || groups.some((q) => pointInPolygon([px, py], q))) continue;
+      const r = bt.r * (0.85 + rnd() * 0.3);
+      // blad als wolkje
+      const k = 10;
+      for (let i = 0; i <= k; i++) {
+        const a = (i / k) * Math.PI * 2, rr = r * (i % 2 ? 0.9 : 1);
+        const qx = px + Math.cos(a) * rr, qy = py + Math.sin(a) * rr;
+        if (i === 0) g.moveTo(qx, qy); else g.lineTo(qx, qy);
+      }
+      g.closePath();
+    }
+  }
+  g.fillStyle = hexA(bt.color, 0.55);
+  g.fill('nonzero');
+  g.strokeStyle = hexA('#2f4a25', 0.5);
+  g.lineWidth = lw * 0.8;
+  g.stroke();
+  g.restore();
+  // label dat in het vak past: lang, korter, of alleen de afkorting
+  const wpx = (maxX - minX) * rc.zoom;
+  const full = `${bt.name} (${bt.range})`, mid = `${bt.label} ${bt.range}`, txt = [full, mid, bt.label, bt.short].find((t) => t.length * 7.5 < wpx * 0.9);
+  if (txt && rc.zoom * Math.sqrt(Math.abs(polygonArea(poly))) > 40) drawLabel(g, txt, labelPoint(poly, groups), rc, false, 2.2, '#2f4a25');
 }
 
 /** Punt in het vak buiten de groepen voor het label. */
