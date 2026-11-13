@@ -472,10 +472,34 @@ export class ShapeTool extends Tool {
     // richting van de liniaal/driehoek: eerste zijde van de rechthoek ligt langs de rand
     this.dir = null;
     const gs = this.app.activeGuideSnap;
+    this.dirEdge = null;
     if (this.kind === 'rect' && e.guided && gs && gs.kind === 'line') {
       const a = this.app.cam.toWorld(gs.a), b = this.app.cam.toWorld(gs.b);
       const l = dist(a, b) || 1;
       this.dir = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+    } else if (this.kind === 'rect' && !this.rotated && this.app.settings.snap) {
+      // begin je op of vlak bij een zijde (of hoek) van een ander element, dan sluit de rechthoek
+      // daar evenwijdig op aan
+      const tol = 14 / this.app.cam.zoom;
+      let best = null;
+      for (const t of edgeTargets(this.app, new Set())) {
+        const d = distToSegment(this.p0, t.a, t.b);
+        if (d < tol && (!best || d < best.d)) best = { d, t };
+      }
+      if (best) {
+        const l = dist(best.t.a, best.t.b);
+        const u = [(best.t.b[0] - best.t.a[0]) / l, (best.t.b[1] - best.t.a[1]) / l];
+        // de richting die het meest op 'naar rechts op het scherm' lijkt, zodat B en D kloppen
+        const sx = [Math.cos(-this.app.cam.rot), Math.sin(-this.app.cam.rot)];
+        const cands = [u, [-u[0], -u[1]], [-u[1], u[0]], [u[1], -u[0]]];
+        cands.sort((p, q) => (q[0] * sx[0] + q[1] * sx[1]) - (p[0] * sx[0] + p[1] * sx[1]));
+        this.dir = cands[0];
+        this.dirEdge = best.t;
+        // beginpunt precies op de zijde
+        const t = ((this.p0[0] - best.t.a[0]) * u[0] + (this.p0[1] - best.t.a[1]) * u[1]);
+        if (this.snap.kind !== 'point') this.p0 = [best.t.a[0] + u[0] * t, best.t.a[1] + u[1] * t];
+        this.p1 = this.p0;
+      }
     }
   }
 
@@ -520,6 +544,7 @@ export class ShapeTool extends Tool {
     this.pts = null;
     this.snap = null;
     this.dir = null;
+    this.dirEdge = null;
     if (!item) return;
     this.commitItem(item);
   }
@@ -741,7 +766,9 @@ export class ShapeTool extends Tool {
 
   drawScreen(ctx) {
     drawSnapMarker(ctx, this.app, this.snap);
-    const text = this.liveText();
+    if (this.dirEdge && this.p0) drawEdgeMarker(ctx, this.app, this.dirEdge);
+    let text = this.liveText();
+    if (text && this.dirEdge && this.p0) text += ' · sluit aan';
     if (text && this.curS) drawBubble(ctx, text, this.curS[0], this.curS[1]);
     if (this.kind === 'polygon' && this.poly && this.poly.length >= 3) {
       const f = this.app.cam.toScreen(this.poly[0]);

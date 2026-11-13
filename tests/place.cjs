@@ -56,6 +56,28 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const n = await page.evaluate(() => window.app.store.doc.layers[0].items.filter((i) => i.symbol === 'heester').length);
   assert(n === 3 && await page.evaluate(() => window.app.state.tool) === 'stencil', '"Meerdere plaatsen" aan: elke tik een nieuwe, gereedschap blijft');
 
+  console.log('Rechthoek tekenen tegen een zijde');
+  await page.evaluate(() => { const a = window.app; a.state.rectMode = '2pt'; a.state.stencilRepeat = false; a.setTool('rect'); });
+  {
+    // begin vlak bij de bovenzijde van het (20° gedraaide) terras en trek naar buiten
+    const r20 = 20 * Math.PI / 180, ux = [Math.cos(r20), Math.sin(r20)], nx = [-Math.sin(r20), Math.cos(r20)];
+    const start = [ux[0] * 1 - nx[0] * 0.08, ux[1] * 1 - nx[1] * 0.08];
+    const end = [start[0] + ux[0] * 2 - nx[0] * 1.5, start[1] + ux[1] * 2 - nx[1] * 1.5];
+    const [x0, y0] = await S(...start), [x1, y1] = await S(...end);
+    await page.mouse.move(x0, y0); await page.mouse.down(); await page.mouse.move(x1, y1, { steps: 8 });
+    const tx = await page.evaluate(() => window.app.tool.liveText && window.app.tool.dirEdge && 'ok');
+    await page.screenshot({ path: path.join(OUT, 'rechthoek-aansluiten.png') });
+    await page.mouse.up();
+    const rr = await page.evaluate(() => { const its = window.app.store.doc.layers[0].items; return its[its.length - 1]; });
+    const p = rr.points;
+    const ang = (Math.atan2(p[1][1] - p[0][1], p[1][0] - p[0][0]) * 180 / Math.PI + 360) % 90;
+    assert(tx === 'ok' && Math.abs(ang - 20) < 0.01, `rechthoek neemt de richting van het terras over (${ang.toFixed(3)}°)`);
+    // één zijde ligt op de bovenrand van het terras (lijn door de oorsprong in richting ux)
+    const off = (q) => Math.abs(q[0] * nx[0] + q[1] * nx[1]);
+    const onEdge = p.filter((q) => off(q) < 1e-3).length;
+    assert(onEdge === 2, `en één zijde ligt precies op de rand van het terras (${onEdge} hoeken op de rand)`);
+  }
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle plaats-tests geslaagd.');
