@@ -203,6 +203,8 @@ export const BOND_PRESETS = {
   'k-molenwiek': B('Molenwiek · betonklinker met halve steen', 'molenwiek', 'bkk', 'grijs', 'glad'),
   'k-vlecht': B('Vlechtverband · keiformaat', 'vlecht', 'kei', 'paars', 'getrommeld'),
   'k-banen': B('Banenverband · keiformaat met staande rij', 'banen', 'kei', 'rood', 'getrommeld'),
+  'k-bont-waal': B('Halfsteens · waalformaat, bont gemengd (3 tinten)', 'halfsteens', 'waal', 'rood', 'getrommeld', { bond: { mix: { mode: 'willekeurig', colors: [{ color: '#a8503c', share: 50 }, { color: '#8f4a38', share: 30 }, { color: '#6f4a4a', share: 20 }] } } }),
+  'k-vlekken-bkk': B('Halfsteens · betonklinker grijs met antraciet vlekken', 'halfsteens', 'bkk', 'grijs', 'glad', { bond: { mix: { mode: 'vlekken', colors: [{ color: '#9a9a96', share: 70 }, { color: '#4a4d52', share: 30 }] } } }),
   // tegels
   't-blok-6060': B('Blokverband · 60×60 grijs', 'stapel', 't60', 'grijs', 'glad', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
   't-blok-9090': B('Blokverband · keramiek 90×90 greige', 'stapel', 't90', '#a8a091', 'structuur', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
@@ -287,6 +289,147 @@ export function paintStone(g, x, y, w, h, color, finish, seed = 1) {
   g.restore();
 }
 
+// ---------------------------------------------------------------- kleurmenging
+
+/** Hoe meerdere steenkleuren in het verband terugkomen. */
+export const MIX_MODES = {
+  willekeurig: { name: 'Willekeurig', hint: 'Kleuren los door elkaar, precies in de gekozen verhouding.' },
+  verspreid: { name: 'Regelmatig verspreid', hint: 'Een vast ritme waarin de kleuren zo gelijkmatig mogelijk verdeeld zijn.' },
+  diagonaal: { name: 'Diagonale lijnen', hint: 'Het kleurritme schuift elke rij één steen op: schuine lijnen.' },
+  banen: { name: 'Banen (per rij)', hint: 'Hele rijen in één kleur, in de gekozen verhouding.' },
+  vlekken: { name: 'Vlekken (groepjes)', hint: 'Groepjes stenen van dezelfde kleur, als wolken door het vlak.' },
+};
+
+/** Kleuren van een gemengd verband (de eerste is altijd de steenkleur), of null bij één kleur. */
+export function bondPalette(bond) {
+  const cs = bond?.mix?.colors;
+  if (!cs || cs.length < 2) return null;
+  const list = cs.map((c, i) => ({ color: i === 0 ? bond.color || c.color : c.color, share: Math.max(0, Number(c.share) || 0) }));
+  const tot = list.reduce((a, c) => a + c.share, 0);
+  if (tot <= 0) return null;
+  for (const c of list) c.share /= tot;
+  return list.filter((c) => c.share > 0).length > 1 ? list : null;
+}
+
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+/** Kleurritme: een reeks kleurnummers in de juiste verhouding, zo gelijkmatig mogelijk verdeeld. */
+export function mixSequence(shares, maxLen = 20) {
+  // kortste ritme waarvan de verhouding hooguit 3% afwijkt van de gekozen verhouding
+  const tot = shares.reduce((x, v) => x + v, 0) || 1;
+  const p = shares.map((v) => v / tot);
+  const fit = (n) => {
+    const raw = p.map((v) => v * n);
+    const w = raw.map((v, i) => (p[i] > 0 ? Math.max(1, Math.floor(v)) : 0));
+    let rest = n - w.reduce((x, v) => x + v, 0);
+    const byRem = raw.map((v, i) => [v - Math.floor(v), i]).filter(([, i]) => p[i] > 0).sort((x, y) => y[0] - x[0]);
+    for (let k = 0; rest > 0 && byRem.length; k = (k + 1) % byRem.length, rest--) w[byRem[k][1]]++;
+    return w;
+  };
+  let w = null;
+  for (let n = 2; n <= maxLen && !w; n++) {
+    const c = fit(n);
+    if (c.reduce((x, v) => x + v, 0) === n && c.every((v, i) => Math.abs(v / n - p[i]) <= 0.03)) w = c;
+  }
+  if (!w) w = fit(maxLen);
+  const len = w.reduce((x, v) => x + v, 0);
+  // grootste kleur eerst op gelijke afstanden; de volgende kleuren gelijkmatig over de vrije plekken
+  const seq = new Array(len).fill(0);
+  let free = [...Array(len).keys()];
+  const order = w.map((v, i) => i).filter((i) => w[i] > 0).sort((a, b) => w[b] - w[a]);
+  order.forEach((ci, k) => {
+    if (k === order.length - 1) { for (const f of free) seq[f] = ci; return; }
+    const pick = new Set();
+    for (let i = 0; i < w[ci]; i++) pick.add(Math.floor(((i + 0.5) * free.length) / w[ci]));
+    free.forEach((f, idx) => { if (pick.has(idx)) seq[f] = ci; });
+    free = free.filter((_, idx) => !pick.has(idx));
+  });
+  return seq;
+}
+
+/** Periodieke, gladde ruis (voor vlekken die naadloos herhalen). */
+function periodicNoise(x, y, PX, PY, salt) {
+  const cx = Math.max(1, Math.round(PX)), cy = Math.max(1, Math.round(PY));
+  const fx = x * (cx / PX), fy = y * (cy / PY);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = fx - x0, ty = fy - y0;
+  const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+  const v = (i, j) => hash(((i % cx) + cx) % cx + salt, (((j % cy) + cy) % cy) * 1.37 + salt * 0.71);
+  const a = v(x0, y0), b = v(x0 + 1, y0), c = v(x0, y0 + 1), d = v(x0 + 1, y0 + 1);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
+/**
+ * Verdeel de kleuren over de stenen van een (uitgebreide) herhaling.
+ * stones: [{ x, y, w, h }] in rastereenheden; geeft per steen een kleurnummer.
+ */
+export function assignColors(stones, palette, mode, PX, PY) {
+  const shares = palette.map((c) => c.share);
+  const out = new Array(stones.length).fill(0);
+  if (!stones.length) return out;
+  const byQuantile = (val) => {
+    const order = stones.map((_, i) => i).sort((a, b) => val[a] - val[b]);
+    let k = 0, acc = 0;
+    order.forEach((idx, r) => {
+      while (k < shares.length - 1 && r >= Math.round((acc + shares[k]) * stones.length)) { acc += shares[k]; k++; }
+      out[idx] = k;
+    });
+  };
+  if (mode === 'willekeurig' || !MIX_MODES[mode]) {
+    byQuantile(stones.map((st) => hash(st.x * 7.31 + st.w * 1.7 + 0.5, st.y * 3.17 + st.h * 2.3 + 0.25)));
+    return out;
+  }
+  if (mode === 'vlekken') {
+    // vlekken van zo'n 3 à 4 stenen breed, met wat ruis zodat de randen rafelig zijn
+    const long = stones.reduce((a, st) => a + Math.max(st.w, st.h), 0) / stones.length;
+    const cell = Math.max(4, 2.2 * long);
+    byQuantile(stones.map((st) => {
+      const cx = st.x + st.w / 2, cy = st.y + st.h / 2;
+      return periodicNoise(cx / cell, cy / cell, PX / cell, PY / cell, 3.3) * 0.82 + periodicNoise(cx / 1.6, cy / 1.6, PX / 1.6, PY / 1.6, 8.1) * 0.12 + hash(cx * 5.1, cy * 2.9) * 0.06;
+    }));
+    return out;
+  }
+  const seq = mixSequence(shares);
+  const len = seq.length;
+  // rijen van één eenheid hoog; binnen een rij op volgorde van links naar rechts
+  const rows = new Map();
+  stones.forEach((st, i) => {
+    const r = Math.floor(st.y + st.h / 2 + 1e-6);
+    if (!rows.has(r)) rows.set(r, []);
+    rows.get(r).push(i);
+  });
+  const shift = mode === 'diagonaal' ? 1 : len <= 2 ? 1 : Math.max(1, Math.round(len * 0.382));
+  for (const [r, idxs] of rows) {
+    idxs.sort((a, b) => stones[a].x - stones[b].x);
+    idxs.forEach((i, c) => {
+      const k = mode === 'banen' ? r : c + r * shift;
+      out[i] = seq[((k % len) + len) % len];
+    });
+  }
+  return out;
+}
+
+/** Hoeveel keer de basisherhaling in elke richting, zodat het kleurritme naadloos doorloopt. */
+function mixRepeat(L, palette, mode) {
+  if (!palette) return [1, 1];
+  const span = (k, p) => k * p * L.U;
+  let kx = 1, ky = 1;
+  if (mode === 'willekeurig' || mode === 'vlekken' || !MIX_MODES[mode]) {
+    // een flink stuk, zodat de herhaling niet opvalt (ca. 2,5 m of 24 stenen)
+    const target = Math.max(2.5, 24 * L.U);
+    kx = Math.max(1, Math.round(target / (L.px * L.U)));
+    ky = Math.max(1, Math.round(target / (L.py * L.U)));
+  } else {
+    const len = mixSequence(palette.map((c) => c.share)).length;
+    kx = len;
+    ky = len / gcd(Math.max(1, Math.round(L.py)), len);
+  }
+  // niet groter dan nodig voor een scherp patroon
+  while (span(kx, L.px) > 6 && kx > 1) kx = Math.ceil(kx / 2);
+  while (span(ky, L.py) > 6 && ky > 1) ky = Math.ceil(ky / 2);
+  return [kx, ky];
+}
+
 const cache = new Map();
 
 /** Maten van het patroon voor een verband: eenheid U (m), n, periode en stenen. */
@@ -304,12 +447,22 @@ export function bondLayout(bond) {
 
 /** Canvaspatroon voor een verband, in wereldcoördinaten (meters), met legrichting en beginpunt. */
 export function bondPattern(ctx, bond, rot = 0, origin = null) {
-  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish, bond.color2, bond.finish2, bond.tile]);
+  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish, bond.color2, bond.finish2, bond.tile, bond.mix || null]);
   let tile = cache.get(key);
-  const L = bondLayout(bond);
+  const L0 = bondLayout(bond);
+  const palette = bondPalette(bond);
+  const mode = bond.mix?.mode || 'willekeurig';
+  const [kx, ky] = mixRepeat(L0, palette, mode);
+  // bij meerdere kleuren: een grotere herhaling van kx × ky keer het basispatroon
+  const L = kx * ky === 1 ? L0 : { ...L0, px: L0.px * kx, py: L0.py * ky, list: L0.list.flatMap(([x, y, w, h, ci]) => {
+    const o = [];
+    for (let i = 0; i < kx; i++) for (let j = 0; j < ky; j++) o.push([x + i * L0.px, y + j * L0.py, w, h, ci]);
+    return o;
+  }) };
   if (!tile) {
     const W = L.px * L.U, H = L.py * L.U;
-    const ppm = Math.min(1024 / Math.max(W, H), Math.max(180, 16 / L.U));
+    const maxPx = kx * ky > 1 ? 2048 : 1024;
+    const ppm = Math.min(maxPx / Math.max(W, H), Math.max(180, 16 / L.U));
     const c = document.createElement('canvas');
     c.width = Math.max(8, Math.round(W * ppm)); c.height = Math.max(8, Math.round(H * ppm));
     const g = c.getContext('2d');
@@ -318,9 +471,16 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
     g.fillStyle = bond.jointColor || '#8a857c';
     g.fillRect(0, 0, c.width, c.height);
     const mod = (v, m) => ((v % m) + m) % m;
-    for (const [x, y, w, h, ci] of L.list) {
+    let mixCol = null;
+    if (palette) {
+      const main = L.list.map(([x, y, w, h, ci], i) => ({ x: mod(x, L.px), y: mod(y, L.py), w, h, ci, i })).filter((st) => !st.ci);
+      const a = assignColors(main, palette, mode, L.px, L.py);
+      mixCol = new Map(main.map((st, k) => [st.i, palette[a[k]].color]));
+    }
+    for (let si = 0; si < L.list.length; si++) {
+      const [x, y, w, h, ci] = L.list[si];
       const bx = mod(x, L.px), by = mod(y, L.py);
-      const col = ci ? bond.color2 || '#9a9a96' : bond.color || '#a8503c', fin = ci ? bond.finish2 || bond.finish || 'glad' : bond.finish || 'glad';
+      const col = ci ? bond.color2 || '#9a9a96' : mixCol?.get(si) || bond.color || '#a8503c', fin = ci ? bond.finish2 || bond.finish || 'glad' : bond.finish || 'glad';
       const seed = Math.round(bx * 97 + by * 389 + w * 13 + 1);
       for (const dx of [-L.px, 0, L.px]) {
         for (const dy of [-L.py, 0, L.py]) {
@@ -347,5 +507,7 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
 /** Korte omschrijving van een verband. */
 export function describeBond(bond) {
   const cm = (v) => (Math.round(v * 1000) / 10).toLocaleString('nl-NL');
-  return `${BOND_TYPES[bond.type]?.name || 'Verband'} · ${cm(Math.max(bond.l, bond.w))}×${cm(Math.min(bond.l, bond.w))} cm`;
+  const pal = bondPalette(bond);
+  const mix = pal ? ` · ${pal.length} kleuren, ${(MIX_MODES[bond.mix.mode] || MIX_MODES.willekeurig).name.toLowerCase()}` : '';
+  return `${BOND_TYPES[bond.type]?.name || 'Verband'} · ${cm(Math.max(bond.l, bond.w))}×${cm(Math.min(bond.l, bond.w))} cm${mix}`;
 }

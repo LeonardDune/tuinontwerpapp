@@ -6,7 +6,7 @@ import { renderScene, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
-import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, describeBond } from './bonds.js';
+import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, describeBond, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
@@ -1694,6 +1694,86 @@ class App {
     return wrap;
   }
 
+  // ---------------------------------------------------------------- kleurmenging van een verband
+
+  openMixDialog(it) {
+    if (!it?.bond) return;
+    let dlg = document.getElementById('dlg-mix');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'dlg-mix';
+      document.body.appendChild(dlg);
+    }
+    this.mixFor = it.id;
+    this.renderMixDialog();
+    if (!dlg.open) dlg.show(); // zwevend: de tekening blijft zichtbaar en laat de wijzigingen meteen zien
+  }
+
+  renderMixDialog() {
+    const dlg = document.getElementById('dlg-mix');
+    const it = this.mixFor && this.store.findItem(this.mixFor)?.item;
+    if (!dlg || !it?.bond) return;
+    const bd = it.bond;
+    const mix = bd.mix?.colors?.length > 1 ? JSON.parse(JSON.stringify(bd.mix)) : { mode: bd.mix?.mode || 'willekeurig', colors: [{ color: bd.color || '#a8503c', share: 100 }] };
+    mix.colors[0].color = bd.color || mix.colors[0].color;
+    if (!MIX_MODES[mix.mode]) mix.mode = 'willekeurig';
+    const tot = mix.colors.reduce((a, c) => a + (Number(c.share) || 0), 0);
+    const n = stoneCount(bd, paveArea(it));
+    const rows = mix.colors.map((c, i) => `
+      <div class="mix-row">
+        <input type="color" data-i="${i}" value="${c.color}" title="${i ? 'Kleur ' + (i + 1) : 'Hoofdkleur (de steenkleur)'}">
+        <input type="number" data-share="${i}" min="0" max="100" step="5" value="${Math.round(Number(c.share) || 0)}" title="Aandeel van deze kleur">
+        <span class="u">%</span>
+        <span class="cnt">${mix.colors.length > 1 && tot > 0 ? `ca. ${Math.round((n * (Number(c.share) || 0)) / tot).toLocaleString('nl-NL')} st.` : `ca. ${n.toLocaleString('nl-NL')} st.`}</span>
+        ${i ? `<button type="button" class="x" data-del="${i}" title="Deze kleur weghalen">${icon('trash', 16)}</button>` : '<span class="x"></span>'}
+      </div>`).join('');
+    const modes = Object.entries(MIX_MODES).map(([k, v]) => `
+      <label class="mix-mode${mix.mode === k ? ' on' : ''}"><input type="radio" name="mixmode" value="${k}" ${mix.mode === k ? 'checked' : ''}><span><b>${v.name}</b><small>${v.hint}</small></span></label>`).join('');
+    dlg.innerHTML = `
+      <form method="dialog" class="dlg mix">
+        <header><h2>Steenkleuren</h2><button class="x" value="close" title="Sluiten">${icon('close', 18)}</button></header>
+        <div class="mix-rows">${rows}</div>
+        <div class="row">
+          <button type="button" data-mix="add" ${mix.colors.length >= 5 ? 'disabled' : ''}>${icon('plus', 16)} Kleur erbij</button>
+          <button type="button" data-mix="tints" title="Drie tinten van de hoofdkleur (licht, midden, donker), zoals bij bonte klinkers">Tinten van de hoofdkleur</button>
+          ${mix.colors.length > 1 ? '<button type="button" data-mix="equal">Gelijk verdelen</button>' : ''}
+        </div>
+        ${mix.colors.length > 1 && Math.round(tot) !== 100 ? `<p class="hint">Samen ${Math.round(tot)}%: de kleuren worden naar verhouding verdeeld.</p>` : ''}
+        ${mix.colors.length > 1 ? `<div class="mix-modes"><span class="lbl">Hoe komen de kleuren terug?</span>${modes}</div>` : '<p class="hint">Zet er een kleur bij om stenen in verschillende kleuren te mengen.</p>'}
+      </form>`;
+    const push = (opts = {}) => this.applyProperty('bondMix', mix, opts);
+    const redo = () => { push(); this.renderMixDialog(); };
+    for (const inp of dlg.querySelectorAll('input[type=color]')) {
+      const i = Number(inp.dataset.i);
+      inp.addEventListener('input', () => { mix.colors[i].color = inp.value; push({ live: true }); this.requestRender(); });
+      inp.addEventListener('change', () => { mix.colors[i].color = inp.value; push({ commit: true }); this.renderMixDialog(); });
+    }
+    for (const inp of dlg.querySelectorAll('input[data-share]')) {
+      inp.addEventListener('change', () => { mix.colors[Number(inp.dataset.share)].share = Math.max(0, Math.min(100, Number(inp.value) || 0)); redo(); });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+    }
+    for (const b of dlg.querySelectorAll('[data-del]')) b.addEventListener('click', () => { mix.colors.splice(Number(b.dataset.del), 1); redo(); });
+    for (const r of dlg.querySelectorAll('input[name=mixmode]')) r.addEventListener('change', () => { mix.mode = r.value; redo(); });
+    dlg.querySelector('[data-mix="add"]').addEventListener('click', () => {
+      const used = new Set(mix.colors.map((c) => c.color.toLowerCase()));
+      const next = Object.values(STONE_COLORS).find((c) => !used.has(c.toLowerCase())) || '#777777';
+      const share = Math.round(100 / (mix.colors.length + 1) / 5) * 5 || 5;
+      if (mix.colors.length === 1) mix.colors[0].share = 100 - share;
+      mix.colors.push({ color: next, share });
+      redo();
+    });
+    dlg.querySelector('[data-mix="tints"]').addEventListener('click', () => {
+      const base = mix.colors[0].color;
+      mix.colors = [{ color: base, share: 50 }, { color: tintHex(base, 0.16), share: 25 }, { color: tintHex(base, -0.22), share: 25 }];
+      redo();
+    });
+    dlg.querySelector('[data-mix="equal"]')?.addEventListener('click', () => {
+      const k = mix.colors.length;
+      mix.colors.forEach((c, i) => { c.share = Math.floor(100 / k) + (i < 100 % k ? 1 : 0); });
+      redo();
+    });
+  }
+
   swatches() {
     const wrap = document.createElement('div');
     wrap.className = 'swatches';
@@ -2050,6 +2130,9 @@ class App {
   updateSelectionUI() {
     const bar = $('#selection-bar');
     const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    const mixDlg = document.getElementById('dlg-mix');
+    if (mixDlg?.open && !(found.length === 1 && found[0].item.id === this.mixFor && found[0].item.bond && this.state.tool === 'lasso')) mixDlg.close();
+    else if (mixDlg?.open && !mixDlg.contains(document.activeElement)) this.renderMixDialog();
     const show = found.length > 0 && this.state.tool === 'lasso';
     bar.hidden = !show;
     if (!show) return;
@@ -2212,6 +2295,8 @@ class App {
         html += field('bondL', 'Steen', cm(Math.max(bd.l, bd.w)), '×') + field('bondW', '', cm(Math.min(bd.l, bd.w)), 'cm');
         html += field('bondJoint', 'Voeg', String(Math.round((bd.joint ?? 0.003) * 10000) / 10).replace('.', ','), 'mm');
         html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-k="bondColor" value="${bd.color || '#a8503c'}"></label>`;
+        const pal = bondPalette(bd);
+        html += `<button type="button" class="tgl${pal ? ' on' : ''}" data-act="mix" title="Meerdere steenkleuren mengen: aantal kleuren, verhouding en hoe ze terugkomen">${pal ? `${pal.length} kleuren` : 'Kleuren mengen'}…</button>`;
         html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
         const BT = BOND_TYPES[bd.type] || {};
         if (BT.tile) html += field('bondTile', BT.name.startsWith('Kassei') ? 'Vak' : 'Tegel', cm(bd.tile || 0.6), 'cm');
@@ -2298,6 +2383,7 @@ class App {
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
     bar.querySelector('[data-act="saveBond"]')?.addEventListener('click', () => this.saveBondBlock());
+    bar.querySelector('[data-act="mix"]')?.addEventListener('click', () => this.openMixDialog(it));
     bar.querySelector('[data-act="deleteBond"]')?.addEventListener('click', () => this.deleteBondBlock());
     bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
     bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
@@ -2806,7 +2892,15 @@ class App {
           break;
         }
         case 'bondJoint': { const v = num(raw) / 1000; if (v >= 0 && v <= 0.1) for (const i of items) if (i.bond) i.bond.joint = v; break; }
-        case 'bondColor': for (const i of items) if (i.bond) i.bond.color = raw; break;
+        case 'bondColor': for (const i of items) if (i.bond) { i.bond.color = raw; if (i.bond.mix?.colors?.[0]) i.bond.mix.colors[0].color = raw; } break;
+        case 'bondMix':
+          for (const i of items) {
+            if (!i.bond) continue;
+            if (raw?.colors?.[0]) i.bond.color = raw.colors[0].color;
+            if (raw && raw.colors.length > 1) i.bond.mix = JSON.parse(JSON.stringify(raw)); else delete i.bond.mix;
+            delete i.bondName;
+          }
+          break;
         case 'bondColor2': for (const i of items) if (i.bond) { i.bond.color2 = raw; delete i.bondName; } break;
         case 'bondFinish2': for (const i of items) if (i.bond && FINISHES[raw]) { i.bond.finish2 = raw; delete i.bondName; } break;
         case 'bondTile': { const v = num(raw) / 100; if (v >= 0.2 && v <= 3) for (const i of items) if (i.bond) { i.bond.tile = v; delete i.bondName; } break; }
@@ -3749,4 +3843,14 @@ function layerRows(doc) {
   const rows = [...doc.layers];
   rows.splice(Math.max(0, Math.min(rows.length, doc.gridAt || 0)), 0, GRID_ROW);
   return rows;
+}
+
+/** Kleur lichter (t > 0) of donkerder (t < 0), als hex. */
+function tintHex(hex, t) {
+  const h = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : '999999';
+  return '#' + [0, 2, 4].map((i) => {
+    const v = parseInt(h.slice(i, i + 2), 16);
+    const r = t >= 0 ? v + (255 - v) * t : v * (1 + t);
+    return Math.max(0, Math.min(255, Math.round(r))).toString(16).padStart(2, '0');
+  }).join('');
 }

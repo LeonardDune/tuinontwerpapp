@@ -631,3 +631,20 @@ body.side-open .north-btn { right: 364px; }
 /* uitlijnen in de eigenschappenbalk */
 .props-bar .aligns { display: inline-flex; gap: 2px; padding: 0 4px; border-left: 1px solid rgba(255,255,255,.18); border-right: 1px solid rgba(255,255,255,.18); }
 .props-bar .aligns button { padding: 4px; min-width: 32px; }
+
+/* ---------- kleurmenging van een verband (zwevend venster) ---------- */
+#dlg-mix { position: fixed; inset: 64px 16px auto auto; margin: 0; width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 140px); overflow: auto; z-index: 40; }
+.dlg.mix { gap: 10px; }
+.mix-rows { display: flex; flex-direction: column; gap: 6px; }
+.mix-row { display: grid; grid-template-columns: 44px 64px 14px 1fr 32px; align-items: center; gap: 6px; }
+.mix-row input[type=color] { width: 44px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; }
+.mix-row input[type=number] { width: 64px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; font-size: 15px; }
+.mix-row .u { color: var(--muted); font-size: 13px; }
+.mix-row .cnt { color: var(--muted); font-size: 12px; text-align: right; }
+.mix-modes { display: flex; flex-direction: column; gap: 4px; }
+.mix-modes .lbl { font-size: 13px; color: var(--muted); }
+.dlg label.mix-mode { flex-direction: row; align-items: flex-start; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); cursor: pointer; }
+.dlg label.mix-mode.on { border-color: var(--accent); background: var(--accent-soft); }
+.mix-mode span { display: flex; flex-direction: column; gap: 1px; }
+.mix-mode b { font-size: 14px; font-weight: 600; }
+.mix-mode small { font-size: 12px; color: var(--muted); }
