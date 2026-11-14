@@ -148,11 +148,20 @@ export class SelectTool extends Tool {
   handleAt(s) {
     const h = this.handles();
     if (!h) return null;
-    // vertex- en kadergrepen gaan voor; "+"-grepen liggen ertussen
+    // vertex- en kadergrepen gaan voor; "+"-grepen liggen ertussen.
+    // Binnen het kader wint verplaatsen: daar pakken grepen alleen vlak bij de greep zelf, en bij kleine
+    // elementen nog krapper (anders bedekken acht grepen het hele element en schaal je in plaats van te slepen).
+    // Buiten het kader blijven de grepen ruim te pakken.
+    const o = h.outline;
+    const side = Math.min(...o.map((p, i) => dist(p, o[(i + 1) % o.length])));
+    const inside = o.length > 2 && pointInPolygon(s, o);
+    const innerR = Math.max(5, Math.min(11, side * 0.18));
     let best = null, bd = HANDLE_R + 4;
     for (const g of h.list) {
       const d = dist(s, g.s);
-      const r = g.shape === 'plus' ? HANDLE_R - 4 : HANDLE_R + 4;
+      let r = g.shape === 'plus' ? HANDLE_R - 4 : HANDLE_R + 4;
+      const openEnd = g.kind === 'vertex' && h.item?.kind === 'line'; // eindpunten van een lijn blijven ruim
+      if (inside && g.kind !== 'rotate' && !openEnd) r = Math.min(r, g.shape === 'plus' ? innerR - 2 : innerR);
       if (d < r && d < bd + (g.shape === 'plus' ? -6 : 0)) { bd = d; best = g; }
     }
     if (best) return best;
