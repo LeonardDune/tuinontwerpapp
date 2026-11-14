@@ -123,6 +123,41 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(px.on === px.off, `laag erboven aan of uit: onderste laag blijft precies gelijk (${px.on})`);
   assert(px.slider === 0, 'geen schuif "Papier" meer in het lagenpaneel');
 
+  console.log('Raster als eigen laag');
+  const gr = await page.evaluate(async () => {
+    const a = window.app; const { newDoc, newLayer } = await import('./js/model.js');
+    const d = newDoc('Raster');
+    d.layers[0].name = 'Onder';
+    d.layers[0].items.push({ type: 'shape', id: 'vlak', kind: 'polygon', rect: true, points: [[0, 0], [4, 0], [4, 4], [0, 4]], color: '#fff', width: 0.01, fill: '#ffffff', fillAlpha: 1 });
+    const top = newLayer('Boven'); d.layers.push(top);
+    a.openDoc(d, true); a.cam.zoom = 60; a.cam.rot = 0; a.cam.x = 200; a.cam.y = 200; a.cameraChanged();
+    a.settings.grid = true; a.renderLayers();
+    const $l = () => [...document.querySelectorAll('#layer-list .layer .name')].map((n) => n.textContent.replace(/ \(.*/, ''));
+    const sum = () => { a.baseDirty = true; a.render(); const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width; const p = a.cam.toScreen([0.2, 0.2]); const q = a.cam.toScreen([3.8, 3.8]); const data = g.getImageData(Math.round(p[0] * dpr), Math.round(p[1] * dpr), Math.round((q[0] - p[0]) * dpr), Math.round((q[1] - p[1]) * dpr)).data; let s = 0; for (let i = 0; i < data.length; i += 4) s += 765 - data[i] - data[i + 1] - data[i + 2]; return s; };
+    const r = { order0: $l().join(','), under: sum() };
+    document.querySelector('#layer-list .grid-layer button[data-a="up"]').click();
+    r.order1 = $l().join(','); r.at1 = a.store.doc.gridAt; r.over = sum();
+    const range = document.querySelector('#layer-list .grid-layer input[data-a="opacity"]');
+    range.value = '100'; range.dispatchEvent(new Event('input')); range.dispatchEvent(new Event('change'));
+    r.strong = sum(); r.op = a.store.doc.gridOpacity;
+    document.querySelector('#layer-list .grid-layer button[data-a="vis"]').click();
+    r.gridOff = a.settings.grid; r.off = sum();
+    a.toggleGrid(true);
+    // een laag omhoog schuiven springt over het raster heen
+    document.querySelectorAll('#layer-list .layer')[2].querySelector('button[data-a="up"]').click();
+    r.order2 = $l().join(','); r.at2 = a.store.doc.gridAt;
+    a.store.undo(); r.order3 = $l().join(',');
+    return r;
+  });
+  assert(gr.order0 === 'Boven,Onder,Raster', `raster staat als onderste laag in het paneel (${gr.order0})`);
+  assert(gr.under === 0, 'raster onder het witte vlak is niet te zien');
+  assert(gr.order1 === 'Boven,Raster,Onder' && gr.at1 === 1, `raster een plek omhoog: tussen de lagen (${gr.order1})`);
+  assert(gr.over > 0, `raster boven het vlak is wel te zien (${gr.over})`);
+  assert(gr.op === 1 && gr.strong > gr.over * 1.5, `dekking 100%: raster duidelijk sterker (${gr.over} → ${gr.strong})`);
+  assert(gr.gridOff === false && gr.off === 0, 'oogje: raster uit');
+  assert(gr.order2 === 'Boven,Onder,Raster' && gr.at2 === 0, `laag "Onder" omhoog springt over het raster (${gr.order2})`);
+  assert(gr.order3 === 'Boven,Raster,Onder', 'ongedaan maken zet de volgorde terug');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle laag-tests geslaagd.');

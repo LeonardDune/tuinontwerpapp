@@ -366,6 +366,8 @@ button.primary:disabled { opacity: 0.5; }
   background: #fbfaf7;
 }
 .layer.active { border-color: var(--accent); background: var(--accent-soft); }
+.layer.grid-layer { border-style: dashed; background: repeating-linear-gradient(0deg, transparent 0 11px, rgba(70,110,140,.08) 11px 12px), repeating-linear-gradient(90deg, transparent 0 11px, rgba(70,110,140,.08) 11px 12px); }
+.layer.grid-layer .name { cursor: default; font-style: italic; }
 .layer .row1 { display: flex; align-items: center; gap: 2px; }
 .layer .name {
   flex: 1;

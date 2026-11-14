@@ -170,6 +170,8 @@ class App {
     this.selection.clear();
     doc.assets = doc.assets || {};
     doc.grid = doc.grid || 1;
+    doc.gridAt = Math.max(0, Math.min((doc.layers || []).length, doc.gridAt || 0));
+    doc.gridOpacity = doc.gridOpacity ?? 0.5;
     if (!doc.manualDims) {
       // Maten werden vroeger automatisch bij lijnen en vormen gezet; dat is nu een apart gereedschap.
       for (const l of doc.layers || []) {
@@ -323,7 +325,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, grid: this.settings.grid ? doc.grid || 1 : null });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, grid: this.settings.grid ? { size: doc.grid || 1, at: doc.gridAt || 0, opacity: doc.gridOpacity ?? 0.5 } : null });
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
     }
@@ -1163,7 +1165,7 @@ class App {
     const map = { p: 'draw', b: 'plant', k: 'pave', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area', w: 'wall' };
     if (map[k]) { this.setTool(map[k]); return; }
     if (k === 'r') { this.toggleGuide('ruler'); return; }
-    if (k === 'g') { this.settings.grid = !this.settings.grid; this.persistSettings(); this.syncSettingsUI(); this.baseDirty = true; this.requestRender(); return; }
+    if (k === 'g') { this.toggleGrid(); return; }
     if (k === '0') { this.fitView(); return; }
   }
 
@@ -1881,8 +1883,9 @@ class App {
     const list = $('#layer-list');
     const doc = this.store.doc;
     list.innerHTML = '';
-    const layers = [...doc.layers].reverse();
-    for (const layer of layers) {
+    const rows = layerRows(doc).reverse();
+    for (const layer of rows) {
+      if (layer === GRID_ROW) { list.appendChild(this.gridLayerRow()); continue; }
       const li = document.createElement('li');
       li.className = 'layer' + (layer.id === doc.activeLayer ? ' active' : '');
       li.innerHTML = `
@@ -1915,7 +1918,61 @@ class App {
       }
       list.appendChild(li);
     }
+  }
 
+  /** Rij voor het raster in het lagenpaneel: aan/uit, omhoog/omlaag en dekking, maar geen inhoud. */
+  gridLayerRow() {
+    const doc = this.store.doc;
+    const on = !!this.settings.grid;
+    const li = document.createElement('li');
+    li.className = 'layer grid-layer';
+    li.innerHTML = `
+      <div class="row1">
+        <button data-a="vis" title="Raster tonen of verbergen (G)">${icon(on ? 'eye' : 'eyeOff', 18)}</button>
+        <span class="name" title="Het raster ligt boven de lagen eronder en onder de lagen erboven"></span>
+        <button data-a="up" title="Omhoog">${icon('up', 18)}</button>
+        <button data-a="down" title="Omlaag">${icon('down', 18)}</button>
+      </div>
+      <div class="row2">
+        <span>Dekking</span><input type="range" data-a="opacity" min="0" max="100" value="${Math.round((doc.gridOpacity ?? 0.5) * 100)}">
+      </div>`;
+    const size = doc.grid || 1;
+    $('.name', li).textContent = `Raster (${size < 1 ? Math.round(size * 100) + ' cm' : size + ' m'})`;
+    for (const b of $$('button', li)) b.addEventListener('click', () => this.layerAction(GRID_ROW, b.dataset.a));
+    const r = $('input[type=range]', li);
+    r.addEventListener('input', () => {
+      this.store.begin();
+      this.store.doc.gridOpacity = Number(r.value) / 100;
+      this.store.touch();
+      if (!this.settings.grid) { this.settings.grid = true; this.persistSettings(); this.syncSettingsUI(); }
+      this.baseDirty = true;
+      this.requestRender();
+    });
+    r.addEventListener('change', () => { this.store.commit('layer'); this.renderLayers(); });
+    return li;
+  }
+
+  /** Raster aan of uit (toets G, instellingen, oogje in het lagenpaneel). */
+  toggleGrid(on = !this.settings.grid) {
+    this.settings.grid = on;
+    this.persistSettings();
+    this.syncSettingsUI();
+    this.renderLayers();
+    this.baseDirty = true;
+    this.requestRender();
+  }
+
+  /** Laag of raster een plek omhoog (+1) of omlaag (-1) in de stapel. */
+  moveLayerRow(row, dir) {
+    const rows = layerRows(this.store.doc);
+    const i = rows.indexOf(row);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= rows.length) return;
+    this.store.mutate((d) => {
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+      d.gridAt = rows.indexOf(GRID_ROW);
+      d.layers = rows.filter((r) => r !== GRID_ROW);
+    }, 'layer');
   }
 
   /** Alles op een laag selecteren, zodat de laag in zijn geheel te verschuiven, draaien of schalen is. */
@@ -1937,6 +1994,7 @@ class App {
     this.store.mutate((d) => {
       const idx = d.layers.findIndex((l) => l.id === d.activeLayer);
       d.layers.splice(idx + 1, 0, layer);
+      if (idx + 1 < (d.gridAt || 0)) d.gridAt++;
       d.activeLayer = layer.id;
     }, 'layer');
     this.toast('Nieuwe laag toegevoegd.');
@@ -1950,6 +2008,12 @@ class App {
 
   layerAction(id, action) {
     const doc = this.store.doc;
+    if (id === GRID_ROW) {
+      if (action === 'vis') this.toggleGrid();
+      else if (action === 'up') this.moveLayerRow(GRID_ROW, 1);
+      else if (action === 'down') this.moveLayerRow(GRID_ROW, -1);
+      return;
+    }
     const idx = doc.layers.findIndex((l) => l.id === id);
     if (idx < 0) return;
     switch (action) {
@@ -1963,16 +2027,17 @@ class App {
         this.store.mutate(() => { doc.layers[idx].locked = !doc.layers[idx].locked; }, 'layer');
         break;
       case 'up':
-        if (idx < doc.layers.length - 1) this.store.mutate(() => { const [l] = doc.layers.splice(idx, 1); doc.layers.splice(idx + 1, 0, l); }, 'layer');
+        this.moveLayerRow(doc.layers[idx], 1);
         break;
       case 'down':
-        if (idx > 0) this.store.mutate(() => { const [l] = doc.layers.splice(idx, 1); doc.layers.splice(idx - 1, 0, l); }, 'layer');
+        this.moveLayerRow(doc.layers[idx], -1);
         break;
       case 'del':
         if (doc.layers.length === 1) { this.toast('De laatste laag kan niet worden verwijderd.'); return; }
         if (doc.layers[idx].items.length && !confirm(`Laag "${doc.layers[idx].name}" met ${doc.layers[idx].items.length} elementen verwijderen?`)) return;
         this.store.mutate(() => {
           doc.layers.splice(idx, 1);
+          if (idx < (doc.gridAt || 0)) doc.gridAt--;
           if (doc.activeLayer === id) doc.activeLayer = doc.layers[Math.max(0, idx - 1)].id;
         }, 'layer');
         break;
@@ -3035,6 +3100,7 @@ class App {
       input.addEventListener('change', () => {
         this.settings[input.dataset.setting] = input.checked;
         this.persistSettings();
+        if (input.dataset.setting === 'grid') this.renderLayers();
         this.baseDirty = true;
         this.renderOptions();
         this.requestRender();
@@ -3239,6 +3305,7 @@ class App {
     layer.items.push(item);
     this.store.mutate((doc) => {
       doc.layers.unshift(layer);
+      doc.gridAt = (doc.gridAt || 0) + 1; // kaart onder het raster
       if (!lock) doc.activeLayer = layer.id;
     }, 'underlay');
     this.cam.fitBox({ minX: center[0] - widthM / 2, minY: center[1] - heightM / 2, maxX: center[0] + widthM / 2, maxY: center[1] + heightM / 2 }, this.width, this.height, 30);
@@ -3533,6 +3600,7 @@ function sourceLayer(doc, source, name) {
     if (k >= 0 && k < order.indexOf(source)) idx = Math.max(idx, i + 1);
   }
   doc.layers.splice(idx, 0, layer);
+  if (idx < (doc.gridAt || 0)) doc.gridAt++;
   return layer;
 }
 
@@ -3671,4 +3739,14 @@ function mergePolygon(i) {
 function renewGroups(items) {
   const map = {};
   for (const c of items) if (c.gid) c.gid = map[c.gid] ||= uid();
+}
+
+/** Markering voor het raster in de lagenstapel. */
+const GRID_ROW = { grid: true };
+
+/** Lagen van onder naar boven, met het raster op zijn plek ertussen. */
+function layerRows(doc) {
+  const rows = [...doc.layers];
+  rows.splice(Math.max(0, Math.min(rows.length, doc.gridAt || 0)), 0, GRID_ROW);
+  return rows;
 }

@@ -65,8 +65,8 @@ export class Store {
   }
 
   snapshot() {
-    const { layers, activeLayer, scale, grid, name, planting } = this.doc;
-    return JSON.stringify({ layers, activeLayer, scale, grid, name, planting: planting || null });
+    const { layers, activeLayer, scale, grid, name, planting, gridAt, gridOpacity } = this.doc;
+    return JSON.stringify({ layers, activeLayer, scale, grid, name, planting: planting || null, gridAt: gridAt || 0, gridOpacity: gridOpacity ?? 0.5 });
   }
 
   restore(snap) {

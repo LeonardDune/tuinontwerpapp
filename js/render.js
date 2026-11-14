@@ -17,7 +17,7 @@ function getLayerCanvas(w, h) {
 }
 
 /**
- * opts: { doc, cam, width, height (CSS px), dpr, background, hideItems:Set, paperColor, grid (rastermaat, of leeg) }
+ * opts: { doc, cam, width, height (CSS px), dpr, background, hideItems:Set, paperColor, grid ({ size, at: aantal lagen eronder, opacity }, of leeg) }
  */
 export function renderScene(ctx, opts) {
   const { doc, cam, width, height, dpr } = opts;
@@ -27,17 +27,21 @@ export function renderScene(ctx, opts) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
-  // raster op het papier, onder alle lagen (dichte vlakken dekken het af)
-  if (opts.grid) {
-    renderGrid(ctx, cam, width, height, dpr, opts.grid);
+  // raster: een eigen laag tussen de andere lagen (grid = { size, at, opacity })
+  const grid = opts.grid ? (typeof opts.grid === 'number' ? { size: opts.grid, at: 0, opacity: 0.5 } : opts.grid) : null;
+  const gridAt = grid ? Math.max(0, Math.min(doc.layers.length, grid.at || 0)) : -1;
+  const drawGridHere = () => {
+    renderGrid(ctx, cam, width, height, dpr, grid.size || 1, grid.opacity ?? 0.5);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
-  }
+  };
 
   const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', paper: opts.paperColor || opts.background || '#fbfaf6', ...plantContext(doc) };
   const hide = opts.hideItems;
 
-  for (const layer of doc.layers) {
+  for (let li = 0; li < doc.layers.length; li++) {
+    const layer = doc.layers[li];
+    if (li === gridAt) drawGridHere();
     if (!layer.visible) continue;
     const useBuffer = layer.opacity < 1;
     let g = ctx;
@@ -66,6 +70,7 @@ export function renderScene(ctx, opts) {
       ctx.globalAlpha = 1;
     }
   }
+  if (gridAt >= doc.layers.length) drawGridHere();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -111,7 +116,8 @@ export function gridStepFor(zoom, gridSize = 1) {
 }
 
 /** Raster in meters, adaptief aan de zoom. */
-export function renderGrid(ctx, cam, width, height, dpr, gridSize = 1) {
+export function renderGrid(ctx, cam, width, height, dpr, gridSize = 1, strength = 0.5) {
+  if (strength <= 0) return;
   const step = gridStepFor(cam.zoom, gridSize);
   const major = step * 5;
   const corners = [[0, 0], [width, 0], [width, height], [0, height]].map((p) => cam.toWorld(p));
@@ -136,9 +142,9 @@ export function renderGrid(ctx, cam, width, height, dpr, gridSize = 1) {
     ctx.stroke();
   };
   ctx.lineWidth = px;
-  ctx.strokeStyle = 'rgba(70, 110, 140, 0.10)';
+  ctx.strokeStyle = `rgba(70, 110, 140, ${Math.min(1, 0.2 * strength).toFixed(3)})`;
   drawLines(false);
-  ctx.strokeStyle = 'rgba(70, 110, 140, 0.22)';
+  ctx.strokeStyle = `rgba(70, 110, 140, ${Math.min(1, 0.44 * strength).toFixed(3)})`;
   drawLines(true);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
