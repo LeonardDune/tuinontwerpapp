@@ -674,6 +674,7 @@ function drawImage(g, item, rc) {
   g.save();
   g.translate(item.x, item.y);
   g.rotate(item.rot || 0);
+  if (item.mirror) g.scale(-1, 1);
   if (img) {
     g.imageSmoothingQuality = 'high';
     g.drawImage(img, -item.w / 2, -item.h / 2, item.w, item.h);
@@ -822,6 +823,50 @@ export function transformItem(item, m, s, r) {
       item.x = c[0]; item.y = c[1];
       item.size *= s;
       item.rot = (item.rot || 0) + r;
+      break;
+    }
+  }
+  invalidate(item);
+}
+
+/**
+ * Spiegel een item in de lijn door c met richting phi (radialen). Stencils en afbeeldingen krijgen
+ * een gespiegelde tekening (mirror) en een aangepaste draaiing; tekst blijft leesbaar.
+ */
+export function mirrorItem(item, c, phi) {
+  const c2 = Math.cos(2 * phi), s2 = Math.sin(2 * phi);
+  const tp = (p) => {
+    const x = p[0] - c[0], y = p[1] - c[1];
+    const q = [c[0] + x * c2 + y * s2, c[1] + x * s2 - y * c2];
+    return p.length > 2 ? [q[0], q[1], ...p.slice(2)] : q;
+  };
+  switch (item.type) {
+    case 'stroke':
+    case 'shape':
+      item.points = item.points.map(tp);
+      if (item.hatchRot != null) item.hatchRot = 2 * phi - item.hatchRot;
+      break;
+    case 'dim':
+      if (item.kind === 'area') break;
+      item.a = tp(item.a);
+      item.b = tp(item.b);
+      if (item.offset) item.offset = -item.offset;
+      break;
+    case 'stencil':
+    case 'image': {
+      const q = tp([item.x, item.y]);
+      item.x = q[0]; item.y = q[1];
+      // R(2φ)·diag(1,−1)·R(rot) = R(2φ − rot + π)·diag(−1,1): draaiing aanpassen en de tekening spiegelen
+      item.rot = 2 * phi - (item.rot || 0) + Math.PI;
+      item.rot = Math.atan2(Math.sin(item.rot), Math.cos(item.rot));
+      item.mirror = !item.mirror;
+      if (item.wallSide) item.wallSide = -item.wallSide;
+      break;
+    }
+    case 'plant':
+    case 'text': {
+      const q = tp([item.x, item.y]);
+      item.x = q[0]; item.y = q[1];
       break;
     }
   }

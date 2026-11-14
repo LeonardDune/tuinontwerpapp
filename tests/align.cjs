@@ -76,6 +76,33 @@ const R = (id, x0, y0, x1, y1, extra = {}) => ({ type: 'shape', id, kind: 'polyg
   assert(near(ss.w, 3) && near(ss.h, 1.5), 'zelfde maat (3 × 1,5 m)');
   assert(near((await pts('A'))[1][0], 3), 'het eerst geselecteerde blijft zoals het is');
 
+  console.log('Spiegelen');
+  await setup([
+    { type: 'shape', id: 'Lv', kind: 'polygon', points: [[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3]], color: '#333', width: 0.03 },
+    { type: 'stencil', id: 'St', symbol: 'bank', x: 2.5, y: 2.5, w: 1, h: 0.5, rot: 0.3, color: '#7a6a58' },
+    { type: 'text', id: 'Tx', text: 'Terras', x: 0.5, y: 2, size: 0.3, color: '#222' },
+  ], ['Lv', 'St', 'Tx']);
+  assert(await page.locator('#selection-bar [data-flip]').count() === 2, 'knoppen horizontaal en verticaal spiegelen');
+  await page.click('#selection-bar [data-flip="h"]');
+  const lv = await pts('Lv');
+  const ex = lv.map((p) => p[0]);
+  const st = await page.evaluate(() => window.app.store.findItem('St').item);
+  const tx = await page.evaluate(() => window.app.store.findItem('Tx').item);
+  // selectie loopt van x = 0 tot ca. 3,05 (bank steekt iets uit); L-vorm: de poot staat nu rechts
+  const mx = Math.max(...ex);
+  assert(near(lv[4][0], mx - 1) && near(lv[0][0], mx) && near(lv[2][1], 1), 'L-vorm horizontaal gespiegeld (de poot staat nu rechts)');
+  assert(st.mirror === true && Math.abs(Math.sin(st.rot - (Math.PI - 0.3) + Math.PI)) < 1e-9 && !tx.rot, 'stencil gespiegeld (en draaiing gespiegeld), tekst blijft leesbaar');
+  await page.click('#selection-bar [data-flip="v"]');
+  const lv2 = await pts('Lv');
+  assert(near(Math.min(...lv2.map((p) => p[1])), Math.min(...lv.map((p) => p[1]))) && near(lv2[2][1], Math.max(...lv.map((p) => p[1])) + Math.min(...lv.map((p) => p[1])) - 1), 'verticaal gespiegeld (boven ↕ onder)');
+  await page.click('#btn-undo'); await page.click('#btn-undo');
+  assert(JSON.stringify(await pts('Lv')) === JSON.stringify([[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3]]), 'ongedaan maken: terug naar het origineel');
+
+  await setup([{ type: 'shape', id: 'W', kind: 'line', wall: true, points: [[0, 0], [5, 0], [5, 4]], color: '#2f2f2f', width: 0.3 }, { type: 'stencil', id: 'D', symbol: 'deur', x: 1.5, y: 0, w: 0.93, h: 0.3, rot: 0, color: '#2f2f2f', wallId: 'W', wallSeg: 0, wallT: 0.3, wallSide: 1 }], ['W']);
+  await page.click('#selection-bar [data-flip="h"]');
+  const door = await page.evaluate(async () => { const { distToSegment } = await import('./js/geom.js'); const a = window.app; const w = a.store.findItem('W').item, d = a.store.findItem('D').item; return { dist: distToSegment([d.x, d.y], w.points[0], w.points[1]), x: d.x, wx: w.points[0][0] }; });
+  assert(door.dist < 1e-6 && near(door.x, 3.5), `deur blijft in de gespiegelde muur (x = ${door.x.toFixed(2)})`);
+
   console.log('Gedraaide vakken: uitlijnen in hun eigen richting');
   const rot = (ps, deg) => ps.map(([x, y]) => { const r = deg * Math.PI / 180; return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r)]; });
   const RR = (id, x0, y0, x1, y1) => R(id, 0, 0, 0, 0, { points: rot([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], 25) });

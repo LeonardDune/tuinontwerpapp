@@ -41,6 +41,8 @@ const P = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   up: '<path d="m6 15 6-6 6 6"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
+  flipH: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7 4 12l5 5V7ZM15 7l5 5-5 5V7Z"/>',
+  flipV: '<path d="M3 12h18" stroke-dasharray="2 2"/><path d="M7 9l5-5 5 5H7ZM7 15l5 5 5-5H7Z"/>',
   alignLeft: '<path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/>',
   alignCenterH: '<path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/>',
   alignRight: '<path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/>',

@@ -11,7 +11,7 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS, itemOutline } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS, itemOutline, mirrorItem } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -2189,6 +2189,7 @@ class App {
       if (this.alignUnits(found).length > 2) html += `<button type="button" data-align="distH" title="Horizontaal gelijk verdelen (gelijke tussenruimte)">${icon('distH', 20)}</button><button type="button" data-align="distV" title="Verticaal gelijk verdelen (gelijke tussenruimte)">${icon('distV', 20)}</button>`;
       html += '</span>';
     }
+    html += `<span class="aligns"><button type="button" data-flip="h" title="Horizontaal spiegelen (links ↔ rechts)">${icon('flipH', 20)}</button><button type="button" data-flip="v" title="Verticaal spiegelen (boven ↕ onder)">${icon('flipV', 20)}</button></span>`;
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
     html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
@@ -2201,6 +2202,7 @@ class App {
     bar.innerHTML = html;
 
     for (const b of bar.querySelectorAll('[data-align]')) b.addEventListener('click', () => this.alignSelection(b.dataset.align));
+    for (const b of bar.querySelectorAll('[data-flip]')) b.addEventListener('click', () => this.flipSelection(b.dataset.flip));
     for (const b of bar.querySelectorAll('[data-same]')) b.addEventListener('click', () => this.sameSize(b.dataset.same));
     for (const b of bar.querySelectorAll('[data-sel]')) {
       if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
@@ -2326,6 +2328,31 @@ class App {
       byGid.get(g).push(f.item);
     }
     return units;
+  }
+
+  /** Selectie spiegelen: h = links ↔ rechts, v = boven ↕ onder (in de richting van het selectiekader). */
+  flipSelection(mode) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (!found.length) return;
+    if (found.some((f) => f.layer.locked)) { this.toast('Een van de elementen staat op een vergrendelde laag.'); return; }
+    const items = found.map((f) => f.item);
+    const th = selectionAngle(items, this.cam);
+    const ext = extentsOf(items.flatMap((i) => itemOutline(i) || []), th);
+    const c = toWorld((ext.u0 + ext.u1) / 2, (ext.v0 + ext.v1) / 2, th);
+    // links-rechts spiegelen = in de lijn loodrecht op de breedterichting
+    const phi = mode === 'h' ? th + Math.PI / 2 : th;
+    this.store.mutate((doc) => {
+      const beds = new Set(items.filter((i) => isBed(i)).map((i) => i.id));
+      const followers = beds.size ? doc.layers.flatMap((l) => l.items.filter((i) => isGroup(i) && beds.has(i.bedId) && !this.selection.has(i.id))) : [];
+      const walls = new Set(items.filter((i) => i.wall).map((i) => i.id));
+      // deuren en ramen in een gespiegelde muur gaan mee, ook als ze zelf niet geselecteerd zijn
+      const doors = walls.size ? doc.layers.flatMap((l) => l.items.filter((i) => i.type === 'stencil' && i.wallId && walls.has(i.wallId) && !this.selection.has(i.id))) : [];
+      for (const i of [...items, ...followers, ...doors]) mirrorItem(i, c, phi);
+      const loose = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening && !(i.wallId && walls.has(i.wallId)));
+      if (walls.size || loose.length) syncOpenings(doc, walls, loose, 0.05);
+    }, 'flip');
+    this.toast(mode === 'h' ? 'Horizontaal gespiegeld.' : 'Verticaal gespiegeld.', 1500);
+    this.updateSelectionUI();
   }
 
   /** Andere geselecteerde elementen dezelfde breedte (w), diepte (h) of maat (both) geven als het eerst geselecteerde. */
