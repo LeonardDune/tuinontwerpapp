@@ -83,6 +83,32 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.selectOption('#selection-bar select[data-k="hatch"]', 'gras');
   assert(!(await page.evaluate(() => window.app.store.findItem('W').item.bond)), 'ander materiaal kiezen haalt het verband weg');
 
+  console.log('Gereedschap Verharden en paneel Verharding');
+  await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    a.settings.bondLibrary = { mijn1: { name: 'Oprit antraciet', bond: { type: 'keper', l: 0.21, w: 0.105, joint: 0.003, color: '#4a4d52', jointColor: '#6a6a66', finish: 'glad' }, border: 'rollaag' } };
+    a.openDoc(newDoc('Verharden'), true); a.cam.zoom = 70; a.cam.rot = 0; a.cam.x = 120; a.cam.y = 150; a.cameraChanged();
+    a.guides.clear(); a.syncGuideButtons(); a.settings.snap = false; a.settings.grid = false; a.state.paveShape = 'rechthoek'; a.state.paveBlock = null;
+  });
+  await page.click('#btn-paving');
+  assert(await page.isVisible('#pave-panel') && /Oprit antraciet/.test(await page.locator('#pave-panel').innerText()) && /Visgraat/.test(await page.locator('#pave-panel').innerText()), 'paneel Verharding toont mijn bouwstenen en de klinkerverbanden');
+  await page.click('#pave-panel [data-list="my"] li.role');
+  assert(await page.evaluate(() => window.app.state.tool === 'pave' && window.app.state.paveBlock === 'my:mijn1'), 'bouwsteen kiezen activeert het gereedschap Verharden');
+  const box = await page.locator('#canvas').boundingBox();
+  const SS = (x, y) => page.evaluate(([x, y]) => window.app.cam.toScreen([x, y]), [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);
+  { const [x0, y0] = await SS(0, 0), [x1, y1] = await SS(5, 3); await page.mouse.move(x0, y0); await page.mouse.down(); await page.mouse.move(x1, y1, { steps: 6 }); await page.mouse.up(); }
+  let vak = await page.evaluate(() => window.app.store.doc.layers[0].items.find((i) => i.bond));
+  assert(vak && vak.hatch === 'bond' && vak.bond.type === 'keper' && vak.bondName === 'Oprit antraciet' && vak.border === 'rollaag' && vak.rect, 'verhardingsvak getekend met de gekozen bouwsteen (met rand)');
+  await page.evaluate((id) => { const a = window.app; a.setTool('lasso'); a.setSelection(new Set([id])); }, vak.id);
+  assert(/Verharding/.test(await page.locator('#selection-bar .count').innerText()) && /15 m²/.test(await page.locator('#selection-bar').innerText()), 'balk: "Verharding" met oppervlakte en aantal stenen');
+  await page.fill('#selection-bar input[data-k="vakName"]', 'Oprit');
+  await page.press('#selection-bar input[data-k="vakName"]', 'Enter');
+  const ov = await page.locator('#pave-panel section').first().innerText();
+  assert(/Oprit antraciet/.test(ov) && /Oprit/.test(ov) && /15 m²/.test(ov) && /st\./.test(ov), `overzicht: ${ov.replace(/\n/g, ' ').slice(0, 90)}`);
+  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.render(); });
+  await page.screenshot({ path: path.join(OUT, 'verharding-paneel.png') });
+  await page.evaluate(() => { window.app.pavePanel.close(); window.app.settings.bondLibrary = {}; });
+
   console.log('Losse stenen');
   const st = await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js'); const { STENCILS } = await import('./js/stencils.js');

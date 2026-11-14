@@ -373,6 +373,7 @@ function drawShape(g, item, rc) {
   if (item.wall) return drawWall(g, item, rc);
   if (item.group) return drawGroup(g, item, rc);
   if (isBed(item)) return drawBed(g, item, rc);
+  let nameLabel = '';
   g.save();
   tracePath(g, item);
   const closed = item.kind === 'polygon' || item.kind === 'circle';
@@ -384,6 +385,7 @@ function drawShape(g, item, rc) {
     // verband als bouwsteen: berekend uit steenmaat, voeg, kleur en afwerking (dicht)
     const pat = bondPattern(g, item.bond, hatchAngle(item), item.points[0]);
     if (pat) { g.save(); g.fillStyle = pat; g.fill(); g.restore(); }
+    nameLabel = (item.name || '').trim();
   } else if (closed && item.hatch && item.hatch !== 'none') {
     const hd = HATCHES[item.hatch];
     if ((hd?.bg || item.matColor) && !item.fill) {
@@ -417,6 +419,7 @@ function drawShape(g, item, rc) {
     g.stroke();
   }
   g.restore();
+  if (nameLabel) drawLabel(g, nameLabel, item.kind === 'circle' ? item.points[0] : polygonCentroid(item.points), rc, false, 2.4, '#1d2b36');
   if (item.dims) drawShapeDims(g, item, rc);
 }
 

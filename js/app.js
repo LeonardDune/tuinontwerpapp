@@ -25,7 +25,8 @@ import { SunPanel } from './sunpanel.js';
 import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool } from './select.js';
 import { syncOpenings } from './walls.js';
-import { PlantTool, newBed, newGroup, hasBeds } from './planttool.js';
+import { PlantTool, PaveTool, newBed, newGroup, hasBeds } from './planttool.js';
+import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
 import { PlantPanel } from './plantpanel.js';
 import {
   rolesMap, describeRole, ROLES as PLANT_ROLES, BED_TYPES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
@@ -118,6 +119,7 @@ class App {
       stencil: new StencilTool(this),
       calibrate: new CalibrateTool(this),
       plant: new PlantTool(this),
+      pave: new PaveTool(this),
       pan: new PanTool(this),
     };
 
@@ -133,6 +135,7 @@ class App {
     hydrateIcons();
     this.sun = new SunPanel(this);
     this.plantPanel = new PlantPanel(this);
+    this.pavePanel = new PavePanel(this);
     this.setupCanvas();
     this.setupInput();
     this.setupUI();
@@ -188,6 +191,7 @@ class App {
     $('#doc-name').value = doc.name;
     if (this.sun.active) { this.sun.render(); this.sun.onDocChange(); }
     this.plantPanel.refresh();
+    this.pavePanel.refresh();
     this.refreshAll();
     if (isNew) this.scheduleSave();
   }
@@ -217,6 +221,7 @@ class App {
     if ($('#doc-name').value !== this.store.doc.name) $('#doc-name').value = this.store.doc.name;
     this.sun.onDocChange();
     this.plantPanel.refresh();
+    this.pavePanel.refresh();
     this.scheduleSave();
   }
 
@@ -1155,7 +1160,7 @@ class App {
       return;
     }
     if (k === 'enter' && (this.state.tool === 'polygon' || this.state.tool === 'wall')) { this.tool.finishPolygon(); return; }
-    const map = { p: 'draw', b: 'plant', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area', w: 'wall' };
+    const map = { p: 'draw', b: 'plant', k: 'pave', e: 'eraser', l: 'lasso', m: 'dim', t: 'text', s: 'stencil', h: 'pan', v: 'area', w: 'wall' };
     if (map[k]) { this.setTool(map[k]); return; }
     if (k === 'r') { this.toggleGuide('ruler'); return; }
     if (k === 'g') { this.settings.grid = !this.settings.grid; this.persistSettings(); this.syncSettingsUI(); this.baseDirty = true; this.requestRender(); return; }
@@ -1229,6 +1234,7 @@ class App {
     $('#btn-layers').addEventListener('click', () => {
       $('#layers-panel').hidden = !$('#layers-panel').hidden;
       if (!$('#layers-panel').hidden && !$('#plant-panel').hidden) this.plantPanel.close();
+      if (!$('#layers-panel').hidden) this.pavePanel.close();
     });
     $('#btn-layers-close').addEventListener('click', () => { $('#layers-panel').hidden = true; });
     $('#btn-layer-add').addEventListener('click', () => this.addLayer());
@@ -1502,6 +1508,21 @@ class App {
       add(this.stencilOptions());
     } else if (t === 'plant') {
       add(this.plantOptions());
+    } else if (t === 'pave') {
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      const shp = this.state.paveShape || 'rechthoek';
+      seg.innerHTML = [['rechthoek', 'Rechthoek'], ['vrij', 'Vrij'], ['cirkel', 'Cirkel'], ['tik', 'Tik in ruimte']].map(([m, n]) => `<button type="button" data-s="${m}" class="${shp === m ? 'on' : ''}">${n}</button>`).join('');
+      for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.paveShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
+      add(seg);
+      const blk = this.paveBlock();
+      const chip = document.createElement('button');
+      chip.type = 'button'; chip.className = 'stencil-current'; chip.title = 'Bouwsteen kiezen in het paneel Verharding';
+      chip.appendChild(this.pavePanel.swatch(blk.bond, 30));
+      chip.append(` ${blk.name} ▾`);
+      chip.addEventListener('click', () => this.pavePanel.open());
+      add(chip);
+      add(this.hint(shp === 'tik' ? 'Tik in een ruimte tussen lijnen: het vak volgt die lijnen.' : 'Teken een verhardingsvak. Daarna pas je in de balk steenmaat, kleur, voeg en afwerking aan en geef je het vak een naam.'));
     } else if (t === 'calibrate') {
       add(this.hint('Trek een lijn over een bekende maat in de ondergrond (bijv. een gevel) en vul de werkelijke lengte in.'));
     } else if (t === 'pan') {
@@ -1985,6 +2006,7 @@ class App {
       if (i.wall) return i.fence ? (FENCES[i.fence]?.name || 'Hek') : 'Muur';
       if (isGroup(i)) return 'Groep';
       if (isBed(i)) return 'Plantvak';
+      if (i.type === 'shape' && i.hatch === 'bond' && i.bond) return 'Verharding';
       if (isRect(i)) return 'Rechthoek';
       if (i.type === 'shape') return { circle: 'Cirkel', polygon: 'Vorm', line: i.points.length === 2 ? 'Lijn' : 'Lijnstuk' }[i.kind] || 'Vorm';
       if (i.type === 'stencil') return STENCIL_MAP[i.symbol]?.name || 'Stencil';
@@ -2117,6 +2139,9 @@ class App {
         const cm = (v) => String(Math.round(v * 1000) / 10).replace('.', ',');
         const cur = STONE_SIZES.find((z) => Math.abs(z.l - Math.max(bd.l, bd.w)) < 1e-6 && Math.abs(z.w - Math.min(bd.l, bd.w)) < 1e-6);
         const groups = [...new Set(STONE_SIZES.map((z) => z.group))];
+        const ar = paveArea(it);
+        html += `<label class="pf" title="Naam van het verhardingsvak (staat in het vak op de tekening)">Naam<input data-k="vakName" class="wide" value="${escapeHtml(it.name || '')}" placeholder="bijv. Terras"></label>`;
+        html += `<span class="pinfo" title="Oppervlakte en geschat aantal stenen (zonder snijverlies)">${fmt(ar, ar < 100 ? 1 : 0)} m² · ca. ${stoneCount(bd, ar).toLocaleString('nl-NL')} st.</span>`;
         html += `<select data-k="bondType" title="Verband (legpatroon)">${Object.entries(BOND_TYPES).map(([k, v]) => `<option value="${k}" ${bd.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
         html += `<select data-k="bondSize" title="Steenmaat (standaardmaten)">${cur ? '' : '<option value="" selected>Eigen maat</option>'}${groups.map((gr) => `<optgroup label="${gr}">${STONE_SIZES.filter((z) => z.group === gr).map((z) => `<option value="${z.id}" ${cur === z ? 'selected' : ''}>${z.name}</option>`).join('')}</optgroup>`).join('')}</select>`;
         html += field('bondL', 'Steen', cm(Math.max(bd.l, bd.w)), '×') + field('bondW', '', cm(Math.min(bd.l, bd.w)), 'cm');
@@ -2255,6 +2280,14 @@ class App {
     }
   }
 
+  /** De gekozen bouwsteen voor het gereedschap Verharden: { name, bond, border?, lib? }. */
+  paveBlock() {
+    const m = /^(pre|my):(.+)$/.exec(this.state.paveBlock || '');
+    if (m && m[1] === 'my' && this.settings.bondLibrary?.[m[2]]) return { ...this.settings.bondLibrary[m[2]], lib: m[2] };
+    if (m && m[1] === 'pre' && BOND_PRESETS[m[2]]) return BOND_PRESETS[m[2]];
+    return BOND_PRESETS['k-half-waal'];
+  }
+
   /** Het verband van het geselecteerde vlak bewaren als eigen bouwsteen (voor alle tekeningen). */
   async saveBondBlock() {
     const it = this.store.findItem([...this.selection][0])?.item;
@@ -2268,8 +2301,9 @@ class App {
     this.settings.bondLibrary = lib;
     this.persistSettings();
     this.store.mutate(() => { it.bondName = name; it.bondLib = id; }, 'bond');
-    this.toast(`Bouwsteen "${name}" bewaard. Je vindt hem bij Mijn bouwstenen in de materiaallijst.`, 3500);
+    this.toast(`Bouwsteen "${name}" bewaard. Je vindt hem bij Mijn bouwstenen (paneel Verharding en de materiaallijst).`, 3500);
     this.updateSelectionUI();
+    this.pavePanel.refresh();
   }
 
   deleteBondBlock() {
@@ -2283,6 +2317,7 @@ class App {
     this.store.mutate(() => { delete it.bondLib; }, 'bond');
     this.toast(`Bouwsteen "${name}" verwijderd uit Mijn bouwstenen.`, 2500);
     this.updateSelectionUI();
+    this.pavePanel.refresh();
   }
 
   /** Selectie een klein stukje verschuiven; snel achter elkaar is één stap voor ongedaan maken. */
@@ -2491,6 +2526,7 @@ class App {
           }
           break;
         }
+        case 'vakName': { const v = String(raw).trim().slice(0, 60); for (const i of items) if (i.bond) { if (v) i.name = v; else delete i.name; } break; }
         case 'bondType': for (const i of items) if (i.bond && BOND_TYPES[raw]) { i.bond.type = raw; delete i.bondName; } break;
         case 'bondSize': { const z = STONE_SIZES.find((q) => q.id === raw); if (z) for (const i of items) if (i.bond) { i.bond.l = z.l; i.bond.w = z.w; delete i.bondName; } break; }
         case 'bondL': case 'bondW': {

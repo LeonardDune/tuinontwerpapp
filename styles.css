@@ -612,10 +612,16 @@ body.side-open .north-btn { right: 364px; }
 @media (max-width: 700px) { body.side-open .north-btn { right: 14px; top: auto; bottom: 120px; } .rot-info { min-width: 0; } }
 
 /* beplantingspaneel: schets per type plantvak */
-#plant-panel ul.sk { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
-#plant-panel ul.sk li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-#plant-panel ul.sk li i { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.2); }
-#plant-panel ul.sk li small { color: var(--muted); }
-#plant-panel ul.sk li b { margin-left: auto; font-weight: 600; }
+.side-panel ul.sk { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
+.side-panel ul.sk li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.side-panel ul.sk li i { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.2); }
+.side-panel ul.sk li small { color: var(--muted); }
+.side-panel ul.sk li b { margin-left: auto; font-weight: 600; }
 .props-bar input[data-k].wide { width: 150px; text-align: left; }
 .props-bar input[data-k].wide::placeholder { color: rgba(255, 255, 255, 0.45); }
+
+/* paneel Verharding */
+#pave-panel ul.sk li span { flex: 1; min-width: 0; }
+#pave-panel ul.sk li b { margin-left: 0; }
+#pave-panel .role canvas { border-radius: 6px; border: 1px solid rgba(0,0,0,.15); flex: none; }
+.stencil-current canvas { border-radius: 5px; vertical-align: middle; }

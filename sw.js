@@ -1,5 +1,5 @@
 // Service worker: de app werkt offline. Kaarttegels en adreszoeken gaan altijd via het netwerk.
-const VERSION = 'tuinontwerp-v64';
+const VERSION = 'tuinontwerp-v65';
 const SHELL = [
   './',
   'index.html',
@@ -41,7 +41,7 @@ const SHELL = [
   'js/storage.js',
   'js/tools.js',
   'js/units.js',
-  'js/version.js', 'js/smartguides.js', 'js/union.js', 'js/fences.js', 'js/bonds.js',
+  'js/version.js', 'js/smartguides.js', 'js/union.js', 'js/fences.js', 'js/bonds.js', 'js/pavepanel.js',
 ];
 
 self.addEventListener('install', (event) => {

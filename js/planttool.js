@@ -55,6 +55,13 @@ export class PlantTool extends Tool {
     return BED_TYPES[t] ? { btype: t } : {};
   }
 
+  /** Nieuw vak van dit gereedschap (plantvak; het verhardingsgereedschap maakt een verhardingsvak). */
+  makeVak(points, kind, scale, extra) {
+    return newBed(points, kind, this.mix(false), scale, { ...extra, ...this.btype() });
+  }
+
+  vakAt() { return false; }
+
   get roles() {
     return this.app.store.doc.planting?.roles || [];
   }
@@ -180,8 +187,10 @@ export class PlantTool extends Tool {
         this.app.toast(res.error);
       } else if (existing && Math.abs(area(shapePolygon(existing), 'polygon') - area(res.points, res.kind)) / area(res.points, res.kind) < 0.05) {
         this.app.toast('Hier ligt al een plantvak.');
+      } else if (this.vakAt(tapW, res)) {
+        this.app.toast('Hier ligt al een verhardingsvak.');
       } else {
-        item = newBed(res.points, res.kind, this.mix(false), scale, this.btype());
+        item = this.makeVak(res.points, res.kind, scale, {});
       }
     } else if (this.preview) {
       item = { ...this.preview, x: r4(this.preview.x), y: r4(this.preview.y) };
@@ -198,7 +207,7 @@ export class PlantTool extends Tool {
             const bed = pointInPolygon(c, shapePolygon(this.bed)) ? this.bed : (bedAt(doc, c) || this.bed);
             item = newGroup(points, geo.kind, this.mix(), bed.id, scale, extra);
           } else {
-            item = newBed(points, geo.kind, this.mix(false), scale, { ...extra, ...this.btype() });
+            item = this.makeVak(points, geo.kind, scale, extra);
           }
         }
       }
@@ -233,7 +242,7 @@ export class PlantTool extends Tool {
     const doc = this.app.store.doc;
     const tmp = mode === 'groep' && this.bed
       ? newGroup(geo.points, geo.kind, this.mix(), this.bed.id, doc.scale)
-      : newBed(geo.points, geo.kind, this.mix(false), doc.scale, this.btype());
+      : this.makeVak(geo.points, geo.kind, doc.scale, geo.rect ? { rect: true } : {});
     tmp.id = 'voorbeeld';
     const ctx = mode === 'groep' && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };
     drawItem(g, tmp, ctx);
@@ -252,5 +261,27 @@ export class PlantTool extends Tool {
     } else {
       drawBubble(ctx, formatArea(Math.abs(polygonArea(geo.points))), this.curS[0], this.curS[1]);
     }
+  }
+}
+
+
+/** Verharden: werkt als Beplanten, maar tekent een verhardingsvak met de gekozen bouwsteen (verband). */
+export class PaveTool extends PlantTool {
+  mode() { return 'vak'; }
+
+  shape() { return this.app.state.paveShape || 'rechthoek'; }
+
+  makeVak(points, kind, scale, extra) {
+    const blk = this.app.paveBlock();
+    return {
+      type: 'shape', id: uid(), kind, points, color: '#4a4640', width: paperToWorld(0.25, scale), ...extra,
+      hatch: 'bond', bond: { ...blk.bond }, bondName: blk.name, ...(blk.lib ? { bondLib: blk.lib } : {}),
+      ...(blk.border && kind === 'polygon' ? { border: blk.border } : {}),
+    };
+  }
+
+  vakAt(w, res) {
+    const a = Math.abs(polygonArea(res.points));
+    return this.app.store.doc.layers.some((l) => l.visible && l.items.some((it) => it.bond && it.kind === 'polygon' && pointInPolygon(w, it.points) && Math.abs(Math.abs(polygonArea(it.points)) - a) / a < 0.05));
   }
 }
