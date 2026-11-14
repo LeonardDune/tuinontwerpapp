@@ -994,7 +994,7 @@ export class StencilTool extends Tool {
       ...(def.defaults || {}),
     };
     // natuursteen: elke steen een eigen vorm
-    if (def.reshape) item.seed = Math.floor(Math.random() * 100000);
+    if (def.reshape || def.stone) item.seed = Math.floor(Math.random() * 100000);
     const hh = this.app.state.stencilHeights?.[def.id];
     if (hh != null) item.height = hh;
     return item;

@@ -2,6 +2,7 @@
 // rond (0, 0) met breedte w en hoogte h. lw is de lijndikte in meters.
 
 import { drawFence } from './fences.js';
+import { STONE_SIZES, STONE_COLORS, paintStone } from './bonds.js';
 
 const TAU = Math.PI * 2;
 
@@ -618,7 +619,7 @@ export function padStones(w, h, gapIn, seed) {
   return out;
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stenen, tegels en klinkers', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -1706,6 +1707,20 @@ export const STENCILS = [
       g.globalAlpha = 1;
     },
   },
+  // --- Stenen, tegels en klinkers: losse stenen op ware grootte (maat, kleur en afwerking instelbaar) ---
+  ...STONE_SIZES.map((sz, k) => ({
+    id: `steen_${sz.id}`, name: sz.name, cat: 'Stenen, tegels en klinkers', round: false, w: sz.l, h: sz.w, stone: true,
+    color: sz.group === 'Klinkers' ? STONE_COLORS.rood : sz.group === 'Kasseien en koppen' ? STONE_COLORS.grijs : sz.group === 'Banden' ? STONE_COLORS.grijs : sz.group === 'Stroken en planken' ? STONE_COLORS.taupe : STONE_COLORS.beige,
+    defaults: { finish: sz.group === 'Klinkers' || sz.group === 'Kasseien en koppen' ? 'getrommeld' : 'glad' },
+    draw(g, w, h, c, lw, paper, it) {
+      paintStone(g, -w / 2, -h / 2, w, h, c, it?.finish || 'glad', (it?.seed ?? k) + 1);
+      g.save(); g.lineWidth = lw * 0.7; g.strokeStyle = fillOverride.paper || 'rgba(40,36,32,0.75)';
+      g.beginPath();
+      const d = Math.min(w, h);
+      if ((it?.finish === 'getrommeld' || it?.finish === 'gemeleerd') && g.roundRect) g.roundRect(-w / 2, -h / 2, w, h, d * 0.12); else g.rect(-w / 2, -h / 2, w, h);
+      g.stroke(); g.restore();
+    },
+  })),
   // --- Stapstenen en losse flagstones (c = kleur van de steen; 'Andere vorm' geeft een nieuwe vorm) ---
   {
     id: 'flagstone', name: 'Flagstone, middel (ca. 60 cm)', cat: 'Stapstenen', round: false, w: 0.6, h: 0.45, color: '#c9c0ae', reshape: true,

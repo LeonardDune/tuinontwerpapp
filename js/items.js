@@ -3,6 +3,7 @@
 import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern, HATCHES } from './patterns.js';
 import { drawFence } from './fences.js';
+import { bondPattern } from './bonds.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
 import {
@@ -379,7 +380,11 @@ function drawShape(g, item, rc) {
     g.fillStyle = hexA(item.fill, item.fillAlpha ?? 0.35);
     g.fill();
   }
-  if (closed && item.hatch && item.hatch !== 'none') {
+  if (closed && item.hatch === 'bond' && item.bond) {
+    // verband als bouwsteen: berekend uit steenmaat, voeg, kleur en afwerking (dicht)
+    const pat = bondPattern(g, item.bond, hatchAngle(item), item.points[0]);
+    if (pat) { g.save(); g.fillStyle = pat; g.fill(); g.restore(); }
+  } else if (closed && item.hatch && item.hatch !== 'none') {
     const hd = HATCHES[item.hatch];
     if ((hd?.bg || item.matColor) && !item.fill) {
       // kleur van het materiaal (klinkerrood, grind, gras …). Dicht: wat eronder ligt is niet te zien

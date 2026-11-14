@@ -6,6 +6,7 @@ import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
+import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, describeBond } from './bonds.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
@@ -2082,6 +2083,14 @@ class App {
       const pl = padLayout(it.w, it.h, it.gap);
       html += field('gap', 'Tussenruimte', String(Math.round(pl.gap * 100)), 'cm') + `<span class="pinfo">${pl.n} stenen</span>`;
     }
+    const stones = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.stone);
+    if (stones.length) {
+      const s0 = stones[0];
+      const curS = STONE_SIZES.find((z) => Math.abs(z.l - Math.max(s0.w, s0.h)) < 1e-6 && Math.abs(z.w - Math.min(s0.w, s0.h)) < 1e-6);
+      const groups = [...new Set(STONE_SIZES.map((z) => z.group))];
+      html += `<select data-k="stoneSize" title="Standaardmaat">${curS ? '' : '<option value="" selected>Eigen maat</option>'}${groups.map((gr) => `<optgroup label="${gr}">${STONE_SIZES.filter((z) => z.group === gr).map((z) => `<option value="${z.id}" ${curS === z ? 'selected' : ''}>${z.name}</option>`).join('')}</optgroup>`).join('')}</select>`;
+      html += `<select data-k="finish" title="Afwerking van de steen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(s0.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+    }
     if (items.some((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.reshape)) html += `<button type="button" class="tgl" data-act="reshape" title="Een andere, willekeurige vorm voor deze steen(en)">Andere vorm</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.swing) html += `<button type="button" class="tgl" data-act="mirror" title="Scharnier naar de andere kant">Spiegelen</button>`;
     // begroeiing van pergola's en de soort klimplant
@@ -2095,9 +2104,30 @@ class App {
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
       html += `<button type="button" class="tgl ${closed[0].fill ? 'on' : ''}" data-act="fill" title="Vulling aan/uit">Vulling</button>`;
-      html += `<select data-k="hatch" title="Materiaal / arcering">${hatchOptions(closed[0].hatch || 'none')}</select>`;
+      const c0 = closed[0];
+      const lib = this.settings.bondLibrary || {};
+      const bondSel = c0.hatch === 'bond' && c0.bond ? `<option value="" selected>Verband: ${escapeHtml(c0.bondName || describeBond(c0.bond))}</option>` : '';
+      const bondOpts = (Object.keys(lib).length ? `<optgroup label="Mijn bouwstenen">${Object.entries(lib).map(([k, v]) => `<option value="bs:my:${k}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>` : '')
+        + `<optgroup label="Bouwstenen: klinkerverbanden">${Object.entries(BOND_PRESETS).map(([k, v]) => `<option value="bs:pre:${k}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>`;
+      html += `<select data-k="hatch" title="Materiaal, arcering of verband (bouwsteen)">${bondSel}${hatchOptions(c0.hatch === 'bond' ? '' : c0.hatch || 'none')}${bondOpts}</select>`;
       const polys = closed.filter((i) => i.kind === 'polygon' && ((i.hatch && i.hatch !== 'none') || i.border));
       if (polys.length) html += `<select data-k="border" title="Rand langs de binnenkant (rollaag, kasseien, opsluitband)">${Object.entries(BORDERS).map(([k, v]) => `<option value="${k}" ${(polys[0].border || 'geen') === k ? 'selected' : ''}>${k === 'geen' ? 'Rand: geen' : v.name}</option>`).join('')}</select>`;
+      if (it && it.hatch === 'bond' && it.bond) {
+        const bd = it.bond;
+        const cm = (v) => String(Math.round(v * 1000) / 10).replace('.', ',');
+        const cur = STONE_SIZES.find((z) => Math.abs(z.l - Math.max(bd.l, bd.w)) < 1e-6 && Math.abs(z.w - Math.min(bd.l, bd.w)) < 1e-6);
+        const groups = [...new Set(STONE_SIZES.map((z) => z.group))];
+        html += `<select data-k="bondType" title="Verband (legpatroon)">${Object.entries(BOND_TYPES).map(([k, v]) => `<option value="${k}" ${bd.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+        html += `<select data-k="bondSize" title="Steenmaat (standaardmaten)">${cur ? '' : '<option value="" selected>Eigen maat</option>'}${groups.map((gr) => `<optgroup label="${gr}">${STONE_SIZES.filter((z) => z.group === gr).map((z) => `<option value="${z.id}" ${cur === z ? 'selected' : ''}>${z.name}</option>`).join('')}</optgroup>`).join('')}</select>`;
+        html += field('bondL', 'Steen', cm(Math.max(bd.l, bd.w)), '×') + field('bondW', '', cm(Math.min(bd.l, bd.w)), 'cm');
+        html += field('bondJoint', 'Voeg', String(Math.round((bd.joint ?? 0.003) * 10000) / 10).replace('.', ','), 'mm');
+        html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-k="bondColor" value="${bd.color || '#a8503c'}"></label>`;
+        html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
+        html += `<select data-k="bondFinish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(bd.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+        html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
+        html += `<button type="button" class="tgl" data-act="saveBond" title="Dit verband (met steenmaat, kleur, voeg, afwerking en rand) bewaren als eigen bouwsteen, voor al je tekeningen">Bewaar als bouwsteen</button>`;
+        if (it.bondLib && lib[it.bondLib]) html += `<button type="button" class="tgl" data-act="deleteBond" title="Deze bouwsteen uit 'Mijn bouwstenen' verwijderen (vlakken die hem gebruiken blijven zoals ze zijn)">Bouwsteen verwijderen</button>`;
+      }
       if (it && it.hatch && it.hatch !== 'none' && HATCHES[it.hatch]?.size) {
         const hd = HATCHES[it.hatch];
         const hex = (c, d) => (c && c.length === 7 ? c : d);
@@ -2148,6 +2178,8 @@ class App {
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
+    bar.querySelector('[data-act="saveBond"]')?.addEventListener('click', () => this.saveBondBlock());
+    bar.querySelector('[data-act="deleteBond"]')?.addEventListener('click', () => this.deleteBondBlock());
     bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
     bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
     for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
@@ -2221,6 +2253,36 @@ class App {
       }, 'suggest-groups');
       this.toast(`${res.groups.length} groepen voorgesteld. Nogmaals tikken geeft een nieuwe variant.`);
     }
+  }
+
+  /** Het verband van het geselecteerde vlak bewaren als eigen bouwsteen (voor alle tekeningen). */
+  async saveBondBlock() {
+    const it = this.store.findItem([...this.selection][0])?.item;
+    if (!it?.bond) return;
+    const res = await this.askText('Bewaar als bouwsteen', it.bondLib && this.settings.bondLibrary?.[it.bondLib] ? it.bondName || '' : describeBond(it.bond), { hint: 'Geef de bouwsteen een naam. Hij komt bij "Mijn bouwstenen" in de materiaallijst, in al je tekeningen. Dezelfde naam overschrijft een bestaande bouwsteen.' });
+    const name = String(res?.text ?? res ?? '').trim().slice(0, 60);
+    if (!name) return;
+    const lib = { ...(this.settings.bondLibrary || {}) };
+    const id = Object.keys(lib).find((k2) => lib[k2].name === name) || uid();
+    lib[id] = { name, bond: { ...it.bond }, ...(it.border ? { border: it.border } : {}) };
+    this.settings.bondLibrary = lib;
+    this.persistSettings();
+    this.store.mutate(() => { it.bondName = name; it.bondLib = id; }, 'bond');
+    this.toast(`Bouwsteen "${name}" bewaard. Je vindt hem bij Mijn bouwstenen in de materiaallijst.`, 3500);
+    this.updateSelectionUI();
+  }
+
+  deleteBondBlock() {
+    const it = this.store.findItem([...this.selection][0])?.item;
+    const lib = { ...(this.settings.bondLibrary || {}) };
+    if (!it?.bondLib || !lib[it.bondLib]) return;
+    const name = lib[it.bondLib].name;
+    delete lib[it.bondLib];
+    this.settings.bondLibrary = lib;
+    this.persistSettings();
+    this.store.mutate(() => { delete it.bondLib; }, 'bond');
+    this.toast(`Bouwsteen "${name}" verwijderd uit Mijn bouwstenen.`, 2500);
+    this.updateSelectionUI();
   }
 
   /** Selectie een klein stukje verschuiven; snel achter elkaar is één stap voor ongedaan maken. */
@@ -2414,9 +2476,34 @@ class App {
           if (Number.isFinite(v)) for (const i of items) if (i.type === 'shape') i.hatchRot = fromDisplayAngle(v);
           break;
         }
-        case 'hatch':
-          for (const i of items) if (i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle')) i.hatch = raw;
+        case 'hatch': {
+          if (raw === '') break;
+          const m = /^bs:(pre|my):(.+)$/.exec(raw);
+          const blk = m ? (m[1] === 'pre' ? BOND_PRESETS[m[2]] : (this.settings.bondLibrary || {})[m[2]]) : null;
+          for (const i of items) {
+            if (!(i.type === 'shape' && (i.kind === 'polygon' || i.kind === 'circle'))) continue;
+            if (blk) {
+              i.hatch = 'bond'; i.bond = { ...blk.bond }; i.bondName = blk.name;
+              if (m[1] === 'my') i.bondLib = m[2]; else delete i.bondLib;
+              if (blk.border && i.kind === 'polygon') i.border = blk.border;
+              delete i.fill;
+            } else if (!m) { i.hatch = raw; delete i.bond; delete i.bondName; delete i.bondLib; }
+          }
           break;
+        }
+        case 'bondType': for (const i of items) if (i.bond && BOND_TYPES[raw]) { i.bond.type = raw; delete i.bondName; } break;
+        case 'bondSize': { const z = STONE_SIZES.find((q) => q.id === raw); if (z) for (const i of items) if (i.bond) { i.bond.l = z.l; i.bond.w = z.w; delete i.bondName; } break; }
+        case 'bondL': case 'bondW': {
+          const v = num(raw) / 100;
+          if (v >= 0.02 && v <= 3) for (const i of items) if (i.bond) { const a = Math.max(i.bond.l, i.bond.w), b = Math.min(i.bond.l, i.bond.w); const nl = k === 'bondL' ? v : a, nw = k === 'bondW' ? v : b; i.bond.l = Math.max(nl, nw); i.bond.w = Math.min(nl, nw); delete i.bondName; }
+          break;
+        }
+        case 'bondJoint': { const v = num(raw) / 1000; if (v >= 0 && v <= 0.1) for (const i of items) if (i.bond) i.bond.joint = v; break; }
+        case 'bondColor': for (const i of items) if (i.bond) i.bond.color = raw; break;
+        case 'bondJointColor': for (const i of items) if (i.bond) i.bond.jointColor = raw; break;
+        case 'bondFinish': for (const i of items) if (i.bond && FINISHES[raw]) i.bond.finish = raw; break;
+        case 'finish': for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.stone && FINISHES[raw]) i.finish = raw; break;
+        case 'stoneSize': { const z = STONE_SIZES.find((q) => q.id === raw); if (z) for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.stone) { i.w = z.l; i.h = z.w; } break; }
         case 'prole':
           for (const i of items) {
             if (i.type === 'plant' && raw) i.role = raw;
