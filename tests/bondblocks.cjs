@@ -64,6 +64,25 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const filled = await page.evaluate(() => { const a = window.app; a.setSelection(new Set()); a.cam.y = -500; a.cameraChanged(); a.render(); const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width; const p = a.cam.toScreen([1.5, 9]); const d = g.getImageData(Math.round(p[0] * dpr) - 20, Math.round(p[1] * dpr) - 20, 40, 40).data; const set = new Set(); for (let i = 0; i < d.length; i += 4) set.add(d[i] >> 4); return set.size; });
   assert(filled >= 3, 'het vlak toont stenen en voegen');
 
+  console.log('Tegels en combinaties');
+  await page.evaluate(() => window.app.setSelection(new Set(['V'])));
+  await page.selectOption('#selection-bar select[data-k="hatch"]', 'bs:pre:c-tegelband');
+  assert(await page.locator('#selection-bar input[data-k="bondTile"]').count() === 1 && await page.locator('#selection-bar input[data-k="bondColor2"]').count() === 1, 'combinatie: velden voor tegelmaat en tweede kleur');
+  await page.fill('#selection-bar input[data-k="bondTile"]', '80');
+  await page.press('#selection-bar input[data-k="bondTile"]', 'Enter');
+  await page.evaluate(() => { const i = document.querySelector('#selection-bar input[data-k="bondColor2"]'); i.value = '#4a4d52'; i.dispatchEvent(new Event('change', { bubbles: true })); });
+  v = await page.evaluate(() => window.app.store.findItem('V').item);
+  assert(v.bond.type === 'tegelband' && v.bond.tile === 0.8 && v.bond.color2 === '#4a4d52', 'tegels 80×80 in antraciet tussen de klinkerband');
+  await page.selectOption('#selection-bar select[data-k="hatch"]', 'bs:pre:t-dambord');
+  await page.selectOption('#selection-bar select[data-k="bondType"]', 'hopscotch');
+  v = await page.evaluate(() => window.app.store.findItem('V').item);
+  assert(v.bond.type === 'hopscotch' && v.bond.color2, 'dambord omgezet naar hopscotch (behoudt de tweede kleur)');
+  await page.selectOption('#selection-bar select[data-k="hatch"]', 'bs:pre:k-visgraat-kei');
+  await page.selectOption('#selection-bar select[data-k="bondSize"]', 'dik');
+  await page.selectOption('#selection-bar select[data-k="bondFinish"]', 'gemeleerd');
+  await page.fill('#selection-bar input[data-k="bondJoint"]', '8');
+  await page.press('#selection-bar input[data-k="bondJoint"]', 'Enter');
+
   console.log('Bewaren als eigen bouwsteen');
   await page.evaluate(() => window.app.setSelection(new Set(['V'])));
   await page.click('#selection-bar [data-act="saveBond"]');
@@ -91,7 +110,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.guides.clear(); a.syncGuideButtons(); a.settings.snap = false; a.settings.grid = false; a.state.paveShape = 'rechthoek'; a.state.paveBlock = null;
   });
   await page.click('#btn-paving');
-  assert(await page.isVisible('#pave-panel') && /Oprit antraciet/.test(await page.locator('#pave-panel').innerText()) && /Visgraat/.test(await page.locator('#pave-panel').innerText()), 'paneel Verharding toont mijn bouwstenen en de klinkerverbanden');
+  { const pt = await page.locator('#pave-panel').innerText(); assert(await page.isVisible('#pave-panel') && /Oprit antraciet/.test(pt) && /Klinkerverbanden/.test(pt) && /Tegelverbanden/.test(pt) && /Combinaties/.test(pt), 'paneel Verharding: mijn bouwstenen, klinker- en tegelverbanden en combinaties'); }
   await page.click('#pave-panel [data-list="my"] li.role');
   assert(await page.evaluate(() => window.app.state.tool === 'pave' && window.app.state.paveBlock === 'my:mijn1'), 'bouwsteen kiezen activeert het gereedschap Verharden');
   const box = await page.locator('#canvas').boundingBox();

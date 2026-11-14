@@ -110,11 +110,79 @@ export const BOND_TYPES = {
       return { px: n, py: 3 + n, list };
     },
   },
+  // --- tegels
+  diagonaal: { name: 'Diagonaal (45°)', rot: Math.PI / 4, stones: (n) => ({ px: n, py: 1, list: [[0, 0, n, 1]] }) },
+  dambord: {
+    name: 'Dambord (twee kleuren)', two: true,
+    stones: (n) => ({ px: 2 * n, py: 2, list: [[0, 0, n, 1, 0], [n, 0, n, 1, 1], [0, 1, n, 1, 1], [n, 1, n, 1, 0]] }),
+  },
+  wild3: {
+    name: 'Wildverband, 3 maten (bijv. 30×30, 60×30, 60×60)', fixedN: 2,
+    // modulair: eenheid = kleinste tegel; 6 × 4 eenheden per herhaling
+    stones: () => ({
+      px: 6, py: 4,
+      list: [[0, 0, 2, 2], [2, 0, 2, 1], [4, 0, 1, 1], [5, 0, 1, 2], [2, 1, 1, 1], [3, 1, 2, 2], [0, 2, 1, 2], [1, 2, 2, 1], [5, 2, 1, 1], [1, 3, 1, 1], [2, 3, 2, 1], [4, 3, 2, 1]],
+    }),
+  },
+  romaans: {
+    name: 'Romaans verband (4 maten)', fixedN: 3,
+    // eenheid = 1/3 van de grootste tegel (bijv. 20 cm bij 60×60)
+    stones: () => ({ px: 6, py: 6, list: [[0, 0, 3, 3], [3, 0, 3, 2], [3, 2, 1, 1], [4, 2, 2, 1], [0, 3, 2, 2], [0, 5, 2, 1], [2, 3, 2, 3], [4, 3, 2, 1], [4, 4, 2, 2]] }),
+  },
+  hopscotch: {
+    name: 'Hopscotch (grote en kleine tegel)', fixedN: 2, two: true,
+    // grote tegel (2×2) met een kleine (1×1) ernaast, roosterstappen (2,1) en (-1,2): herhaling 5 × 5
+    stones: () => {
+      const list = [];
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+        const x = (((2 * i - j) % 5) + 5) % 5, y = (((i + 2 * j) % 5) + 5) % 5;
+        if (list.some((q) => q[0] === x && q[1] === y)) continue;
+        list.push([x, y, 2, 2, 0], [x + 2, y, 1, 1, 1]);
+      }
+      return { px: 5, py: 5, list };
+    },
+  },
+  // --- combinaties van tegels (of kasseien) met klinkers
+  tegelband: {
+    name: 'Tegels met een klinkerband', two: true, tile: true,
+    // eenheid = klinkerbreedte; tegel van 'tile' m met rondom een band van klinkers en een halve steen op de kruising
+    stones: (n, b, U) => {
+      const S = Math.max(2, Math.round(((b.tile || 0.6) + (b.joint ?? 0.003)) / U));
+      const P = S + 1, list = [[0, 0, 1, 1, 0], [1, 1, S, S, 1]];
+      for (const horiz of [true, false]) {
+        for (let x = 1; x < P; x += n) {
+          const len = Math.min(n, P - x);
+          list.push(horiz ? [x, 0, len, 1, 0] : [0, x, 1, len, 0]);
+        }
+      }
+      return { px: P, py: P, list };
+    },
+  },
+  kasseivak: {
+    name: 'Kasseivakken met een klinkerkruis', two: true, tile: true,
+    stones: (n, b, U) => {
+      const S = Math.max(2, Math.round(((b.tile || 0.6) + (b.joint ?? 0.003)) / U));
+      const P = S + 1, list = [[0, 0, 1, 1, 0]];
+      for (let y = 1; y < P; y++) for (let x = 1; x < P; x++) list.push([x, y, 1, 1, 1]);
+      for (const horiz of [true, false]) {
+        for (let x = 1; x < P; x += n) {
+          const len = Math.min(n, P - x);
+          list.push(horiz ? [x, 0, len, 1, 0] : [0, x, 1, len, 0]);
+        }
+      }
+      return { px: P, py: P, list };
+    },
+  },
 };
 
 const B = (name, type, size, color, finish, extra = {}) => {
-  const sz = STONE_SIZES.find((s) => s.id === size);
-  return { name, bond: { type, l: sz.l, w: sz.w, joint: 0.003, color: STONE_COLORS[color] || color, jointColor: '#8a857c', finish, ...extra.bond }, border: extra.border };
+  const sz = STONE_SIZES.find((s) => s.id === size) || size;
+  const col = (c) => STONE_COLORS[c] || c;
+  return {
+    name, group: extra.group || 'Klinkers',
+    bond: { type, l: sz.l, w: sz.w, joint: 0.003, color: col(color), jointColor: '#8a857c', finish, ...(extra.color2 ? { color2: col(extra.color2) } : {}), ...extra.bond },
+    ...(extra.border ? { border: extra.border } : {}),
+  };
 };
 
 /** Kant-en-klare bouwstenen voor klinkers. */
@@ -135,6 +203,26 @@ export const BOND_PRESETS = {
   'k-molenwiek': B('Molenwiek · betonklinker met halve steen', 'molenwiek', 'bkk', 'grijs', 'glad'),
   'k-vlecht': B('Vlechtverband · keiformaat', 'vlecht', 'kei', 'paars', 'getrommeld'),
   'k-banen': B('Banenverband · keiformaat met staande rij', 'banen', 'kei', 'rood', 'getrommeld'),
+  // tegels
+  't-blok-6060': B('Blokverband · 60×60 grijs', 'stapel', 't60', 'grijs', 'glad', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-blok-9090': B('Blokverband · keramiek 90×90 greige', 'stapel', 't90', '#a8a091', 'structuur', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-half-6030': B('Halfsteens · 60×30 antraciet', 'halfsteens', 't6030', 'antraciet', 'glad', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-derde-6030': B('Derdesteens · 60×30 grijs', 'derdesteens', 't6030', 'grijs', 'structuur', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-derde-12060': B('Derdesteens · keramiek 120×60 beige', 'derdesteens', 't12060', 'beige', 'glad', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-planken': B('Planken 120×30 houtlook (derdesteens)', 'derdesteens', 'p12030', '#9c7a58', 'structuur', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-wild3': B('Wildverband 3 maten (30, 60×30, 60)', 'wild3', 't6030', 'beige', 'structuur', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-romaans': B('Romaans verband (20 t/m 60 cm)', 'romaans', { l: 0.6, w: 0.2 }, '#c4b49a', 'gemeleerd', { group: 'Tegels', bond: { joint: 0.005, jointColor: '#6f6a62' } }),
+  't-dambord': B('Dambord · 50×50 grijs en antraciet', 'dambord', 't50', 'grijs', 'glad', { group: 'Tegels', color2: 'antraciet', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-diagonaal': B('Diagonaal · 40×40 zandbeige', 'diagonaal', 't40', 'beige', 'glad', { group: 'Tegels', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  't-hopscotch': B('Hopscotch · 60×60 met 30×30', 'hopscotch', 't6030', 'grijs', 'glad', { group: 'Tegels', color2: 'antraciet', bond: { joint: 0.004, jointColor: '#6f6a62' } }),
+  // combinaties
+  'c-tegelband': B('Tegels 60×60 met klinkerband', 'tegelband', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: 'grijs', bond: { tile: 0.6, finish2: 'glad' } }),
+  'c-tegelband-groot': B('Tegels 80×80 met antraciet band', 'tegelband', 'bkk', 'antraciet', 'glad', { group: 'Combinaties', color2: 'beige', bond: { tile: 0.8 } }),
+  'c-tegelrollaag': B('Tegelveld 60×60 met rollaag', 'stapel', 't60', 'beige', 'glad', { group: 'Combinaties', border: 'rollaag', bond: { joint: 0.004 } }),
+  'c-grasvoeg': B('Tegels 60×60 met grasvoeg', 'stapel', 't60', 'grijs', 'glad', { group: 'Combinaties', bond: { joint: 0.05, jointColor: '#8fae6a' } }),
+  'c-splitvoeg': B('Tegels 60×30 met splitvoeg', 'halfsteens', 't6030', 'antraciet', 'structuur', { group: 'Combinaties', bond: { joint: 0.02, jointColor: '#bdb6a8' } }),
+  'c-kasseivak': B('Kasseivakken met klinkerkruis', 'kasseivak', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: 'grijs', bond: { tile: 0.5, finish2: 'getrommeld' } }),
+  'c-tuinraster': B('Tuinraster: klinkerpaden met plantvakken', 'tegelband', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: '#6f8f4a', bond: { tile: 1.0, finish2: 'gemeleerd' } }),
 };
 
 // ---------------------------------------------------------------- tekenen
@@ -208,14 +296,15 @@ export function bondLayout(bond) {
   const l = Math.max(0.02, Math.max(bond.l, bond.w)), w = Math.max(0.02, Math.min(bond.l, bond.w));
   const U = w + j;
   let n = (l + j) / U;
-  if (T.ratio) n = Math.max(T.minN || 1, Math.round(n));
-  const st = T.stones(n);
+  if (T.ratio || T.tile) n = Math.max(T.minN || 1, Math.round(n));
+  if (T.fixedN) n = T.fixedN;
+  const st = T.stones(n, bond, U);
   return { T, U, n, j, ...st };
 }
 
 /** Canvaspatroon voor een verband, in wereldcoördinaten (meters), met legrichting en beginpunt. */
 export function bondPattern(ctx, bond, rot = 0, origin = null) {
-  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish]);
+  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish, bond.color2, bond.finish2, bond.tile]);
   let tile = cache.get(key);
   const L = bondLayout(bond);
   if (!tile) {
@@ -229,14 +318,15 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
     g.fillStyle = bond.jointColor || '#8a857c';
     g.fillRect(0, 0, c.width, c.height);
     const mod = (v, m) => ((v % m) + m) % m;
-    for (const [x, y, w, h] of L.list) {
+    for (const [x, y, w, h, ci] of L.list) {
       const bx = mod(x, L.px), by = mod(y, L.py);
+      const col = ci ? bond.color2 || '#9a9a96' : bond.color || '#a8503c', fin = ci ? bond.finish2 || bond.finish || 'glad' : bond.finish || 'glad';
       const seed = Math.round(bx * 97 + by * 389 + w * 13 + 1);
       for (const dx of [-L.px, 0, L.px]) {
         for (const dy of [-L.py, 0, L.py]) {
           const X = (bx + dx) * sx, Y = (by + dy) * sy;
           if (X > c.width || Y > c.height || X + w * sx < 0 || Y + h * sy < 0) continue;
-          paintStone(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, bond.color || '#a8503c', bond.finish || 'glad', seed);
+          paintStone(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, col, fin, seed);
         }
       }
     }

@@ -38,7 +38,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.evaluate(() => { const a = window.app; a.setTool('stencil'); a.state.stencil = 'poort'; });
   { const [sx, sy] = await S(3, 0.3); await page.mouse.click(sx, sy); }
   const gate = (await items()).find((i) => i.symbol === 'poort');
-  assert(gate && gate.wallId === f.id && Math.abs(gate.y) < 1e-6, 'poort klikt in de schutting');
+  assert(gate && gate.wallId === f.id && Math.abs(gate.y - f.points[0][1]) < 1e-6, 'poort klikt in de schutting (precies op de lijn)');
   await page.evaluate(() => { const a = window.app; a.setTool('lasso'); a.setSelection(new Set()); a.fitView(true); a.render(); });
   await page.screenshot({ path: path.join(OUT, 'hekwerk.png') });
 

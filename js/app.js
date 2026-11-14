@@ -2130,7 +2130,7 @@ class App {
       const lib = this.settings.bondLibrary || {};
       const bondSel = c0.hatch === 'bond' && c0.bond ? `<option value="" selected>Verband: ${escapeHtml(c0.bondName || describeBond(c0.bond))}</option>` : '';
       const bondOpts = (Object.keys(lib).length ? `<optgroup label="Mijn bouwstenen">${Object.entries(lib).map(([k, v]) => `<option value="bs:my:${k}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>` : '')
-        + `<optgroup label="Bouwstenen: klinkerverbanden">${Object.entries(BOND_PRESETS).map(([k, v]) => `<option value="bs:pre:${k}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>`;
+        + [...new Set(Object.values(BOND_PRESETS).map((v) => v.group))].map((gr) => `<optgroup label="Bouwstenen: ${gr.toLowerCase()}">${Object.entries(BOND_PRESETS).filter(([, v]) => v.group === gr).map(([k, v]) => `<option value="bs:pre:${k}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>`).join('');
       html += `<select data-k="hatch" title="Materiaal, arcering of verband (bouwsteen)">${bondSel}${hatchOptions(c0.hatch === 'bond' ? '' : c0.hatch || 'none')}${bondOpts}</select>`;
       const polys = closed.filter((i) => i.kind === 'polygon' && ((i.hatch && i.hatch !== 'none') || i.border));
       if (polys.length) html += `<select data-k="border" title="Rand langs de binnenkant (rollaag, kasseien, opsluitband)">${Object.entries(BORDERS).map(([k, v]) => `<option value="${k}" ${(polys[0].border || 'geen') === k ? 'selected' : ''}>${k === 'geen' ? 'Rand: geen' : v.name}</option>`).join('')}</select>`;
@@ -2148,6 +2148,12 @@ class App {
         html += field('bondJoint', 'Voeg', String(Math.round((bd.joint ?? 0.003) * 10000) / 10).replace('.', ','), 'mm');
         html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-k="bondColor" value="${bd.color || '#a8503c'}"></label>`;
         html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
+        const BT = BOND_TYPES[bd.type] || {};
+        if (BT.tile) html += field('bondTile', BT.name.startsWith('Kassei') ? 'Vak' : 'Tegel', cm(bd.tile || 0.6), 'cm');
+        if (BT.two) {
+          html += `<label class="pf" title="Tweede kleur (tegels, kasseien of de tweede tint)">2e kleur<input type="color" data-k="bondColor2" value="${bd.color2 || '#9a9a96'}"></label>`;
+          html += `<select data-k="bondFinish2" title="Afwerking van de tweede steen">${Object.entries(FINISHES).map(([k2, v]) => `<option value="${k2}" ${(bd.finish2 || bd.finish || 'glad') === k2 ? 'selected' : ''}>2e: ${v.name}</option>`).join('')}</select>`;
+        }
         html += `<select data-k="bondFinish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(bd.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
         html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
         html += `<button type="button" class="tgl" data-act="saveBond" title="Dit verband (met steenmaat, kleur, voeg, afwerking en rand) bewaren als eigen bouwsteen, voor al je tekeningen">Bewaar als bouwsteen</button>`;
@@ -2530,7 +2536,14 @@ class App {
           break;
         }
         case 'vakName': { const v = String(raw).trim().slice(0, 60); for (const i of items) if (i.bond) { if (v) i.name = v; else delete i.name; } break; }
-        case 'bondType': for (const i of items) if (i.bond && BOND_TYPES[raw]) { i.bond.type = raw; delete i.bondName; } break;
+        case 'bondType':
+          for (const i of items) {
+            if (!i.bond || !BOND_TYPES[raw]) continue;
+            i.bond.type = raw; delete i.bondName;
+            if (BOND_TYPES[raw].two && !i.bond.color2) i.bond.color2 = '#9a9a96';
+            if (BOND_TYPES[raw].tile && !i.bond.tile) i.bond.tile = 0.6;
+          }
+          break;
         case 'bondSize': { const z = STONE_SIZES.find((q) => q.id === raw); if (z) for (const i of items) if (i.bond) { i.bond.l = z.l; i.bond.w = z.w; delete i.bondName; } break; }
         case 'bondL': case 'bondW': {
           const v = num(raw) / 100;
@@ -2539,6 +2552,9 @@ class App {
         }
         case 'bondJoint': { const v = num(raw) / 1000; if (v >= 0 && v <= 0.1) for (const i of items) if (i.bond) i.bond.joint = v; break; }
         case 'bondColor': for (const i of items) if (i.bond) i.bond.color = raw; break;
+        case 'bondColor2': for (const i of items) if (i.bond) { i.bond.color2 = raw; delete i.bondName; } break;
+        case 'bondFinish2': for (const i of items) if (i.bond && FINISHES[raw]) { i.bond.finish2 = raw; delete i.bondName; } break;
+        case 'bondTile': { const v = num(raw) / 100; if (v >= 0.2 && v <= 3) for (const i of items) if (i.bond) { i.bond.tile = v; delete i.bondName; } break; }
         case 'bondJointColor': for (const i of items) if (i.bond) i.bond.jointColor = raw; break;
         case 'bondFinish': for (const i of items) if (i.bond && FINISHES[raw]) i.bond.finish = raw; break;
         case 'finish': for (const i of items) if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.stone && FINISHES[raw]) i.finish = raw; break;

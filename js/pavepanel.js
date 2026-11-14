@@ -56,7 +56,8 @@ export class PavePanel {
     c.width = c.height = px * dpr;
     c.style.width = c.style.height = px + 'px';
     const g = c.getContext('2d');
-    const s = (px * dpr) / Math.max(0.6, Math.min(2.4, Math.max(bond.l, bond.w) * 3.2));
+    const big = Math.max(bond.l, bond.w, bond.tile ? bond.tile + 0.1 : 0);
+    const s = (px * dpr) / Math.max(0.6, Math.min(2.6, big * 2.2));
     g.setTransform(s, 0, 0, s, 0, 0);
     g.fillStyle = bondPattern(g, bond, 0, [0, 0]);
     g.fillRect(0, 0, (px * dpr) / s, (px * dpr) / s);
@@ -98,10 +99,10 @@ export class PavePanel {
         <ul class="roles" data-list="my"></ul>
         <p class="hint">Een eigen bouwsteen maak je zo: teken een vak, pas verband, steenmaat, kleur, voeg en afwerking aan in de balk, en kies <b>Bewaar als bouwsteen</b>.</p>
       </section>
-      <section>
-        <h3>Klinkerverbanden</h3>
-        <ul class="roles" data-list="pre"></ul>
-      </section>`;
+      ${[...new Set(Object.values(BOND_PRESETS).map((v) => v.group))].map((gr) => `<section>
+        <h3>${gr === 'Klinkers' ? 'Klinkerverbanden' : gr === 'Tegels' ? 'Tegelverbanden' : 'Combinaties'}</h3>
+        <ul class="roles" data-list="pre-${gr}"></ul>
+      </section>`).join('')}`;
     const fill = (ul, entries, kind) => {
       if (!entries.length) { ul.innerHTML = '<li class="hint">Nog geen eigen bouwstenen.</li>'; return; }
       for (const [id, blk] of entries) {
@@ -137,7 +138,7 @@ export class PavePanel {
       }
     };
     fill($('[data-list="my"]', el), Object.entries(lib), 'my');
-    fill($('[data-list="pre"]', el), Object.entries(BOND_PRESETS), 'pre');
+    for (const gr of new Set(Object.values(BOND_PRESETS).map((v) => v.group))) fill($(`[data-list="pre-${gr}"]`, el), Object.entries(BOND_PRESETS).filter(([, v]) => v.group === gr), 'pre');
     $('[data-act="close"]', el).addEventListener('click', () => this.close());
   }
 }
