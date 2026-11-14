@@ -86,6 +86,25 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   sel = await page.evaluate(() => [...window.app.selection]);
   assert(sel.length === 5, 'Ctrl/Cmd+A selecteert de hele actieve laag');
 
+  console.log('Laag van de selectie in de balk');
+  await page.evaluate(async () => {
+    const a = window.app; const { newDoc, newLayer } = await import('./js/model.js');
+    const d = newDoc('Lagen tonen');
+    d.layers[0].name = 'Onder';
+    d.layers[0].items.push({ type: 'shape', id: 'x1', kind: 'polygon', rect: true, points: [[0, 0], [1, 0], [1, 1], [0, 1]], color: '#333', width: 0.02 });
+    const top = newLayer('Boven');
+    top.items.push({ type: 'shape', id: 'x2', kind: 'polygon', rect: true, points: [[2, 0], [3, 0], [3, 1], [2, 1]], color: '#333', width: 0.02 });
+    d.layers.push(top);
+    a.openDoc(d, true); a.setTool('lasso'); a.setSelection(new Set(['x2']));
+  });
+  const selName = () => page.evaluate(() => { const s = document.querySelector('#selection-bar select[data-sel="layer"]'); return s.options[s.selectedIndex].text; });
+  assert(await selName() === 'Boven', 'balk toont de laag van het element: "Boven"');
+  await page.evaluate(() => window.app.setSelection(new Set(['x1', 'x2'])));
+  assert(await selName() === 'Meerdere lagen', 'selectie uit twee lagen: "Meerdere lagen"');
+  await page.selectOption('#selection-bar select[data-sel="layer"]', { label: 'Onder' });
+  const lay = await page.evaluate(() => window.app.store.doc.layers.map((l) => `${l.name}:${l.items.map((i) => i.id).join('+')}`).join(' | '));
+  assert(lay === 'Onder:x1+x2 | Boven:' && await selName() === 'Onder', `beide naar "Onder" verplaatst, balk toont nu "Onder" (${lay})`);
+
   console.log('Zichtbaarheid van een laag doet niets met de lagen eronder');
   const px = await page.evaluate(async () => {
     const a = window.app; const { newDoc, newLayer } = await import('./js/model.js');

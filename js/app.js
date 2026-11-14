@@ -2169,7 +2169,10 @@ class App {
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
     html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
-    html += `<select data-sel="layer" title="Naar laag"><option value="">Naar laag…</option>${[...this.store.doc.layers].reverse().map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select>`;
+    // laag waarin de selectie staat (kies een andere om te verplaatsen)
+    const selLayers = [...new Set(found.map((f) => f.layer.id))];
+    const oneLayer = selLayers.length === 1 ? selLayers[0] : null;
+    html += `<label class="pf" title="Laag waarin het element staat; kies een andere laag om het te verplaatsen">Laag<select data-sel="layer">${oneLayer ? '' : '<option value="" selected>Meerdere lagen</option>'}${[...this.store.doc.layers].reverse().map((l) => `<option value="${l.id}" ${l.id === oneLayer ? 'selected' : ''}>${escapeHtml(l.name)}${l.locked ? ' (vergrendeld)' : ''}</option>`).join('')}</select></label>`;
     html += `<button data-sel="delete" title="Verwijderen">${icon('trash', 20)}</button>`;
     html += `<button data-sel="done" title="Klaar">${icon('check', 20)}</button>`;
     bar.innerHTML = html;
@@ -2707,14 +2710,21 @@ class App {
         }, 'order');
         break;
       case 'layer': {
-        if (!arg || arg === layer.id) { this.updateSelectionUI(); return; }
+        if (!arg || found.every((f) => f.layer.id === arg)) { this.updateSelectionUI(); return; }
         this.store.mutate((doc) => {
           const target = doc.layers.find((l) => l.id === arg);
-          const sel = layer.items.filter((i) => this.selection.has(i.id));
-          layer.items = layer.items.filter((i) => !this.selection.has(i.id));
-          target.items.push(...sel);
+          // uit alle lagen waarin de selectie staat, in de volgorde van de tekening
+          for (const l of doc.layers) {
+            if (l === target) continue;
+            const sel = l.items.filter((i) => this.selection.has(i.id));
+            if (!sel.length) continue;
+            l.items = l.items.filter((i) => !this.selection.has(i.id));
+            target.items.push(...sel);
+          }
           doc.activeLayer = target.id;
         }, 'move-layer');
+        this.toast(`Naar laag "${this.store.layerById(arg)?.name || ''}" verplaatst.`, 1800);
+        this.updateSelectionUI();
         break;
       }
       case 'done':
