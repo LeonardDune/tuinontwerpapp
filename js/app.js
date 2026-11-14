@@ -24,7 +24,7 @@ import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonAr
 import { SunPanel } from './sunpanel.js';
 import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool, selectionAngle } from './select.js';
-import { syncOpenings } from './walls.js';
+import { syncOpenings, isOpening } from './walls.js';
 import { PlantTool, PaveTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
 import { extentsOf, toWorld } from './smartguides.js';
@@ -2177,6 +2177,13 @@ class App {
       // uitlijnen en verdelen, zoals in een opmaakprogramma (een groep telt als één geheel)
       const al = [['left', 'alignLeft', 'Links uitlijnen'], ['centerH', 'alignCenterH', 'Midden uitlijnen (horizontaal)'], ['right', 'alignRight', 'Rechts uitlijnen'], ['top', 'alignTop', 'Boven uitlijnen'], ['middleV', 'alignMiddleV', 'Midden uitlijnen (verticaal)'], ['bottom', 'alignBottom', 'Onder uitlijnen']];
       html += `<span class="aligns">${al.map(([m, ic, t]) => `<button type="button" data-align="${m}" title="${t}">${icon(ic, 20)}</button>`).join('')}`;
+      const ref0 = found[0] && itemSize(found[0].item);
+      if (ref0 && (ref0.w != null || ref0.d != null || ref0.len != null)) {
+        html += `<span class="aligns" title="Maat overnemen van het eerst geselecteerde element">`
+          + `<button type="button" data-same="w" title="Zelfde breedte als het eerst geselecteerde">=B</button>`
+          + (ref0.h != null ? `<button type="button" data-same="h" title="Zelfde diepte als het eerst geselecteerde">=D</button>` : '')
+          + `<button type="button" data-same="both" title="Zelfde maat (breedte en diepte) als het eerst geselecteerde">=B×D</button></span>`;
+      }
       const sp = this.spacingInfo(found);
       html += `</span>` + field('spacing', sp.axis === 'u' ? 'Afstand ↔' : 'Afstand ↕', sp.gap == null ? '' : String(Math.round(sp.gap * 1000) / 10).replace('.', ','), 'cm') + `<span class="aligns">`;
       if (this.alignUnits(found).length > 2) html += `<button type="button" data-align="distH" title="Horizontaal gelijk verdelen (gelijke tussenruimte)">${icon('distH', 20)}</button><button type="button" data-align="distV" title="Verticaal gelijk verdelen (gelijke tussenruimte)">${icon('distV', 20)}</button>`;
@@ -2194,6 +2201,7 @@ class App {
     bar.innerHTML = html;
 
     for (const b of bar.querySelectorAll('[data-align]')) b.addEventListener('click', () => this.alignSelection(b.dataset.align));
+    for (const b of bar.querySelectorAll('[data-same]')) b.addEventListener('click', () => this.sameSize(b.dataset.same));
     for (const b of bar.querySelectorAll('[data-sel]')) {
       if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
       else b.addEventListener('click', () => this.selectionAction(b.dataset.sel));
@@ -2318,6 +2326,35 @@ class App {
       byGid.get(g).push(f.item);
     }
     return units;
+  }
+
+  /** Andere geselecteerde elementen dezelfde breedte (w), diepte (h) of maat (both) geven als het eerst geselecteerde. */
+  sameSize(mode) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (found.length < 2) return;
+    if (found.some((f) => f.layer.locked)) { this.toast('Een van de elementen staat op een vergrendelde laag.'); return; }
+    const ref = found[0].item;
+    const rs = itemSize(ref);
+    const W = rs.w ?? rs.d ?? rs.len, H = rs.h ?? rs.d ?? rs.w;
+    let n = 0;
+    this.store.mutate((doc) => {
+      const wallIds = new Set();
+      for (const { item: i } of found.slice(1)) {
+        if (ref.gid && i.gid === ref.gid) continue; // eigen groep van het voorbeeld niet
+        const sz = itemSize(i);
+        if (sz.w != null) {
+          if (isOpening(i)) { if (mode !== 'h') { setFrameSize(i, W, null); n++; } continue; }
+          setFrameSize(i, mode === 'h' ? null : W, mode === 'w' ? null : H); n++;
+        } else if (sz.d != null) { setDiameter(i, mode === 'h' ? H : W); n++; } else if (sz.len != null) { if (mode !== 'h') { setLength(i, W); n++; } }
+        invalidateItem(i);
+        if (i.wall) wallIds.add(i.id);
+      }
+      if (wallIds.size) syncOpenings(doc, wallIds);
+    }, 'samesize');
+    const cm = (v) => String(Math.round(v * 1000) / 10).replace('.', ',');
+    const what = mode === 'w' ? `breedte ${cm(W)} cm` : mode === 'h' ? `diepte ${cm(H)} cm` : `maat ${cm(W)} × ${cm(H)} cm`;
+    this.toast(n ? `${n} element${n > 1 ? 'en' : ''}: ${what}, zoals het eerst geselecteerde.` : 'Geen elementen waarvan de maat aan te passen is.', 2500);
+    this.updateSelectionUI();
   }
 
   /**

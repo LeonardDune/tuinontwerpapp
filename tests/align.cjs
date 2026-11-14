@@ -61,6 +61,21 @@ const R = (id, x0, y0, x1, y1, extra = {}) => ({ type: 'shape', id, kind: 'polyg
   await page.press('#selection-bar input[data-k="spacing"]', 'Enter');
   assert(near((await pts('B'))[0][1], 1), 'afstand 0: precies tegen elkaar aan');
 
+  console.log('Zelfde maat als het eerst geselecteerde');
+  await setup([R('A', 0, 0, 3, 1.5), R('B', 4, 0, 5, 2), { type: 'stencil', id: 'S', symbol: 'schuur', x: 8, y: 1, w: 2, h: 2, rot: 0, color: '#6b4f3a' }, { type: 'shape', id: 'L', kind: 'line', points: [[0, 4], [1, 4]], color: '#333', width: 0.03 }], ['A', 'B', 'S', 'L']);
+  await page.click('#selection-bar [data-same="w"]');
+  const sz = async (id) => page.evaluate(async (id) => { const { itemSize } = await import('./js/edit.js'); return itemSize(window.app.store.findItem(id).item); }, id);
+  let sb = await sz('B'), ss = await sz('S'), sl = await sz('L');
+  assert(near(sb.w, 3) && near(sb.h, 2) && near(ss.w, 3) && near(sl.len, 3), 'zelfde breedte (3 m) voor vak, stencil en lijn; diepte blijft');
+  await page.click('#selection-bar [data-same="h"]');
+  sb = await sz('B');
+  assert(near(sb.h, 1.5) && near(sb.w, 3), 'zelfde diepte (1,5 m)');
+  await page.click('#btn-undo'); await page.click('#btn-undo');
+  await page.click('#selection-bar [data-same="both"]');
+  ss = await sz('S');
+  assert(near(ss.w, 3) && near(ss.h, 1.5), 'zelfde maat (3 × 1,5 m)');
+  assert(near((await pts('A'))[1][0], 3), 'het eerst geselecteerde blijft zoals het is');
+
   console.log('Gedraaide vakken: uitlijnen in hun eigen richting');
   const rot = (ps, deg) => ps.map(([x, y]) => { const r = deg * Math.PI / 180; return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r)]; });
   const RR = (id, x0, y0, x1, y1) => R(id, 0, 0, 0, 0, { points: rot([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], 25) });
