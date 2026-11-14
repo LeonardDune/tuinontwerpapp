@@ -11,7 +11,7 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS, itemOutline } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -23,10 +23,11 @@ import {
 import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
 import { APP_VERSION, APP_DATE } from './version.js';
-import { SelectTool } from './select.js';
+import { SelectTool, selectionAngle } from './select.js';
 import { syncOpenings } from './walls.js';
 import { PlantTool, PaveTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
+import { extentsOf, toWorld } from './smartguides.js';
 import { PlantPanel } from './plantpanel.js';
 import {
   rolesMap, describeRole, ROLES as PLANT_ROLES, BED_TYPES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
@@ -2172,6 +2173,13 @@ class App {
     if (gidsSel.length && !this.openGroup) html += `<button type="button" class="tgl" data-sel="ungroup" title="Groep opheffen (Ctrl/Cmd+Shift+G)">Groep opheffen</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.asHatch) html += `<button type="button" class="tgl" data-sel="toshape" title="Omzetten naar een vlak met hetzelfde materiaal: dan kun je de hoeken verslepen en het samenvoegen">Omzetten naar vlak</button>`;
     if (items.filter((i) => mergeable(i)).length > 1) html += `<button type="button" class="tgl" data-sel="merge" title="Samenvoegen tot één vlak (de instellingen van het grootste vak blijven)">Samenvoegen</button>`;
+    if (this.alignUnits(found).length > 1) {
+      // uitlijnen en verdelen, zoals in een opmaakprogramma (een groep telt als één geheel)
+      const al = [['left', 'alignLeft', 'Links uitlijnen'], ['centerH', 'alignCenterH', 'Midden uitlijnen (horizontaal)'], ['right', 'alignRight', 'Rechts uitlijnen'], ['top', 'alignTop', 'Boven uitlijnen'], ['middleV', 'alignMiddleV', 'Midden uitlijnen (verticaal)'], ['bottom', 'alignBottom', 'Onder uitlijnen']];
+      html += `<span class="aligns">${al.map(([m, ic, t]) => `<button type="button" data-align="${m}" title="${t}">${icon(ic, 20)}</button>`).join('')}`;
+      if (this.alignUnits(found).length > 2) html += `<button type="button" data-align="distH" title="Horizontaal gelijk verdelen (gelijke tussenruimte)">${icon('distH', 20)}</button><button type="button" data-align="distV" title="Verticaal gelijk verdelen (gelijke tussenruimte)">${icon('distV', 20)}</button>`;
+      html += '</span>';
+    }
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
     html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
@@ -2183,6 +2191,7 @@ class App {
     html += `<button data-sel="done" title="Klaar">${icon('check', 20)}</button>`;
     bar.innerHTML = html;
 
+    for (const b of bar.querySelectorAll('[data-align]')) b.addEventListener('click', () => this.alignSelection(b.dataset.align));
     for (const b of bar.querySelectorAll('[data-sel]')) {
       if (b.tagName === 'SELECT') b.addEventListener('change', () => this.selectionAction('layer', b.value));
       else b.addEventListener('click', () => this.selectionAction(b.dataset.sel));
@@ -2295,6 +2304,67 @@ class App {
     if (m && m[1] === 'my' && this.settings.bondLibrary?.[m[2]]) return { ...this.settings.bondLibrary[m[2]], lib: m[2] };
     if (m && m[1] === 'pre' && BOND_PRESETS[m[2]]) return BOND_PRESETS[m[2]];
     return BOND_PRESETS['k-half-waal'];
+  }
+
+  /** Eenheden voor uitlijnen: losse elementen, of een hele groep als één geheel. */
+  alignUnits(found) {
+    const units = [], byGid = new Map();
+    for (const f of found) {
+      const g = f.item.gid && f.item.gid !== this.openGroup ? f.item.gid : null;
+      if (!g) { units.push([f.item]); continue; }
+      if (!byGid.has(g)) { byGid.set(g, []); units.push(byGid.get(g)); }
+      byGid.get(g).push(f.item);
+    }
+    return units;
+  }
+
+  /** Uitlijnen (left, centerH, right, top, middleV, bottom) of gelijk verdelen (distH, distV). */
+  alignSelection(mode) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (found.some((f) => f.layer.locked)) { this.toast('Een van de elementen staat op een vergrendelde laag.'); return; }
+    const units = this.alignUnits(found);
+    if (units.length < 2) return;
+    const th = selectionAngle(found.map((f) => f.item), this.cam);
+    const ex = units.map((u) => extentsOf(u.flatMap((i) => itemOutline(i) || []), th));
+    const U0 = Math.min(...ex.map((e) => e.u0)), U1 = Math.max(...ex.map((e) => e.u1));
+    const V0 = Math.min(...ex.map((e) => e.v0)), V1 = Math.max(...ex.map((e) => e.v1));
+    const moves = ex.map(() => [0, 0]);
+    const dist1 = (axis) => {
+      const [a, b] = axis === 'u' ? ['u0', 'u1'] : ['v0', 'v1'];
+      const order = ex.map((e, k) => k).sort((p, q) => (ex[p][a] + ex[p][b]) - (ex[q][a] + ex[q][b]));
+      const lo = Math.min(...ex.map((e) => e[a])), hi = Math.max(...ex.map((e) => e[b]));
+      const gap = (hi - lo - ex.reduce((sum, e) => sum + e[b] - e[a], 0)) / (units.length - 1);
+      let cur = lo;
+      for (const k of order) { const d = cur - ex[k][a]; moves[k][axis === 'u' ? 0 : 1] = d; cur += ex[k][b] - ex[k][a] + gap; }
+    };
+    ex.forEach((e, k) => {
+      if (mode === 'left') moves[k][0] = U0 - e.u0;
+      if (mode === 'right') moves[k][0] = U1 - e.u1;
+      if (mode === 'centerH') moves[k][0] = (U0 + U1) / 2 - (e.u0 + e.u1) / 2;
+      if (mode === 'top') moves[k][1] = V0 - e.v0;
+      if (mode === 'bottom') moves[k][1] = V1 - e.v1;
+      if (mode === 'middleV') moves[k][1] = (V0 + V1) / 2 - (e.v0 + e.v1) / 2;
+    });
+    if (mode === 'distH') dist1('u');
+    if (mode === 'distV') dist1('v');
+    this.store.mutate((doc) => {
+      const wallIds = new Set(), moved = [];
+      units.forEach((u, k) => {
+        const [du, dv] = moves[k];
+        if (Math.abs(du) < 1e-9 && Math.abs(dv) < 1e-9) return;
+        const w = toWorld(du, dv, th);
+        const m = matTranslate(w[0], w[1]);
+        const beds = new Set(u.filter((i) => isBed(i)).map((i) => i.id));
+        const followers = beds.size ? doc.layers.flatMap((l) => l.items.filter((i) => isGroup(i) && beds.has(i.bedId) && !this.selection.has(i.id))) : [];
+        for (const i of [...u, ...followers]) {
+          transformItem(i, m, 1, 0); invalidateItem(i);
+          if (i.wall) wallIds.add(i.id);
+          if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening) moved.push(i);
+        }
+      });
+      if (wallIds.size || moved.length) syncOpenings(doc, wallIds, moved.filter((i) => !(i.wallId && wallIds.has(i.wallId))), 0.05);
+    }, 'align');
+    this.requestRender();
   }
 
   /** Het verband van het geselecteerde vlak bewaren als eigen bouwsteen (voor alle tekeningen). */

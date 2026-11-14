@@ -111,11 +111,13 @@ export class SelectTool extends Tool {
       rotPos = [top[0] + ((top[0] - mid[0]) / d) * 34, top[1] + ((top[1] - mid[1]) / d) * 34];
       if (d < 1) rotPos = [top[0], top[1] - 34];
     } else {
-      const box = selectionBox(items);
+      // kader in de richting van de elementen (als ze allemaal dezelfde richting hebben), anders recht op het scherm
+      const th = selectionAngle(items, cam);
+      const ext = extentsOf(items.flatMap((i) => itemOutline(i) || []), th);
       const pad = 8 / cam.zoom;
-      const corners = [[box.minX - pad, box.minY - pad], [box.maxX + pad, box.minY - pad], [box.maxX + pad, box.maxY + pad], [box.minX - pad, box.maxY + pad]];
+      const corners = [[ext.u0 - pad, ext.v0 - pad], [ext.u1 + pad, ext.v0 - pad], [ext.u1 + pad, ext.v1 + pad], [ext.u0 - pad, ext.v1 + pad]].map(([u, v]) => toWorld(u, v, th));
       outline = corners.map(S);
-      pivot = it ? itemPivot(it) : [(box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2];
+      pivot = it ? itemPivot(it) : toWorld((ext.u0 + ext.u1) / 2, (ext.v0 + ext.v1) / 2, th);
       const editable = it && it.type === 'shape' && it.kind !== 'circle' || it?.type === 'dim' && it.kind !== 'area';
       const isCircle = it && it.type === 'shape' && it.kind === 'circle';
       if (!editable && !isCircle) {
@@ -395,6 +397,8 @@ export class SelectTool extends Tool {
       // zijden om tegenaan te sluiten (bijv. plantvakken naast elkaar)
       const sel = new Set(items.map(({ item }) => item.id));
       for (const f of this.followers) sel.add(f.item.id);
+      this.drag.sel = sel;
+      this.drag.ownOutline = items.flatMap(({ item }) => itemOutline(item) || []).map((p) => [p[0], p[1]]);
       this.drag.edgeTargets = app.settings.snap ? edgeTargets(app, sel) : [];
       this.drag.ownEdges = items.flatMap(({ item }) => itemEdges(item));
       this.drag.ownPts = this.drag.ownEdges.flatMap((e) => [e.a, e.b]);
@@ -453,6 +457,24 @@ export class SelectTool extends Tool {
         if (sl) { dx += sl[0]; dy += sl[1]; }
         this.snapEdge = flush.t;
         this.liveInfo = sl ? 'Sluit aan, hoeken gelijk' : 'Sluit aan';
+        // langs de zijde ook uitlijnen: midden op midden, of zijkant op zijkant (met hulplijn)
+        const te = Math.atan2(flush.u[1], flush.u[0]);
+        if (!d.edgeRefs || Math.abs(Math.sin(2 * (d.edgeRefsTh - te))) > 1e-6) { d.edgeRefs = collectRefs(app, d.sel, te); d.edgeRefsTh = te; }
+        if (d.edgeRefs.length) {
+          const own = extentsOf(d.ownOutline, te);
+          const c0 = Math.cos(te), s0 = Math.sin(te);
+          const du0 = dx * c0 + dy * s0, dv0 = -dx * s0 + dy * c0;
+          const ext = { u0: own.u0 + du0, u1: own.u1 + du0, v0: own.v0 + dv0, v1: own.v1 + dv0 };
+          const g = alignMove(d.edgeRefs, ext, 8 / cam.zoom);
+          const lines = g.lines.filter((l) => l.axis === 'u');
+          if (lines.length) {
+            if (!sl) { dx += c0 * g.du; dy += s0 * g.du; }
+            const mid = (ext.u0 + ext.u1) / 2 + (sl ? 0 : g.du);
+            const centred = lines.some((l) => Math.abs(l.at - mid) < 1e-6);
+            this.guides = { th: te, lines, gaps: [] };
+            if (centred) this.liveInfo = 'Sluit aan, midden op midden';
+          }
+        }
       } else if (app.settings.snap && d.own.length && d.targets.length) {
         let best = null, bd = 10 / cam.zoom;
         for (const p of d.own) {
@@ -728,6 +750,13 @@ export class SelectTool extends Tool {
     if (this.mode) drawSmartGuides(ctx, this.app, this.guides);
     if (this.mode && this.liveInfo && this.liveS) drawBubble(ctx, this.liveInfo, this.liveS[0], this.liveS[1]);
   }
+}
+
+/** Richting voor een kader of uitlijnen: die van de elementen als ze gelijk zijn (per 90°), anders het scherm. */
+export function selectionAngle(items, cam) {
+  const angs = items.map((i) => itemAngle(i)).filter((x) => x != null);
+  if (angs.length === items.length && angs.length && angs.every((x) => Math.abs(Math.sin(2 * (x - angs[0]))) < 1e-4)) return angs[0];
+  return -cam.rot;
 }
 
 /** Kleinste hoekverschil a − b tussen twee lijnrichtingen (−90°..90°). */
