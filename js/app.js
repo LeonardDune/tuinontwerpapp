@@ -2,7 +2,7 @@
 
 import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
-import { renderScene, renderGrid, renderScaleBar, plantContext } from './render.js';
+import { renderScene, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
@@ -323,8 +323,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView });
-      if (this.settings.grid) renderGrid(this.baseCtx, cam, width, height, dpr, doc.grid);
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, grid: this.settings.grid ? doc.grid || 1 : null });
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
     }

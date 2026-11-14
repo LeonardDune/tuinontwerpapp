@@ -71,6 +71,21 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     const half = px();
     return { full, half };
   });
+  const grid = await page.evaluate(() => {
+    const a = window.app;
+    const sum = () => { a.baseDirty = true; a.render(); const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width; const p0 = a.cam.toScreen([1.2, 1.2]), p1 = a.cam.toScreen([2.8, 2.8]); const d = g.getImageData(Math.round(p0[0] * dpr), Math.round(p0[1] * dpr), Math.round((p1[0] - p0[0]) * dpr), Math.round((p1[1] - p0[1]) * dpr)).data; let t = 0; for (let i = 0; i < d.length; i++) t += d[i]; return t; };
+    a.store.mutate(() => { a.store.findItem('grind').item.opacity = 1; delete a.store.findItem('grind').item.opacity; });
+    a.settings.grid = true; const on = sum();
+    a.settings.grid = false; const off = sum();
+    // buiten de vlakken is het raster wel te zien
+    a.settings.grid = true; a.baseDirty = true; a.render();
+    const c = document.querySelector('#canvas'); const g = c.getContext('2d'); const dpr = c.width / a.width;
+    const q0 = a.cam.toScreen([-3, -3]), q1 = a.cam.toScreen([-0.2, -0.2]);
+    const d = g.getImageData(Math.round(q0[0] * dpr), Math.round(q0[1] * dpr), Math.round((q1[0] - q0[0]) * dpr), Math.round((q1[1] - q0[1]) * dpr)).data;
+    const vals = new Set(); for (let i = 0; i < d.length; i += 4) vals.add(d[i]);
+    return { on, off, outside: vals.size };
+  });
+  assert(grid.on === grid.off && grid.outside > 1, 'raster ligt onder de tekening: niet te zien door dichte stenen, wel op het lege papier');
   assert(cover.full > 150, `grind op 100% dekking is dicht: het zwarte vlak eronder schijnt niet door (helderheid ${cover.full})`);
   assert(cover.half < cover.full - 40, `met Dekking 40% schijnt het wel door (${cover.half})`);
 

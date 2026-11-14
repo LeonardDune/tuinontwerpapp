@@ -14,7 +14,6 @@ export function newLayer(name) {
     visible: true,
     locked: false,
     opacity: 1,
-    paper: 0, // dekking van het "trekpapier" onder deze laag (0..0.9)
     items: [],
   };
 }

@@ -1,4 +1,4 @@
-// Weergave van het document: lagen (met trekpapier en dekking), raster en schaalbalk.
+// Weergave van het document: raster, lagen (met dekking) en schaalbalk.
 
 import { drawItem } from './items.js';
 import { rolesMap, bedStats, isBed, isGroup } from './planting.js';
@@ -17,7 +17,7 @@ function getLayerCanvas(w, h) {
 }
 
 /**
- * opts: { doc, cam, width, height (CSS px), dpr, background, hideItems:Set, paperColor }
+ * opts: { doc, cam, width, height (CSS px), dpr, background, hideItems:Set, paperColor, grid (rastermaat, of leeg) }
  */
 export function renderScene(ctx, opts) {
   const { doc, cam, width, height, dpr } = opts;
@@ -27,6 +27,12 @@ export function renderScene(ctx, opts) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = opts.background || '#fbfaf6';
   ctx.fillRect(0, 0, W, H);
+  // raster op het papier, onder alle lagen (dichte vlakken dekken het af)
+  if (opts.grid) {
+    renderGrid(ctx, cam, width, height, dpr, opts.grid);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+  }
 
   const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', paper: opts.paperColor || opts.background || '#fbfaf6', ...plantContext(doc) };
   const hide = opts.hideItems;
