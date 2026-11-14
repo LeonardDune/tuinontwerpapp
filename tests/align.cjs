@@ -45,6 +45,22 @@ const R = (id, x0, y0, x1, y1, extra = {}) => ({ type: 'shape', id, kind: 'polyg
   assert(near(g1, g2) && near(a1[0][0], 0) && near(c1[1][0], 9), `horizontaal gelijk verdelen (tussenruimte ${g1.toFixed(2)} m)`);
   await page.click('#btn-undo');
 
+  console.log('Vaste onderlinge afstand');
+  await setup([R('A', 0, 0, 2, 1), R('B', 2.7, 0.3, 3.7, 1.3), R('C', 6, -0.2, 9, 0.8)], ['A', 'B', 'C']);
+  assert(await page.locator('#selection-bar input[data-k="spacing"]').count() === 1, 'veld "Afstand ↔" in de balk');
+  await page.fill('#selection-bar input[data-k="spacing"]', '50');
+  await page.press('#selection-bar input[data-k="spacing"]', 'Enter');
+  const a2 = await pts('A'), b2 = await pts('B'), c2 = await pts('C');
+  assert(near(a2[0][0], 0) && near(b2[0][0] - a2[1][0], 0.5) && near(c2[0][0] - b2[1][0], 0.5), 'elk 50 cm uit elkaar, de eerste blijft staan');
+  assert(await page.inputValue('#selection-bar input[data-k="spacing"]') === '50', 'veld toont de gelijke afstand: 50');
+  await page.click('#btn-undo');
+  assert(near((await pts('B'))[0][0], 2.7), 'één keer ongedaan maken zet alles terug');
+  await setup([R('A', 0, 0, 2, 1), R('B', 0.3, 1.8, 1.3, 2.8)], ['A', 'B']);
+  assert(/↕/.test(await page.locator('#selection-bar').innerText()), 'twee vakken onder elkaar: "Afstand ↕"');
+  await page.fill('#selection-bar input[data-k="spacing"]', '0');
+  await page.press('#selection-bar input[data-k="spacing"]', 'Enter');
+  assert(near((await pts('B'))[0][1], 1), 'afstand 0: precies tegen elkaar aan');
+
   console.log('Gedraaide vakken: uitlijnen in hun eigen richting');
   const rot = (ps, deg) => ps.map(([x, y]) => { const r = deg * Math.PI / 180; return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r)]; });
   const RR = (id, x0, y0, x1, y1) => R(id, 0, 0, 0, 0, { points: rot([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], 25) });

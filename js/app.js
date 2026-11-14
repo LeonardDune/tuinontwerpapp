@@ -2177,6 +2177,8 @@ class App {
       // uitlijnen en verdelen, zoals in een opmaakprogramma (een groep telt als één geheel)
       const al = [['left', 'alignLeft', 'Links uitlijnen'], ['centerH', 'alignCenterH', 'Midden uitlijnen (horizontaal)'], ['right', 'alignRight', 'Rechts uitlijnen'], ['top', 'alignTop', 'Boven uitlijnen'], ['middleV', 'alignMiddleV', 'Midden uitlijnen (verticaal)'], ['bottom', 'alignBottom', 'Onder uitlijnen']];
       html += `<span class="aligns">${al.map(([m, ic, t]) => `<button type="button" data-align="${m}" title="${t}">${icon(ic, 20)}</button>`).join('')}`;
+      const sp = this.spacingInfo(found);
+      html += `</span>` + field('spacing', sp.axis === 'u' ? 'Afstand ↔' : 'Afstand ↕', sp.gap == null ? '' : String(Math.round(sp.gap * 1000) / 10).replace('.', ','), 'cm') + `<span class="aligns">`;
       if (this.alignUnits(found).length > 2) html += `<button type="button" data-align="distH" title="Horizontaal gelijk verdelen (gelijke tussenruimte)">${icon('distH', 20)}</button><button type="button" data-align="distV" title="Verticaal gelijk verdelen (gelijke tussenruimte)">${icon('distV', 20)}</button>`;
       html += '</span>';
     }
@@ -2318,6 +2320,54 @@ class App {
     return units;
   }
 
+  /**
+   * Onderlinge afstand van de selectie: langs welke as ze naast elkaar liggen (de as met de grootste
+   * spreiding van de middens) en de tussenruimte als die overal gelijk is.
+   */
+  spacingInfo(found) {
+    const units = this.alignUnits(found);
+    const th = selectionAngle(found.map((f) => f.item), this.cam);
+    const ex = units.map((u) => extentsOf(u.flatMap((i) => itemOutline(i) || []), th));
+    const cu = ex.map((e) => (e.u0 + e.u1) / 2), cv = ex.map((e) => (e.v0 + e.v1) / 2);
+    const axis = Math.max(...cu) - Math.min(...cu) >= Math.max(...cv) - Math.min(...cv) ? 'u' : 'v';
+    const [a, b] = axis === 'u' ? ['u0', 'u1'] : ['v0', 'v1'];
+    const order = ex.map((e, k) => k).sort((p, q) => (ex[p][a] + ex[p][b]) - (ex[q][a] + ex[q][b]));
+    const gaps = order.slice(1).map((k, i) => ex[k][a] - ex[order[i]][b]);
+    const gap = gaps.length && gaps.every((g) => Math.abs(g - gaps[0]) < 0.0005) ? gaps[0] : null;
+    return { units, th, ex, axis, order, gap };
+  }
+
+  /** Alles op een vaste onderlinge afstand zetten (m), langs de as waarop ze naast elkaar liggen. */
+  spaceSelection(gap) {
+    const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (found.some((f) => f.layer.locked)) { this.toast('Een van de elementen staat op een vergrendelde laag.'); return; }
+    const { units, th, ex, axis, order } = this.spacingInfo(found);
+    if (units.length < 2) return;
+    const [a, b] = axis === 'u' ? ['u0', 'u1'] : ['v0', 'v1'];
+    let cur = ex[order[0]][b] + gap;
+    this.store.mutate((doc) => {
+      const wallIds = new Set(), moved = [];
+      for (const k of order.slice(1)) {
+        const d = cur - ex[k][a];
+        cur += ex[k][b] - ex[k][a] + gap;
+        if (Math.abs(d) < 1e-9) continue;
+        const w = toWorld(axis === 'u' ? d : 0, axis === 'v' ? d : 0, th);
+        const m = matTranslate(w[0], w[1]);
+        const u = units[k];
+        const beds = new Set(u.filter((i) => isBed(i)).map((i) => i.id));
+        const followers = beds.size ? doc.layers.flatMap((l) => l.items.filter((i) => isGroup(i) && beds.has(i.bedId) && !this.selection.has(i.id))) : [];
+        for (const i of [...u, ...followers]) {
+          transformItem(i, m, 1, 0); invalidateItem(i);
+          if (i.wall) wallIds.add(i.id);
+          if (i.type === 'stencil' && STENCIL_MAP[i.symbol]?.opening) moved.push(i);
+        }
+      }
+      if (wallIds.size || moved.length) syncOpenings(doc, wallIds, moved.filter((i) => !(i.wallId && wallIds.has(i.wallId))), 0.05);
+    }, 'spacing');
+    this.toast(`Onderlinge afstand ${String(Math.round(gap * 1000) / 10).replace('.', ',')} cm (${axis === 'u' ? 'naast' : 'onder'} elkaar). De eerste blijft staan.`, 2500);
+    this.requestRender();
+  }
+
   /** Uitlijnen (left, centerH, right, top, middleV, bottom) of gelijk verdelen (distH, distV). */
   alignSelection(mode) {
     const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
@@ -2442,6 +2492,13 @@ class App {
     const num = (v) => parseFloat(String(v).replace(',', '.'));
     const len = (v) => parseLength(v);
     const sc = this.store.doc.scale;
+    if (k === 'spacing') {
+      // onderlinge afstand: eigen ongedaan-maken-stap
+      const v = /[a-z]/i.test(String(raw)) ? len(raw) : num(raw) / 100;
+      if (v >= 0 && v < 100) this.spaceSelection(v);
+      this.updateSelectionUI();
+      return;
+    }
     const run = () => {
       switch (k) {
         case 'w': if (it && len(raw) > 0) setFrameSize(it, len(raw), null); break;
