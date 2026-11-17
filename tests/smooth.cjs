@@ -5,7 +5,7 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const b = await chromium.launch();
   const page = await b.newPage({ viewport: { width: 1000, height: 800 } });
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const res = await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     a.openDoc(newDoc('glad'), true); a.cam.zoom = 40; a.cam.rot = 0; a.cam.x = 500; a.cam.y = 400; a.setTool('draw');

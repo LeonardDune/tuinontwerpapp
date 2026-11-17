@@ -1,5 +1,6 @@
 // Tekenen, raken, begrenzen en transformeren van items.
 
+import { arcParams } from './arc.js';
 import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern, HATCHES } from './patterns.js';
 import { drawFence } from './fences.js';
@@ -775,7 +776,9 @@ export function itemSnapPoints(item) {
     case 'stroke':
       return item.points.length ? [item.points[0], item.points[item.points.length - 1]] : [];
     case 'shape':
-      return item.kind === 'circle' ? [item.points[0]] : item.points;
+      if (item.kind === 'circle') return [item.points[0]];
+      if (item.arc) { const a = arcParams(item.points); if (a) return [a.c, ...item.points]; } // ook het middelpunt van een boog
+      return item.points;
     case 'dim':
       return item.kind === 'area' ? [] : [item.a, item.b];
     case 'stencil':

@@ -50,7 +50,7 @@ const poly = (coords, properties) => ({ type: 'Feature', geometry: { type: 'Poly
   await page.route('https://api.3dbag.nl/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ type: 'FeatureCollection', features: [] }) }));
 
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(async ({ LAT, LON }) => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     const d = newDoc('Mijn tuin');

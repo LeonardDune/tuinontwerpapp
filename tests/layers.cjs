@@ -12,7 +12,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(async () => {
     const a = window.app; const { newDoc, newLayer } = await import('./js/model.js');
     const d = newDoc('Lagen');

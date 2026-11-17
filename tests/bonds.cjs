@@ -11,7 +11,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const ks = ['flagstonesgeel', 'flagstonesgras', 'romaans', 'mandverband', 'achthoek', 'waalformaat', 'waaier', 'flagstones', 'visgraat', 'grootformaat', 'keper', 'oudhollands', 'kasseien', 'molenwiek', 'hardsteen', 'klinkers', 'rustiek', 'tegels30', 'stapel', 'cirkel'];
   const known = await page.evaluate(async (ks) => { const { HATCHES } = await import('./js/patterns.js'); return ks.filter((k) => HATCHES[k]); }, ks);
   assert(known.length === ks.length, `alle ${ks.length} verbanden bestaan`);

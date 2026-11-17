@@ -648,3 +648,9 @@ body.side-open .north-btn { right: 364px; }
 .mix-mode span { display: flex; flex-direction: column; gap: 1px; }
 .mix-mode b { font-size: 14px; font-weight: 600; }
 .mix-mode small { font-size: 12px; color: var(--muted); }
+
+/* opties voor een nieuwe boog */
+.arc-opt { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.arc-opt .pf { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.arc-opt .pf input { width: 52px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; font-size: 15px; color: var(--ink); background: #fff; }
+.arc-opt .seg button { padding: 4px 8px; }

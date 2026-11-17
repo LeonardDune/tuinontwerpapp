@@ -13,7 +13,7 @@ const rot = (pts, deg, c) => pts.map(([x, y]) => { const r = deg * Math.PI / 180
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const setup = (items, sel) => page.evaluate(async ([items, sel]) => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     const d = newDoc('Hulplijnen'); d.layers[0].items.push(...items);

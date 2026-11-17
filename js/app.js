@@ -26,6 +26,7 @@ import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool, selectionAngle } from './select.js';
 import { syncOpenings, isOpening } from './walls.js';
 import { PlantTool, PaveTool, newBed, newGroup, hasBeds } from './planttool.js';
+import { arcPolygon, arcParams } from './arc.js';
 import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
 import { extentsOf, toWorld } from './smartguides.js';
 import { PlantPanel } from './plantpanel.js';
@@ -141,7 +142,7 @@ class App {
     this.setupInput();
     this.setupUI();
     this.setTool(this.state.tool, true);
-    this.openInitialDoc();
+    this.openInitialDoc().finally(() => { this.ready = true; }); // tests wachten hierop
     this.registerServiceWorker();
   }
 
@@ -1514,9 +1515,10 @@ class App {
       const seg = document.createElement('div');
       seg.className = 'seg';
       const shp = this.state.paveShape || 'rechthoek';
-      seg.innerHTML = [['rechthoek', 'Rechthoek'], ['vrij', 'Vrij'], ['cirkel', 'Cirkel'], ['tik', 'Tik in ruimte']].map(([m, n]) => `<button type="button" data-s="${m}" class="${shp === m ? 'on' : ''}">${n}</button>`).join('');
+      seg.innerHTML = [['rechthoek', 'Rechthoek'], ['vrij', 'Vrij'], ['cirkel', 'Cirkel'], ['boog', 'Boog'], ['tik', 'Tik in ruimte']].map(([m, n]) => `<button type="button" data-s="${m}" class="${shp === m ? 'on' : ''}">${n}</button>`).join('');
       for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.paveShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
       add(seg);
+      if (shp === 'boog') add(this.arcOptions());
       const blk = this.paveBlock();
       const chip = document.createElement('button');
       chip.type = 'button'; chip.className = 'stencil-current'; chip.title = 'Bouwsteen kiezen in het paneel Verharding';
@@ -1524,7 +1526,7 @@ class App {
       chip.append(` ${blk.name} ▾`);
       chip.addEventListener('click', () => this.pavePanel.open());
       add(chip);
-      add(this.hint(shp === 'tik' ? 'Tik in een ruimte tussen lijnen: het vak volgt die lijnen.' : 'Teken een verhardingsvak. Daarna pas je in de balk steenmaat, kleur, voeg en afwerking aan en geef je het vak een naam.'));
+      add(this.hint(shp === 'boog' ? 'Sleep van het middelpunt naar de binnenrand; de boog ligt in die richting.' : shp === 'tik' ? 'Tik in een ruimte tussen lijnen: het vak volgt die lijnen.' : 'Teken een verhardingsvak. Daarna pas je in de balk steenmaat, kleur, voeg en afwerking aan en geef je het vak een naam.'));
     } else if (t === 'calibrate') {
       add(this.hint('Trek een lijn over een bekende maat in de ondergrond (bijv. een gevel) en vul de werkelijke lengte in.'));
     } else if (t === 'pan') {
@@ -1567,7 +1569,7 @@ class App {
     wrap.appendChild(seg);
     if (mode !== 'plant') {
       const shape = this.state.plantShape || 'vrij';
-      const shapes = [['vrij', 'Vrij'], ['rechthoek', 'Rechthoek'], ['cirkel', 'Cirkel']];
+      const shapes = [['vrij', 'Vrij'], ['rechthoek', 'Rechthoek'], ['cirkel', 'Cirkel'], ['boog', 'Boog']];
       if (mode === 'vak') shapes.push(['tik', 'Tik in ruimte']);
       const seg2 = document.createElement('div');
       seg2.className = 'seg';
@@ -1575,6 +1577,7 @@ class App {
       seg2.innerHTML = shapes.map(([m, n]) => `<button type="button" data-s="${m}" class="${cur === m ? 'on' : ''}">${n}</button>`).join('');
       for (const b of seg2.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
       wrap.appendChild(seg2);
+      if (cur === 'boog') wrap.appendChild(this.arcOptions());
     }
     if (mode === 'vak') {
       const sel = document.createElement('select');
@@ -1646,6 +1649,23 @@ class App {
     p.className = 'hint';
     p.textContent = text;
     return p;
+  }
+
+  /** Breedte en hoek voor een nieuwe boog. */
+  arcOptions() {
+    const wrap = document.createElement('div');
+    wrap.className = 'opt arc-opt';
+    const w = this.state.arcWidth || 0.8, a = this.state.arcAngle || 180;
+    wrap.innerHTML = `<label class="pf" title="Breedte van het pad of de border">Breedte<input data-a="w" inputmode="decimal" value="${String(w).replace('.', ',')}"><span>m</span></label>
+      <span class="seg">${[90, 180, 270].map((v) => `<button type="button" data-deg="${v}" class="${a === v ? 'on' : ''}">${v}°</button>`).join('')}</span>
+      <label class="pf" title="Hoe ver de boog rondloopt">Boog<input data-a="deg" inputmode="decimal" value="${a}"><span>°</span></label>`;
+    const num = (v) => parseFloat(String(v).replace(',', '.'));
+    const set = (k, v) => { this.state[k] = v; this.persistSettings(); this.renderOptions(); };
+    wrap.querySelector('[data-a="w"]').addEventListener('change', (e) => { const v = num(e.target.value); if (v > 0.05 && v < 20) set('arcWidth', v); });
+    wrap.querySelector('[data-a="deg"]').addEventListener('change', (e) => { const v = num(e.target.value); if (v >= 10 && v <= 350) set('arcAngle', Math.round(v)); });
+    for (const b of wrap.querySelectorAll('[data-deg]')) b.addEventListener('click', () => set('arcAngle', Number(b.dataset.deg)));
+    for (const i of wrap.querySelectorAll('input')) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); });
+    return wrap;
   }
 
   slider(label, min, max, step, value, onChange, fmt, log = false) {
@@ -2164,8 +2184,12 @@ class App {
     const gidsSel = [...new Set(items.map((i) => i.gid).filter(Boolean))];
     const wholeGroup = !it && gidsSel.length === 1 && items.every((i) => i.gid === gidsSel[0]);
     let html = `<span class="count">${it ? typeName(it) + (it.gid ? ' (in groep)' : '') : wholeGroup ? `Groep van ${items.length}` : `${items.length} elementen`}</span>`;
+    const arc = it?.arc && it.type === 'shape' ? arcParams(it.points) : null;
+    if (arc) {
+      html += field('arcD', 'Binnen-Ø', fmt(arc.r1 * 2), 'm') + field('arcW', 'Breedte', fmt(arc.r2 - arc.r1), 'm') + field('arcDeg', 'Boog', String(Math.round((arc.sweep * 180) / Math.PI)), '°');
+    }
     if (it) {
-      const size = itemSize(it);
+      const size = arc ? {} : itemSize(it);
       const ang = itemAngle(it);
       if (size.w != null) {
         const round = it.type === 'stencil' && STENCIL_MAP[it.symbol]?.round && it.w === it.h;
@@ -2917,6 +2941,17 @@ class App {
           }
           break;
         case 'bondColor2': for (const i of items) if (i.bond) { i.bond.color2 = raw; delete i.bondName; } break;
+        case 'arcD': case 'arcW': case 'arcDeg': {
+          const p = it && arcParams(it.points);
+          const v = num(raw);
+          if (!p || !Number.isFinite(v)) break;
+          let { r1, r2, sweep } = p;
+          if (k === 'arcD' && v > 0.05) { const w = r2 - r1; r1 = v / 2; r2 = r1 + w; }
+          if (k === 'arcW' && v > 0.02) r2 = r1 + v;
+          if (k === 'arcDeg' && v >= 10 && v <= 350) sweep = (v * Math.PI) / 180;
+          it.points = arcPolygon(p.c, r1, r2, p.mid, sweep);
+          break;
+        }
         case 'bondFill':
           for (const i of items) {
             if (!i.bond || !FILLS[raw]) continue;

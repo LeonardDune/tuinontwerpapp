@@ -11,7 +11,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     a.openDoc(newDoc('Schets'), true); a.cam.zoom = 60; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 150; a.cameraChanged();

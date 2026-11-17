@@ -9,7 +9,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const box = await page.locator('#canvas').boundingBox();
   // zoom 40: een vak van 1,5 × 1 m is 60 × 40 px op het scherm
   const setup = () => page.evaluate(async () => {

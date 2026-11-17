@@ -12,7 +12,7 @@ const close = (a, b, t = 1e-3) => Math.abs(a - b) < t;
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(async () => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     a.openDoc(newDoc('Bewerken'), true);

@@ -56,7 +56,7 @@ function assert(cond, msg) {
   }));
 
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app && window.app.store);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.waitForTimeout(300);
   const box = await page.locator('#canvas').boundingBox();
   const X = (x) => box.x + x, Y = (y) => box.y + y;

@@ -11,7 +11,7 @@ const R = (id, x0, y0, x1, y1, extra = {}) => ({ type: 'shape', id, kind: 'polyg
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(async (items) => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     const d = newDoc('Selecteren'); d.layers[0].items.push(...items);

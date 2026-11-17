@@ -1,6 +1,7 @@
 // Selecteren en bewerken: tikken of omcirkelen om te kiezen, daarna verplaatsen, draaien,
 // schalen, maten aanpassen met grepen en hoekpunten verslepen.
 
+import { arcParams } from './arc.js';
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
 import { collectRefs, extentsOf, alignMove, matchSize, matchAngle, drawSmartGuides, toWorld } from './smartguides.js';
 import { edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
@@ -118,7 +119,8 @@ export class SelectTool extends Tool {
       const corners = [[ext.u0 - pad, ext.v0 - pad], [ext.u1 + pad, ext.v0 - pad], [ext.u1 + pad, ext.v1 + pad], [ext.u0 - pad, ext.v1 + pad]].map(([u, v]) => toWorld(u, v, th));
       outline = corners.map(S);
       pivot = it ? itemPivot(it) : toWorld((ext.u0 + ext.u1) / 2, (ext.v0 + ext.v1) / 2, th);
-      const editable = it && it.type === 'shape' && it.kind !== 'circle' || it?.type === 'dim' && it.kind !== 'area';
+      // een boog heeft veel punten: verslepen en draaien als geheel, de maten in de balk
+      const editable = it && it.type === 'shape' && it.kind !== 'circle' && !(it.arc && arcParams(it.points)) || it?.type === 'dim' && it.kind !== 'area';
       const isCircle = it && it.type === 'shape' && it.kind === 'circle';
       if (!editable && !isCircle) {
         corners.forEach((c, i) => list.push({ kind: 'scale', s: outline[i], opposite: corners[(i + 2) % 4], shape: 'square' }));

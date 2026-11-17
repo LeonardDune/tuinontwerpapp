@@ -8,7 +8,7 @@ const BASE = process.env.BASE || 'http://localhost:8123/';
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   await page.evaluate(() => indexedDB.deleteDatabase('tuinontwerp'));
   const res = await page.evaluate(async () => {
     const app = window.app;

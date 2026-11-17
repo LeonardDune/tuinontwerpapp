@@ -12,7 +12,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const A = 20 * Math.PI / 180;
   const u = [Math.cos(A), -Math.sin(A)], n = [Math.sin(A), Math.cos(A)]; // langs de lijn (20° omhoog) en loodrecht erop
   const P = (s, t) => [s * u[0] + t * n[0], s * u[1] + t * n[1]]; // s langs, t loodrecht (in meters)

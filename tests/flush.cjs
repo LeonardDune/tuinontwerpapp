@@ -11,7 +11,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const setup = (bPts, aPts = [[0, 0], [4, 0], [4, 2], [0, 2]]) => page.evaluate(async ([bPts, aPts]) => {
     const a = window.app; const { newDoc } = await import('./js/model.js');
     const d = newDoc('Aansluiten');

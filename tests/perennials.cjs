@@ -11,7 +11,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.app);
+  await page.waitForFunction(() => window.app && window.app.ready);
   const ids = await page.evaluate(async () => { const { STENCILS } = await import('./js/stencils.js'); return STENCILS.filter((s) => s.cat === 'Vaste planten').map((s) => s.id); });
   assert(['vasteplant', 'vp_aar', 'vp_knop', 'vp_pluim', 'vp_scherm', 'vp_schijf', 'vp_kussen', 'vp_blad', 'varen', 'vp_zwaard', 'bolgewas'].every((id) => ids.includes(id)), `categorie "Vaste planten" met ${ids.length} soorten`);
   await page.evaluate(async (ids) => {

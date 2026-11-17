@@ -10,6 +10,7 @@ import { roleDiameter, rolesMap, ROLES, isBed, shapePolygon, smoothClosed, BED_T
 import { regionAt } from './region.js';
 import { simplify, dist, polygonArea, pointInPolygon, polygonCentroid } from './geom.js';
 import { formatArea, formatLength } from './units.js';
+import { arcPolygon, arcParams } from './arc.js';
 
 const r4 = (v) => Math.round(v * 10000) / 10000;
 const rp = (p) => [r4(p[0]), r4(p[1])];
@@ -165,6 +166,15 @@ export class PlantTool extends Tool {
     if (this.start && this.end) {
       const cam = this.app.cam;
       if (this.shape() === 'cirkel') return { kind: 'circle', points: [this.start, this.end] };
+      if (this.shape() === 'boog') {
+        // van het middelpunt naar de binnenrand; breedte en hoek uit de opties
+        const r1 = dist(this.start, this.end);
+        if (r1 < 0.05) return null;
+        const st = this.app.state;
+        const width = st.arcWidth || 0.8, sweep = ((st.arcAngle || 180) * Math.PI) / 180;
+        const mid = Math.atan2(this.end[1] - this.start[1], this.end[0] - this.start[0]);
+        return { kind: 'polygon', arc: true, points: arcPolygon(this.start, r1, r1 + width, mid, sweep) };
+      }
       const a = cam.toScreen(this.start), b = cam.toScreen(this.end);
       return { kind: 'polygon', rect: true, points: [a, [b[0], a[1]], b, [a[0], b[1]]].map((s) => cam.toWorld(s)) };
     }
@@ -201,7 +211,7 @@ export class PlantTool extends Tool {
         const big = geo.kind === 'circle' ? dist(geo.points[0], geo.points[1]) > 0.1 : Math.abs(polygonArea(poly)) > 0.05;
         if (big) {
           const points = geo.points.map(rp);
-          const extra = geo.rect ? { rect: true } : {};
+          const extra = geo.rect ? { rect: true } : geo.arc ? { arc: true } : {};
           if (mode === 'groep') {
             const c = geo.kind === 'circle' ? geo.points[0] : polygonCentroid(poly);
             const bed = pointInPolygon(c, shapePolygon(this.bed)) ? this.bed : (bedAt(doc, c) || this.bed);
@@ -242,7 +252,7 @@ export class PlantTool extends Tool {
     const doc = this.app.store.doc;
     const tmp = mode === 'groep' && this.bed
       ? newGroup(geo.points, geo.kind, this.mix(), this.bed.id, doc.scale)
-      : this.makeVak(geo.points, geo.kind, doc.scale, geo.rect ? { rect: true } : {});
+      : this.makeVak(geo.points, geo.kind, doc.scale, geo.rect ? { rect: true } : geo.arc ? { arc: true } : {});
     tmp.id = 'voorbeeld';
     const ctx = mode === 'groep' && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };
     drawItem(g, tmp, ctx);
@@ -255,6 +265,9 @@ export class PlantTool extends Tool {
     if (geo.kind === 'circle') {
       const r = dist(geo.points[0], geo.points[1]);
       drawBubble(ctx, `Ø ${formatLength(r * 2)} · ${formatArea(Math.PI * r * r)}`, this.curS[0], this.curS[1]);
+    } else if (geo.arc) {
+      const p = arcParams(geo.points);
+      if (p) drawBubble(ctx, `binnen Ø ${formatLength(p.r1 * 2)} · breedte ${formatLength(p.r2 - p.r1)} · ${Math.round((p.sweep * 180) / Math.PI)}°`, this.curS[0], this.curS[1]);
     } else if (geo.rect) {
       const [a, b, , d] = geo.points;
       drawBubble(ctx, `${formatLength(dist(a, b))} × ${formatLength(dist(a, d))}`, this.curS[0], this.curS[1]);
