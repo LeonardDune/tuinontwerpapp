@@ -18,13 +18,22 @@ export const PAPER = {
 const MARGIN = 10;
 const TITLE_H = 24;
 
-/** Omhullende van de tekening; met rot (radialen) in het gedraaide assenstelsel van een gedraaid beeld. */
-export function contentBox(doc, rot = 0) {
+/** Ondergrond: kaart, luchtfoto, BGT, kadaster en gebouwen uit de basisregistraties (reiken ver buiten de tuin). */
+function isUnderlay(layer, item) {
+  return !!(layer.source || item.source || item.type === 'image');
+}
+
+/**
+ * Omhullende van de tekening; met rot (radialen) in het gedraaide assenstelsel van een gedraaid beeld.
+ * Alleen het ontwerp zelf telt mee; is er (nog) alleen ondergrond, dan die.
+ */
+export function contentBox(doc, rot = 0, all = false) {
   let box = null;
   const c = Math.cos(rot), s = Math.sin(rot);
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
     for (const item of layer.items) {
+      if (!all && isUnderlay(layer, item)) continue;
       const b = itemBBox(item);
       if (!b || !rot) { box = unionBox(box, b); continue; }
       const pts = [[b.minX, b.minY], [b.maxX, b.minY], [b.maxX, b.maxY], [b.minX, b.maxY]].map(([x, y]) => [c * x - s * y, s * x + c * y]);
@@ -32,7 +41,7 @@ export function contentBox(doc, rot = 0) {
       box = unionBox(box, { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) });
     }
   }
-  return box;
+  return box || (all ? null : contentBox(doc, rot, true));
 }
 
 /** Bereken pagina-indeling en schaal. */

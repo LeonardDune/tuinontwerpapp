@@ -3684,13 +3684,17 @@ class App {
       const bw = plan.box.maxX - plan.box.minX, bh = plan.box.maxY - plan.box.minY;
       const f = (v) => v.toLocaleString('nl-NL', { maximumFractionDigits: 1 });
       el.textContent = `Gebied ${f(bw)} × ${f(bh)} m op ${opts().paper} bij schaal 1:${plan.scale}. ` +
-        (plan.fits ? 'Past op het papier.' : 'Let op: past niet helemaal; de randen vallen weg. Kies een kleinere schaal (groter getal) of groter papier.');
+        (plan.fits ? 'Past op het papier.' : `Let op: past niet; alleen het midden komt erop. Kies "Passend" (zou 1:${planExport(this.store.doc, { ...opts(), scale: 'fit' }, viewBox()).scale} worden) of groter papier.`);
     };
     for (const id of ['#exp-paper', '#exp-orient', '#exp-scale', '#exp-area', '#exp-rot', '#exp-titleblock']) $(id).addEventListener('change', info);
 
     $('#btn-export').addEventListener('click', () => {
       $('#exp-title').value = this.store.doc.name;
+      // tekenschaal als die op het papier past, anders passend maken
       scaleSel.value = String(this.store.doc.scale);
+      if (!scaleSel.value) scaleSel.value = 'fit';
+      const p0 = planExport(this.store.doc, opts(), viewBox());
+      if (p0 && !p0.fits) scaleSel.value = 'fit';
       // gedraaid beeld: standaard ook gedraaid op papier
       $('#exp-rot').value = this.viewAngleDeg() === 0 ? 'north' : 'view';
       info();
