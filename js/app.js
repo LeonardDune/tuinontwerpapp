@@ -6,7 +6,7 @@ import { renderScene, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
-import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, describeBond, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
+import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, FILLS, describeBond, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
@@ -2300,6 +2300,13 @@ class App {
         html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
         const BT = BOND_TYPES[bd.type] || {};
         if (BT.tile) html += field('bondTile', BT.name.startsWith('Kassei') ? 'Vak' : 'Tegel', cm(bd.tile || 0.6), 'cm');
+        if (BT.fill) {
+          html += `<select data-k="bondFill" title="Waarmee de gaten of het rooster gevuld zijn">${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${(bd.fill || 'gras') === k2 ? 'selected' : ''}>Vulling: ${v.name}</option>`).join('')}</select>`;
+          html += `<label class="pf" title="Kleur van de vulling">Vulling<input type="color" data-k="bondColor2" value="${bd.color2 || FILLS[bd.fill || 'gras'].color}"></label>`;
+        }
+        if ((bd.joint ?? 0.003) >= 0.008 || bd.jointFill) {
+          html += `<select data-k="jointFill" title="Wat er in de voeg zit (bij een brede voeg)"><option value="" ${bd.jointFill ? '' : 'selected'}>Voeg: effen</option>${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${bd.jointFill === k2 ? 'selected' : ''}>Voeg: ${v.name.toLowerCase()}</option>`).join('')}</select>`;
+        }
         if (BT.two) {
           html += `<label class="pf" title="Tweede kleur (tegels, kasseien of de tweede tint)">2e kleur<input type="color" data-k="bondColor2" value="${bd.color2 || '#9a9a96'}"></label>`;
           html += `<select data-k="bondFinish2" title="Afwerking van de tweede steen">${Object.entries(FINISHES).map(([k2, v]) => `<option value="${k2}" ${(bd.finish2 || bd.finish || 'glad') === k2 ? 'selected' : ''}>2e: ${v.name}</option>`).join('')}</select>`;
@@ -2891,7 +2898,7 @@ class App {
           if (v >= 0.02 && v <= 3) for (const i of items) if (i.bond) { const a = Math.max(i.bond.l, i.bond.w), b = Math.min(i.bond.l, i.bond.w); const nl = k === 'bondL' ? v : a, nw = k === 'bondW' ? v : b; i.bond.l = Math.max(nl, nw); i.bond.w = Math.min(nl, nw); delete i.bondName; }
           break;
         }
-        case 'bondJoint': { const v = num(raw) / 1000; if (v >= 0 && v <= 0.1) for (const i of items) if (i.bond) i.bond.joint = v; break; }
+        case 'bondJoint': { const v = num(raw) / 1000; if (v >= 0 && v <= 0.5) for (const i of items) if (i.bond) i.bond.joint = v; break; }
         case 'bondColor': for (const i of items) if (i.bond) { i.bond.color = raw; if (i.bond.mix?.colors?.[0]) i.bond.mix.colors[0].color = raw; } break;
         case 'bondMix':
           for (const i of items) {
@@ -2902,6 +2909,8 @@ class App {
           }
           break;
         case 'bondColor2': for (const i of items) if (i.bond) { i.bond.color2 = raw; delete i.bondName; } break;
+        case 'bondFill': for (const i of items) if (i.bond && FILLS[raw]) { i.bond.fill = raw; i.bond.color2 = FILLS[raw].color; delete i.bondName; } break;
+        case 'jointFill': for (const i of items) if (i.bond) { if (FILLS[raw]) { i.bond.jointFill = raw; i.bond.jointColor = FILLS[raw].color; } else delete i.bond.jointFill; delete i.bondName; } break;
         case 'bondFinish2': for (const i of items) if (i.bond && FINISHES[raw]) { i.bond.finish2 = raw; delete i.bondName; } break;
         case 'bondTile': { const v = num(raw) / 100; if (v >= 0.2 && v <= 3) for (const i of items) if (i.bond) { i.bond.tile = v; delete i.bondName; } break; }
         case 'bondJointColor': for (const i of items) if (i.bond) i.bond.jointColor = raw; break;

@@ -100,7 +100,7 @@ export class PavePanel {
         <p class="hint">Een eigen bouwsteen maak je zo: teken een vak, pas verband, steenmaat, kleur, voeg en afwerking aan in de balk, en kies <b>Bewaar als bouwsteen</b>.</p>
       </section>
       ${[...new Set(Object.values(BOND_PRESETS).map((v) => v.group))].map((gr) => `<section>
-        <h3>${gr === 'Klinkers' ? 'Klinkerverbanden' : gr === 'Tegels' ? 'Tegelverbanden' : 'Combinaties'}</h3>
+        <h3>${{ Klinkers: 'Klinkerverbanden', Tegels: 'Tegelverbanden', Natuurlijk: 'Natuurlijk en waterdoorlatend' }[gr] || 'Combinaties'}</h3>
         <ul class="roles" data-list="pre-${gr}"></ul>
       </section>`).join('')}`;
     const fill = (ul, entries, kind) => {

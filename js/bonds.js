@@ -30,6 +30,10 @@ export const STONE_SIZES = [
   { id: 'k14', name: 'Kassei 14×14', l: 0.14, w: 0.14, group: 'Kasseien en koppen' },
   { id: 'k1420', name: 'Kassei 14×20', l: 0.2, w: 0.14, group: 'Kasseien en koppen' },
   { id: 'b6', name: 'Opsluitband 100×6', l: 1.0, w: 0.06, group: 'Banden' },
+  { id: 'gb6040', name: 'Grasbetontegel 60×40', l: 0.6, w: 0.4, group: 'Gras- en grindplaten' },
+  { id: 'gb5050', name: 'Grasbetontegel 50×50', l: 0.5, w: 0.5, group: 'Gras- en grindplaten' },
+  { id: 'gp5050', name: 'Gras- of grindplaat 50×50', l: 0.5, w: 0.5, group: 'Gras- en grindplaten' },
+  { id: 'gp12080', name: 'Grindplaat 120×80', l: 1.2, w: 0.8, group: 'Gras- en grindplaten' },
   { id: 'b10', name: 'Opsluitband 100×10', l: 1.0, w: 0.1, group: 'Banden' },
 ];
 
@@ -38,6 +42,15 @@ export const FINISHES = {
   getrommeld: { name: 'Getrommeld' },
   structuur: { name: 'Structuur (korrel)' },
   gemeleerd: { name: 'Gemêleerd / bont' },
+};
+
+/** Vullingen voor open verharding (gaten, roosters en brede voegen). */
+export const FILLS = {
+  gras: { name: 'Gras', color: '#7fa35a' },
+  grind: { name: 'Grind', color: '#d6caae' },
+  split: { name: 'Split', color: '#a9a9a4' },
+  schors: { name: 'Boomschors', color: '#7a5a3c' },
+  aarde: { name: 'Aarde', color: '#6e5440' },
 };
 
 /** Gangbare steenkleuren. */
@@ -173,6 +186,63 @@ export const BOND_TYPES = {
       return { px: P, py: P, list };
     },
   },
+  // --- natuurlijk en waterdoorlatend
+  grasbeton: {
+    name: 'Grasbetontegels (open tegels met vulling)', fill: true, minPpm: 420,
+    stones: (n) => ({ px: n, py: 1, list: [[0, 0, n, 1]] }),
+    paint: (g, x, y, w, h, o) => {
+      paintStone(g, x, y, w, h, o.col, o.fin, o.seed);
+      // gaten van ca. 10 cm in een raster van ca. 15 cm, gevuld met gras, grind of split
+      const m = o.ppm;
+      const cols = Math.max(2, Math.round(w / m / 0.15)), rows = Math.max(2, Math.round(h / m / 0.15));
+      const cw = w / cols, ch = h / rows, hw = cw * 0.62, hh = ch * 0.62;
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+        const hx = x + i * cw + (cw - hw) / 2, hy = y + j * ch + (ch - hh) / 2;
+        g.save();
+        g.beginPath();
+        if (g.roundRect) g.roundRect(hx, hy, hw, hh, Math.min(hw, hh) * 0.18); else g.rect(hx, hy, hw, hh);
+        g.clip();
+        paintFill(g, hx, hy, hw, hh, o.bond.fill || 'gras', o.bond.color2, o.seed * 31 + i * 7 + j, m);
+        // schaduwrand: het gat ligt iets dieper
+        g.strokeStyle = 'rgba(0,0,0,0.28)'; g.lineWidth = Math.max(1, 0.006 * m);
+        g.stroke();
+        g.restore();
+      }
+    },
+  },
+  rooster: {
+    name: 'Gras- of grindplaten (kunststof honingraat)', fill: true, minPpm: 420,
+    stones: (n) => ({ px: n, py: 1, list: [[0, 0, n, 1]] }),
+    paint: (g, x, y, w, h, o) => {
+      const m = o.ppm;
+      g.save();
+      g.beginPath(); g.rect(x, y, w, h); g.clip();
+      paintFill(g, x, y, w, h, o.bond.fill || 'gras', o.bond.color2, o.seed, m);
+      // honingraat van ca. 5 cm, de wanden steken net boven de vulling uit
+      const r = (o.bond.cell || 0.05) * m / 2;
+      const dx = r * Math.sqrt(3), dy = r * 1.5;
+      g.beginPath();
+      for (let row = -1; row * dy < h + dy; row++) {
+        for (let col = -1; col * dx < w + dx; col++) {
+          const cx = x + col * dx + (row % 2 ? dx / 2 : 0), cy = y + row * dy;
+          for (let k = 0; k < 6; k++) {
+            const a = Math.PI / 6 + (k * Math.PI) / 3;
+            const px = cx + r * Math.cos(a), py = cy + r * Math.sin(a);
+            if (k) g.lineTo(px, py); else g.moveTo(px, py);
+          }
+          g.closePath();
+        }
+      }
+      g.strokeStyle = o.col; g.globalAlpha = o.bond.fill === 'gras' ? 0.55 : 0.8;
+      g.lineWidth = Math.max(1, 0.004 * m);
+      g.stroke();
+      g.globalAlpha = 1;
+      // naad tussen de platen
+      g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = Math.max(1, 0.003 * m);
+      g.strokeRect(x, y, w, h);
+      g.restore();
+    },
+  },
 };
 
 const B = (name, type, size, color, finish, extra = {}) => {
@@ -221,10 +291,21 @@ export const BOND_PRESETS = {
   'c-tegelband': B('Tegels 60×60 met klinkerband', 'tegelband', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: 'grijs', bond: { tile: 0.6, finish2: 'glad' } }),
   'c-tegelband-groot': B('Tegels 80×80 met antraciet band', 'tegelband', 'bkk', 'antraciet', 'glad', { group: 'Combinaties', color2: 'beige', bond: { tile: 0.8 } }),
   'c-tegelrollaag': B('Tegelveld 60×60 met rollaag', 'stapel', 't60', 'beige', 'glad', { group: 'Combinaties', border: 'rollaag', bond: { joint: 0.004 } }),
-  'c-grasvoeg': B('Tegels 60×60 met grasvoeg', 'stapel', 't60', 'grijs', 'glad', { group: 'Combinaties', bond: { joint: 0.05, jointColor: '#8fae6a' } }),
-  'c-splitvoeg': B('Tegels 60×30 met splitvoeg', 'halfsteens', 't6030', 'antraciet', 'structuur', { group: 'Combinaties', bond: { joint: 0.02, jointColor: '#bdb6a8' } }),
   'c-kasseivak': B('Kasseivakken met klinkerkruis', 'kasseivak', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: 'grijs', bond: { tile: 0.5, finish2: 'getrommeld' } }),
   'c-tuinraster': B('Tuinraster: klinkerpaden met plantvakken', 'tegelband', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: '#6f8f4a', bond: { tile: 1.0, finish2: 'gemeleerd' } }),
+  // natuurlijk en waterdoorlatend
+  'n-grasbeton': B('Grasbetontegels 60×40 met gras', 'grasbeton', 'gb6040', '#a3a19b', 'structuur', { group: 'Natuurlijk', color2: '#7fa35a', bond: { joint: 0.003, fill: 'gras' } }),
+  'n-grasbeton-grind': B('Grasbetontegels 60×40 met grind', 'grasbeton', 'gb6040', '#a3a19b', 'structuur', { group: 'Natuurlijk', color2: '#d6caae', bond: { joint: 0.003, fill: 'grind' } }),
+  'n-grasplaat': B('Grasplaten (kunststof honingraat) met gras', 'rooster', 'gp5050', '#3f4a3a', 'glad', { group: 'Natuurlijk', color2: '#7fa35a', bond: { joint: 0, fill: 'gras' } }),
+  'n-grindplaat': B('Grindplaten (honingraat) met grind', 'rooster', 'gp12080', '#f2f0ea', 'glad', { group: 'Natuurlijk', color2: '#d6caae', bond: { joint: 0, fill: 'grind' } }),
+  'n-grindplaat-split': B('Grindplaten met antraciet split', 'rooster', 'gp12080', '#3a3c40', 'glad', { group: 'Natuurlijk', color2: '#6f7075', bond: { joint: 0, fill: 'split' } }),
+  'n-grasvoeg-klinker': B('Klinkers met brede grasvoeg (drainvoeg)', 'halfsteens', 'kei', 'rood', 'getrommeld', { group: 'Natuurlijk', bond: { joint: 0.025, jointColor: '#7fa35a', jointFill: 'gras' } }),
+  'n-ecoklinker': B('Waterdoorlatende klinkers met splitvoeg', 'halfsteens', 'bkk', 'grijs', 'glad', { group: 'Natuurlijk', bond: { joint: 0.012, jointColor: '#5d5f63', jointFill: 'split' } }),
+  'n-grasvoeg': B('Tegels 60×60 met grasvoeg', 'stapel', 't60', 'grijs', 'glad', { group: 'Natuurlijk', bond: { joint: 0.05, jointColor: '#7fa35a', jointFill: 'gras' } }),
+  'n-splitvoeg': B('Tegels 60×30 met splitvoeg', 'halfsteens', 't6030', 'antraciet', 'structuur', { group: 'Natuurlijk', bond: { joint: 0.02, jointColor: '#a9a9a4', jointFill: 'split' } }),
+  'n-tegels-in-gras': B('Tegels 60×40 in gras (stapstenen)', 'halfsteens', 't6040', 'beige', 'structuur', { group: 'Natuurlijk', bond: { joint: 0.2, jointColor: '#7fa35a', jointFill: 'gras' } }),
+  'n-kasseien-grind': B('Kasseien met grindvoeg', 'halfsteens', 'k1420', 'grijs', 'getrommeld', { group: 'Natuurlijk', bond: { joint: 0.03, jointColor: '#d6caae', jointFill: 'grind' } }),
+
 };
 
 // ---------------------------------------------------------------- tekenen
@@ -244,6 +325,66 @@ function shade(hex, t, warm = 0) {
 function hash(a, b) {
   const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
   return v - Math.floor(v);
+}
+
+/**
+ * Vulling tekenen: gras, grind, split, schors of aarde (bovenaanzicht), met ppm pixels per meter.
+ * wrap = [W, H]: korrels over de rand van een herhalende tegel ook aan de overkant tekenen.
+ */
+export function paintFill(g, x, y, w, h, kind, color, seed = 1, ppm = 200, wrap = null) {
+  const F = FILLS[kind] || FILLS.gras;
+  const base = color || F.color;
+  g.fillStyle = base;
+  g.fillRect(x, y, w, h);
+  const areaM = (w * h) / (ppm * ppm);
+  const R = (i, k) => hash(seed * 0.37 + i * 1.13, k * 7.77 + seed * 0.11);
+  const at = (fn, px, py, ext) => {
+    fn(px, py);
+    if (!wrap) return;
+    const [W, H] = wrap;
+    for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
+      if (!ox && !oy) continue;
+      const qx = px + ox, qy = py + oy;
+      if (qx > x - ext && qx < x + w + ext && qy > y - ext && qy < y + h + ext) fn(qx, qy);
+    }
+  };
+  if (kind === 'gras') {
+    // korte sprietjes in wisselende tinten
+    const n = Math.min(9000, Math.round(areaM * 9000));
+    const len = 0.018 * ppm;
+    g.lineWidth = Math.max(0.6, 0.0035 * ppm);
+    g.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const px = x + R(i, 1) * w, py = y + R(i, 2) * h;
+      const a = -Math.PI / 2 + (R(i, 3) - 0.5) * 1.6, l = len * (0.5 + R(i, 4));
+      g.strokeStyle = shade(base, (R(i, 5) - 0.5) * 0.45, (R(i, 6) - 0.5) * 0.4);
+      at((qx, qy) => { g.beginPath(); g.moveTo(qx, qy); g.lineTo(qx + Math.cos(a) * l, qy + Math.sin(a) * l); g.stroke(); }, px, py, len * 1.5);
+    }
+    return;
+  }
+  // korrels: grind en split klein, schors en aarde grover
+  const size = { grind: 0.007, split: 0.0055, schors: 0.014, aarde: 0.004 }[kind] || 0.007;
+  const n = Math.min(14000, Math.round((areaM / (size * size)) * 0.55));
+  for (let i = 0; i < n; i++) {
+    const px = x + R(i, 1) * w, py = y + R(i, 2) * h;
+    const r = size * ppm * (0.55 + R(i, 3) * 0.7);
+    const t = (R(i, 4) - 0.5) * (kind === 'split' ? 0.5 : 0.35), warm = kind === 'grind' ? (R(i, 5) - 0.5) * 0.6 : 0;
+    g.fillStyle = shade(base, t, warm);
+    const rot = R(i, 6) * Math.PI;
+    at((qx, qy) => {
+      g.beginPath();
+      if (kind === 'split') {
+        // hoekig
+        for (let k = 0; k < 4; k++) { const a = rot + k * 1.57 + (R(i, 7 + k) - 0.5) * 0.7; const rr = r * (0.7 + R(i, 11 + k) * 0.5); if (k) g.lineTo(qx + Math.cos(a) * rr, qy + Math.sin(a) * rr); else g.moveTo(qx + Math.cos(a) * rr, qy + Math.sin(a) * rr); }
+        g.closePath();
+      } else if (kind === 'schors') {
+        g.ellipse(qx, qy, r * 1.6, r * 0.6, rot, 0, Math.PI * 2);
+      } else {
+        g.ellipse(qx, qy, r, r * (0.7 + R(i, 8) * 0.3), rot, 0, Math.PI * 2);
+      }
+      g.fill();
+    }, px, py, r * 2);
+  }
 }
 
 /**
@@ -447,7 +588,7 @@ export function bondLayout(bond) {
 
 /** Canvaspatroon voor een verband, in wereldcoördinaten (meters), met legrichting en beginpunt. */
 export function bondPattern(ctx, bond, rot = 0, origin = null) {
-  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish, bond.color2, bond.finish2, bond.tile, bond.mix || null]);
+  const key = JSON.stringify([bond.type, bond.l, bond.w, bond.joint, bond.color, bond.jointColor, bond.finish, bond.color2, bond.finish2, bond.tile, bond.mix || null, bond.fill || null, bond.jointFill || null]);
   let tile = cache.get(key);
   const L0 = bondLayout(bond);
   const palette = bondPalette(bond);
@@ -462,14 +603,18 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
   if (!tile) {
     const W = L.px * L.U, H = L.py * L.U;
     const maxPx = kx * ky > 1 ? 2048 : 1024;
-    const ppm = Math.min(maxPx / Math.max(W, H), Math.max(180, 16 / L.U));
+    const minPpm = Math.max(180, 16 / L.U, L.T.minPpm || 0, bond.jointFill ? 300 : 0);
+    const ppm = Math.min(maxPx / Math.max(W, H), minPpm);
     const c = document.createElement('canvas');
     c.width = Math.max(8, Math.round(W * ppm)); c.height = Math.max(8, Math.round(H * ppm));
     const g = c.getContext('2d');
     const sx = c.width / L.px, sy = c.height / L.py; // pixels per rastereenheid
     const jx = (L.j / L.U) * sx, jy = (L.j / L.U) * sy;
-    g.fillStyle = bond.jointColor || '#8a857c';
-    g.fillRect(0, 0, c.width, c.height);
+    if (bond.jointFill) paintFill(g, 0, 0, c.width, c.height, bond.jointFill, bond.jointColor, 7, ppm, [c.width, c.height]);
+    else {
+      g.fillStyle = bond.jointColor || '#8a857c';
+      g.fillRect(0, 0, c.width, c.height);
+    }
     const mod = (v, m) => ((v % m) + m) % m;
     let mixCol = null;
     if (palette) {
@@ -486,7 +631,8 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
         for (const dy of [-L.py, 0, L.py]) {
           const X = (bx + dx) * sx, Y = (by + dy) * sy;
           if (X > c.width || Y > c.height || X + w * sx < 0 || Y + h * sy < 0) continue;
-          paintStone(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, col, fin, seed);
+          if (L.T.paint) L.T.paint(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, { col, fin, seed, bond, ppm: sx / L.U });
+          else paintStone(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, col, fin, seed);
         }
       }
     }
