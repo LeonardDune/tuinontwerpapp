@@ -6,7 +6,7 @@ import { renderScene, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
 import { unionPolygons, isRectRing } from './union.js';
 import { FENCES } from './fences.js';
-import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, FILLS, describeBond, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
+import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, FILLS, describeBond, materialAmount, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
 import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
@@ -2289,30 +2289,38 @@ class App {
         const groups = [...new Set(STONE_SIZES.map((z) => z.group))];
         const ar = paveArea(it);
         html += `<label class="pf" title="Naam van het verhardingsvak (staat in het vak op de tekening)">Naam<input data-k="vakName" class="wide" value="${escapeHtml(it.name || '')}" placeholder="bijv. Terras"></label>`;
-        html += `<span class="pinfo" title="Oppervlakte en geschat aantal stenen (zonder snijverlies)">${fmt(ar, ar < 100 ? 1 : 0)} m² · ca. ${stoneCount(bd, ar).toLocaleString('nl-NL')} st.</span>`;
+        html += `<span class="pinfo" title="Oppervlakte en geschat aantal stenen (zonder snijverlies)">${fmt(ar, ar < 100 ? 1 : 0)} m² · ${materialAmount(bd, ar, stoneCount(bd, ar))}</span>`;
         html += `<select data-k="bondType" title="Verband (legpatroon)">${Object.entries(BOND_TYPES).map(([k, v]) => `<option value="${k}" ${bd.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
-        html += `<select data-k="bondSize" title="Steenmaat (standaardmaten)">${cur ? '' : '<option value="" selected>Eigen maat</option>'}${groups.map((gr) => `<optgroup label="${gr}">${STONE_SIZES.filter((z) => z.group === gr).map((z) => `<option value="${z.id}" ${cur === z ? 'selected' : ''}>${z.name}</option>`).join('')}</optgroup>`).join('')}</select>`;
-        html += field('bondL', 'Steen', cm(Math.max(bd.l, bd.w)), '×') + field('bondW', '', cm(Math.min(bd.l, bd.w)), 'cm');
-        html += field('bondJoint', 'Voeg', String(Math.round((bd.joint ?? 0.003) * 10000) / 10).replace('.', ','), 'mm');
-        html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-k="bondColor" value="${bd.color || '#a8503c'}"></label>`;
-        const pal = bondPalette(bd);
-        html += `<button type="button" class="tgl${pal ? ' on' : ''}" data-act="mix" title="Meerdere steenkleuren mengen: aantal kleuren, verhouding en hoe ze terugkomen">${pal ? `${pal.length} kleuren` : 'Kleuren mengen'}…</button>`;
-        html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
-        const BT = BOND_TYPES[bd.type] || {};
-        if (BT.tile) html += field('bondTile', BT.name.startsWith('Kassei') ? 'Vak' : 'Tegel', cm(bd.tile || 0.6), 'cm');
-        if (BT.fill) {
-          html += `<select data-k="bondFill" title="Waarmee de gaten of het rooster gevuld zijn">${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${(bd.fill || 'gras') === k2 ? 'selected' : ''}>Vulling: ${v.name}</option>`).join('')}</select>`;
-          html += `<label class="pf" title="Kleur van de vulling">Vulling<input type="color" data-k="bondColor2" value="${bd.color2 || FILLS[bd.fill || 'gras'].color}"></label>`;
+        const SURF = BOND_TYPES[bd.type]?.surface;
+        if (SURF) {
+          html += `<select data-k="bondFill" title="Materiaal van de halfverharding">${Object.entries(FILLS).filter(([k2]) => k2 !== 'gras').map(([k2, v]) => `<option value="${k2}" ${(bd.fill || 'kalk') === k2 ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+          html += `<label class="pf" title="Kleur van de halfverharding">Kleur<input type="color" data-k="bondColor" value="${bd.color || '#e3d3a6'}"></label>`;
+          if ((bd.fill || 'kalk') === 'kalk') html += `<select data-k="bondGrain" title="Korrelgrootte"><option value="" ${bd.grain ? '' : 'selected'}>Fijne korrel</option><option value="grof" ${bd.grain === 'grof' ? 'selected' : ''}>Grove korrel</option></select>`;
         }
-        if ((bd.joint ?? 0.003) >= 0.008 || bd.jointFill) {
-          html += `<select data-k="jointFill" title="Wat er in de voeg zit (bij een brede voeg)"><option value="" ${bd.jointFill ? '' : 'selected'}>Voeg: effen</option>${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${bd.jointFill === k2 ? 'selected' : ''}>Voeg: ${v.name.toLowerCase()}</option>`).join('')}</select>`;
+        if (!SURF) html += `<select data-k="bondSize" title="Steenmaat (standaardmaten)">${cur ? '' : '<option value="" selected>Eigen maat</option>'}${groups.map((gr) => `<optgroup label="${gr}">${STONE_SIZES.filter((z) => z.group === gr).map((z) => `<option value="${z.id}" ${cur === z ? 'selected' : ''}>${z.name}</option>`).join('')}</optgroup>`).join('')}</select>`;
+        if (!SURF) {
+          html += field('bondL', 'Steen', cm(Math.max(bd.l, bd.w)), '×') + field('bondW', '', cm(Math.min(bd.l, bd.w)), 'cm');
+          html += field('bondJoint', 'Voeg', String(Math.round((bd.joint ?? 0.003) * 10000) / 10).replace('.', ','), 'mm');
+          html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-k="bondColor" value="${bd.color || '#a8503c'}"></label>`;
+          const pal = bondPalette(bd);
+          html += `<button type="button" class="tgl${pal ? ' on' : ''}" data-act="mix" title="Meerdere steenkleuren mengen: aantal kleuren, verhouding en hoe ze terugkomen">${pal ? `${pal.length} kleuren` : 'Kleuren mengen'}…</button>`;
+          html += `<label class="pf" title="Kleur van de voeg">Voeg<input type="color" data-k="bondJointColor" value="${bd.jointColor || '#8a857c'}"></label>`;
+          const BT = BOND_TYPES[bd.type] || {};
+          if (BT.tile) html += field('bondTile', BT.name.startsWith('Kassei') ? 'Vak' : 'Tegel', cm(bd.tile || 0.6), 'cm');
+          if (BT.fill) {
+            html += `<select data-k="bondFill" title="Waarmee de gaten of het rooster gevuld zijn">${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${(bd.fill || 'gras') === k2 ? 'selected' : ''}>Vulling: ${v.name}</option>`).join('')}</select>`;
+            html += `<label class="pf" title="Kleur van de vulling">Vulling<input type="color" data-k="bondColor2" value="${bd.color2 || FILLS[bd.fill || 'gras'].color}"></label>`;
+          }
+          if ((bd.joint ?? 0.003) >= 0.008 || bd.jointFill) {
+            html += `<select data-k="jointFill" title="Wat er in de voeg zit (bij een brede voeg)"><option value="" ${bd.jointFill ? '' : 'selected'}>Voeg: effen</option>${Object.entries(FILLS).map(([k2, v]) => `<option value="${k2}" ${bd.jointFill === k2 ? 'selected' : ''}>Voeg: ${v.name.toLowerCase()}</option>`).join('')}</select>`;
+          }
+          if (BT.two) {
+            html += `<label class="pf" title="Tweede kleur (tegels, kasseien of de tweede tint)">2e kleur<input type="color" data-k="bondColor2" value="${bd.color2 || '#9a9a96'}"></label>`;
+            html += `<select data-k="bondFinish2" title="Afwerking van de tweede steen">${Object.entries(FINISHES).map(([k2, v]) => `<option value="${k2}" ${(bd.finish2 || bd.finish || 'glad') === k2 ? 'selected' : ''}>2e: ${v.name}</option>`).join('')}</select>`;
+          }
+          html += `<select data-k="bondFinish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(bd.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+          html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
         }
-        if (BT.two) {
-          html += `<label class="pf" title="Tweede kleur (tegels, kasseien of de tweede tint)">2e kleur<input type="color" data-k="bondColor2" value="${bd.color2 || '#9a9a96'}"></label>`;
-          html += `<select data-k="bondFinish2" title="Afwerking van de tweede steen">${Object.entries(FINISHES).map(([k2, v]) => `<option value="${k2}" ${(bd.finish2 || bd.finish || 'glad') === k2 ? 'selected' : ''}>2e: ${v.name}</option>`).join('')}</select>`;
-        }
-        html += `<select data-k="bondFinish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(bd.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
-        html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
         html += `<button type="button" class="tgl" data-act="saveBond" title="Dit verband (met steenmaat, kleur, voeg, afwerking en rand) bewaren als eigen bouwsteen, voor al je tekeningen">Bewaar als bouwsteen</button>`;
         if (it.bondLib && lib[it.bondLib]) html += `<button type="button" class="tgl" data-act="deleteBond" title="Deze bouwsteen uit 'Mijn bouwstenen' verwijderen (vlakken die hem gebruiken blijven zoals ze zijn)">Bouwsteen verwijderen</button>`;
       }
@@ -2909,7 +2917,15 @@ class App {
           }
           break;
         case 'bondColor2': for (const i of items) if (i.bond) { i.bond.color2 = raw; delete i.bondName; } break;
-        case 'bondFill': for (const i of items) if (i.bond && FILLS[raw]) { i.bond.fill = raw; i.bond.color2 = FILLS[raw].color; delete i.bondName; } break;
+        case 'bondFill':
+          for (const i of items) {
+            if (!i.bond || !FILLS[raw]) continue;
+            i.bond.fill = raw;
+            if (BOND_TYPES[i.bond.type]?.surface) { i.bond.color = FILLS[raw].color; if (raw !== 'kalk') delete i.bond.grain; } else i.bond.color2 = FILLS[raw].color;
+            delete i.bondName;
+          }
+          break;
+        case 'bondGrain': for (const i of items) if (i.bond) { if (raw === 'grof') i.bond.grain = 'grof'; else delete i.bond.grain; delete i.bondName; } break;
         case 'jointFill': for (const i of items) if (i.bond) { if (FILLS[raw]) { i.bond.jointFill = raw; i.bond.jointColor = FILLS[raw].color; } else delete i.bond.jointFill; delete i.bondName; } break;
         case 'bondFinish2': for (const i of items) if (i.bond && FINISHES[raw]) { i.bond.finish2 = raw; delete i.bondName; } break;
         case 'bondTile': { const v = num(raw) / 100; if (v >= 0.2 && v <= 3) for (const i of items) if (i.bond) { i.bond.tile = v; delete i.bondName; } break; }

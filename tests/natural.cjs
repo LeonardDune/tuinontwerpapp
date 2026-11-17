@@ -1,4 +1,4 @@
-// Natuurlijke en waterdoorlatende verharding: grasbetontegels, gras- en grindplaten, brede gras- of splitvoeg.
+// Halfverharding en natuurlijke, waterdoorlatende verharding: grasbetontegels, gras- en grindplaten, brede gras- of splitvoeg.
 const { chromium } = require('playwright');
 const path = require('path');
 const BASE = process.env.BASE || 'http://localhost:8123/';
@@ -62,6 +62,30 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.selectOption('#selection-bar select[data-k="jointFill"]', '');
   kl = await page.evaluate(() => window.app.store.findItem('KL').item.bond);
   assert(!kl.jointFill, 'voeg weer effen');
+
+  console.log('Halfverharding');
+  const hv = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js'); const { BOND_PRESETS } = await import('./js/bonds.js');
+    const ids = Object.entries(BOND_PRESETS).filter(([, v]) => v.group === 'Halfverharding').map(([k]) => k);
+    const d = newDoc('Halfverharding');
+    d.layers[0].items.push({ type: 'shape', id: 'HV', kind: 'polygon', rect: true, points: [[0, 0], [5, 0], [5, 2], [0, 2]], color: '#333', width: 0.02, hatch: 'bond', bond: JSON.parse(JSON.stringify(BOND_PRESETS['h-kalk-geel'].bond)) });
+    a.openDoc(d, true); a.cam.zoom = 100; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 150; a.cameraChanged(); a.settings.grid = false;
+    a.setTool('lasso'); a.setSelection(new Set(['HV'])); a.baseDirty = true; a.render();
+    // vlak zonder voegen: kleur overal dicht bij de gekozen kleur
+    const p = a.cam.toScreen([0.3, 0.3]), q = a.cam.toScreen([4.7, 1.7]);
+    const px = a.baseCtx.getImageData(Math.round(p[0] * a.dpr), Math.round(p[1] * a.dpr), Math.round((q[0] - p[0]) * a.dpr), Math.round((q[1] - p[1]) * a.dpr)).data;
+    let far = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - 0xe3) + Math.abs(px[i + 1] - 0xd3) + Math.abs(px[i + 2] - 0xa6) > 90) far++;
+    return { ids, far: far / (px.length / 4), info: document.querySelector('#selection-bar .pinfo')?.textContent, joint: !!document.querySelector('#selection-bar [data-k="bondJoint"]'), grain: !!document.querySelector('#selection-bar [data-k="bondGrain"]') };
+  });
+  assert(hv.ids.length >= 8 && hv.ids.includes('h-kalk-geel') && hv.ids.includes('h-schelpen'), `${hv.ids.length} bouwstenen halfverharding (o.a. verdicht kalksteen in 4 kleuren, grind, schelpen)`);
+  assert(hv.far < 0.03, `verdicht kalksteen: één doorlopend oppervlak zonder voegen (${(hv.far * 100).toFixed(1)}% afwijkend)`);
+  assert(/10 m² · ca\. 0,7 m³ \(laag 7 cm\)/.test(hv.info), `hoeveelheid in m³: "${hv.info}"`);
+  assert(!hv.joint && hv.grain, 'balk: geen voeg of steenmaat, wel korrel');
+  await page.selectOption('#selection-bar select[data-k="bondFill"]', 'schelpen');
+  const hb = await page.evaluate(() => window.app.store.findItem('HV').item.bond);
+  assert(hb.fill === 'schelpen' && hb.color === '#eee6d6' && !hb.grain, 'materiaal naar schelpen (met schelpkleur)');
+  await page.click('#btn-paving');
+  assert(/Halfverharding/.test(await page.locator('#pave-panel').innerText()), 'paneel Verharding: groep Halfverharding');
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();

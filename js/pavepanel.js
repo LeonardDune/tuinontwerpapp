@@ -1,6 +1,6 @@
 // Paneel "Verharding": bouwstenen (verbanden) kiezen en beheren, en een overzicht van de oppervlakten.
 
-import { BOND_PRESETS, bondPattern, bondLayout, describeBond } from './bonds.js';
+import { BOND_PRESETS, BOND_TYPES, bondPattern, bondLayout, describeBond, materialAmount } from './bonds.js';
 import { shapePolygon } from './planting.js';
 import { polygonArea, dist } from './geom.js';
 import { icon } from './icons.js';
@@ -16,6 +16,7 @@ export function paveArea(it) {
 
 /** Geschat aantal stenen voor een oppervlakte (zonder snijverlies). */
 export function stoneCount(bond, area) {
+  if (BOND_TYPES[bond.type]?.surface) return 0;
   const L = bondLayout(bond);
   // gemiddeld steenoppervlak (incl. voeg) over één herhaling van het patroon
   const uniq = new Set(L.list.map(([x, y, w, h]) => [((x % L.px) + L.px) % L.px, ((y % L.py) + L.py) % L.py, w, h].map((v) => Math.round(v * 1000)).join()));
@@ -77,7 +78,7 @@ export class PavePanel {
         if (it.type !== 'shape' || !it.bond || it.hatch !== 'bond') continue;
         const a = paveArea(it);
         const key = it.bondName || describeBond(it.bond);
-        const r = rows.get(key) || { area: 0, n: 0, vakken: [] };
+        const r = rows.get(key) || { area: 0, n: 0, vakken: [], bond: it.bond };
         r.area += a; r.n += stoneCount(it.bond, a); if (it.name) r.vakken.push(it.name);
         rows.set(key, r); total += a;
       }
@@ -91,7 +92,7 @@ export class PavePanel {
       </div>
       <section>
         <h3>Overzicht <small>${rows.size ? `totaal ${m2(total)}` : ''}</small></h3>
-        ${rows.size ? `<ul class="sk">${[...rows.entries()].map(([k, r]) => `<li><span>${esc(k)}${r.vakken.length ? `<small> · ${esc(r.vakken.join(', '))}</small>` : ''}</span><b>${m2(r.area)}</b><small>ca. ${r.n.toLocaleString('nl-NL')} st.</small></li>`).join('')}</ul>` : ''}
+        ${rows.size ? `<ul class="sk">${[...rows.entries()].map(([k, r]) => `<li><span>${esc(k)}${r.vakken.length ? `<small> · ${esc(r.vakken.join(', '))}</small>` : ''}</span><b>${m2(r.area)}</b><small>${materialAmount(r.bond, r.area, r.n)}</small></li>`).join('')}</ul>` : ''}
         <p class="hint">${rows.size ? 'Aantal stenen zonder snijverlies; reken 5–10% extra.' : 'Nog geen verhardingsvakken. Kies hieronder een bouwsteen en teken een vak met het gereedschap Verharden.'}</p>
       </section>
       <section>
@@ -100,7 +101,7 @@ export class PavePanel {
         <p class="hint">Een eigen bouwsteen maak je zo: teken een vak, pas verband, steenmaat, kleur, voeg en afwerking aan in de balk, en kies <b>Bewaar als bouwsteen</b>.</p>
       </section>
       ${[...new Set(Object.values(BOND_PRESETS).map((v) => v.group))].map((gr) => `<section>
-        <h3>${{ Klinkers: 'Klinkerverbanden', Tegels: 'Tegelverbanden', Natuurlijk: 'Natuurlijk en waterdoorlatend' }[gr] || 'Combinaties'}</h3>
+        <h3>${{ Klinkers: 'Klinkerverbanden', Tegels: 'Tegelverbanden', Halfverharding: 'Halfverharding', Natuurlijk: 'Natuurlijk en waterdoorlatend' }[gr] || 'Combinaties'}</h3>
         <ul class="roles" data-list="pre-${gr}"></ul>
       </section>`).join('')}`;
     const fill = (ul, entries, kind) => {
@@ -111,7 +112,7 @@ export class PavePanel {
         li.appendChild(this.swatch(blk.bond));
         const txt = document.createElement('div');
         txt.className = 'rtxt';
-        txt.innerHTML = `<b>${esc(blk.name)}</b><small>${esc(describeBond(blk.bond))} · voeg ${Math.round((blk.bond.joint ?? 0.003) * 1000)} mm${blk.border ? ' · met rand' : ''}</small>`;
+        txt.innerHTML = `<b>${esc(blk.name)}</b><small>${esc(describeBond(blk.bond))}${BOND_TYPES[blk.bond.type]?.surface ? '' : ` · voeg ${Math.round((blk.bond.joint ?? 0.003) * 1000)} mm`}${blk.border ? ' · met rand' : ''}</small>`;
         li.appendChild(txt);
         if (kind === 'my') {
           const del = document.createElement('button');

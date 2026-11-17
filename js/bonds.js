@@ -51,7 +51,12 @@ export const FILLS = {
   split: { name: 'Split', color: '#a9a9a4' },
   schors: { name: 'Boomschors', color: '#7a5a3c' },
   aarde: { name: 'Aarde', color: '#6e5440' },
+  kalk: { name: 'Kalksteen (verdicht)', color: '#e0cf9f' },
+  schelpen: { name: 'Schelpen', color: '#eee6d6' },
 };
+
+/** Halfverharding: een doorlopend oppervlak zonder stenen; aantal in m³ bij deze laagdikte (m). */
+export const SURFACE_LAYER = { kalk: 0.07, grind: 0.05, split: 0.05, schelpen: 0.05, schors: 0.07, gras: 0, aarde: 0 };
 
 /** Gangbare steenkleuren. */
 export const STONE_COLORS = {
@@ -186,6 +191,15 @@ export const BOND_TYPES = {
       return { px: P, py: P, list };
     },
   },
+  // --- halfverharding (geen stenen: één doorlopend oppervlak)
+  halfverharding: {
+    name: 'Halfverharding (doorlopend oppervlak)', surface: true, minPpm: 300,
+    stones: () => ({ px: 1, py: 1, list: [[0, 0, 1, 1]] }),
+    paint: (g, x, y, w, h, o) => {
+      if (o.offset) return; // één keer de hele tegel, naadloos herhalend
+      paintFill(g, x, y, w, h, o.bond.fill || 'kalk', o.col, 11, o.ppm, [w, h], o.bond.grain);
+    },
+  },
   // --- natuurlijk en waterdoorlatend
   grasbeton: {
     name: 'Grasbetontegels (open tegels met vulling)', fill: true, minPpm: 420,
@@ -293,6 +307,16 @@ export const BOND_PRESETS = {
   'c-tegelrollaag': B('Tegelveld 60×60 met rollaag', 'stapel', 't60', 'beige', 'glad', { group: 'Combinaties', border: 'rollaag', bond: { joint: 0.004 } }),
   'c-kasseivak': B('Kasseivakken met klinkerkruis', 'kasseivak', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: 'grijs', bond: { tile: 0.5, finish2: 'getrommeld' } }),
   'c-tuinraster': B('Tuinraster: klinkerpaden met plantvakken', 'tegelband', 'kei', 'rood', 'getrommeld', { group: 'Combinaties', color2: '#6f8f4a', bond: { tile: 1.0, finish2: 'gemeleerd' } }),
+  // halfverharding (zoals verdicht kalksteen, grind en schelpen)
+  'h-kalk-geel': B('Verdicht kalksteen, geel (fiets- en wandelpad)', 'halfverharding', { l: 1.5, w: 1.5 }, '#e3d3a6', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'kalk' } }),
+  'h-kalk-grijsgeel': B('Verdicht kalksteen, grijsgeel', 'halfverharding', { l: 1.5, w: 1.5 }, '#c2b394', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'kalk' } }),
+  'h-kalk-antraciet': B('Verdicht kalksteen, antraciet', 'halfverharding', { l: 1.5, w: 1.5 }, '#8d8f8c', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'kalk' } }),
+  'h-kalk-rood': B('Verdicht kalksteen, rood', 'halfverharding', { l: 1.5, w: 1.5 }, '#94574a', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'kalk' } }),
+  'h-kalk-grof': B('Verdicht kalksteen, grove korrel (oprit, parkeren)', 'halfverharding', { l: 1.5, w: 1.5 }, '#d8c79a', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'kalk', grain: 'grof' } }),
+  'h-grind': B('Grind (los), beige', 'halfverharding', { l: 1.5, w: 1.5 }, '#d6caae', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'grind' } }),
+  'h-split': B('Split, grijs', 'halfverharding', { l: 1.5, w: 1.5 }, '#a9a9a4', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'split' } }),
+  'h-schelpen': B('Schelpenpad', 'halfverharding', { l: 1.5, w: 1.5 }, '#eee6d6', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'schelpen' } }),
+  'h-schors': B('Boomschors / houtsnippers', 'halfverharding', { l: 1.5, w: 1.5 }, '#7a5a3c', 'glad', { group: 'Halfverharding', bond: { joint: 0, fill: 'schors' } }),
   // natuurlijk en waterdoorlatend
   'n-grasbeton': B('Grasbetontegels 60×40 met gras', 'grasbeton', 'gb6040', '#a3a19b', 'structuur', { group: 'Natuurlijk', color2: '#7fa35a', bond: { joint: 0.003, fill: 'gras' } }),
   'n-grasbeton-grind': B('Grasbetontegels 60×40 met grind', 'grasbeton', 'gb6040', '#a3a19b', 'structuur', { group: 'Natuurlijk', color2: '#d6caae', bond: { joint: 0.003, fill: 'grind' } }),
@@ -331,7 +355,7 @@ function hash(a, b) {
  * Vulling tekenen: gras, grind, split, schors of aarde (bovenaanzicht), met ppm pixels per meter.
  * wrap = [W, H]: korrels over de rand van een herhalende tegel ook aan de overkant tekenen.
  */
-export function paintFill(g, x, y, w, h, kind, color, seed = 1, ppm = 200, wrap = null) {
+export function paintFill(g, x, y, w, h, kind, color, seed = 1, ppm = 200, wrap = null, grain = '') {
   const F = FILLS[kind] || FILLS.gras;
   const base = color || F.color;
   g.fillStyle = base;
@@ -362,8 +386,28 @@ export function paintFill(g, x, y, w, h, kind, color, seed = 1, ppm = 200, wrap 
     }
     return;
   }
+  if (kind === 'kalk') {
+    // verdichte kalksteen: vlak en dicht, zachte vlekken en een fijne korrel; 'grof' met grotere steentjes
+    const blobs = Math.min(400, Math.round(areaM * 60));
+    for (let i = 0; i < blobs; i++) {
+      const r = (0.08 + R(i, 3) * 0.22) * ppm;
+      g.fillStyle = shade(base, (R(i, 4) - 0.5) * 0.08, 0);
+      g.globalAlpha = 0.35;
+      at((qx, qy) => { g.beginPath(); g.ellipse(qx, qy, r, r * (0.6 + R(i, 5) * 0.4), R(i, 6) * 3, 0, Math.PI * 2); g.fill(); }, x + R(i, 1) * w, y + R(i, 2) * h, r);
+    }
+    g.globalAlpha = 1;
+    const big = grain === 'grof';
+    const n = Math.min(20000, Math.round(areaM * (big ? 9000 : 14000)));
+    for (let i = 0; i < n; i++) {
+      const r = (big ? 0.0035 + R(i, 3) * 0.006 : 0.0015 + R(i, 3) * 0.0025) * ppm;
+      const t = (R(i, 4) - 0.5) * (big ? 0.38 : 0.34);
+      g.fillStyle = shade(base, t, (R(i, 5) - 0.5) * 0.3);
+      at((qx, qy) => { g.beginPath(); g.ellipse(qx, qy, r, r * 0.75, R(i, 6) * 3, 0, Math.PI * 2); g.fill(); }, x + R(i + 7, 1) * w, y + R(i + 7, 2) * h, r * 2);
+    }
+    return;
+  }
   // korrels: grind en split klein, schors en aarde grover
-  const size = { grind: 0.007, split: 0.0055, schors: 0.014, aarde: 0.004 }[kind] || 0.007;
+  const size = { grind: 0.007, split: 0.0055, schors: 0.014, aarde: 0.004, schelpen: 0.008 }[kind] || 0.007;
   const n = Math.min(14000, Math.round((areaM / (size * size)) * 0.55));
   for (let i = 0; i < n; i++) {
     const px = x + R(i, 1) * w, py = y + R(i, 2) * h;
@@ -376,6 +420,11 @@ export function paintFill(g, x, y, w, h, kind, color, seed = 1, ppm = 200, wrap 
       if (kind === 'split') {
         // hoekig
         for (let k = 0; k < 4; k++) { const a = rot + k * 1.57 + (R(i, 7 + k) - 0.5) * 0.7; const rr = r * (0.7 + R(i, 11 + k) * 0.5); if (k) g.lineTo(qx + Math.cos(a) * rr, qy + Math.sin(a) * rr); else g.moveTo(qx + Math.cos(a) * rr, qy + Math.sin(a) * rr); }
+        g.closePath();
+      } else if (kind === 'schelpen') {
+        // schelpgruis: halve maantjes en stukjes in wit, crème en grijsblauw
+        g.fillStyle = R(i, 9) < 0.15 ? '#9aa0a8' : R(i, 9) < 0.55 ? shade(base, 0.25, 0) : shade(base, t - 0.08, 0.1);
+        g.arc(qx, qy, r, rot, rot + Math.PI * (1 + R(i, 10) * 0.6));
         g.closePath();
       } else if (kind === 'schors') {
         g.ellipse(qx, qy, r * 1.6, r * 0.6, rot, 0, Math.PI * 2);
@@ -582,6 +631,7 @@ export function bondLayout(bond) {
   let n = (l + j) / U;
   if (T.ratio || T.tile) n = Math.max(T.minN || 1, Math.round(n));
   if (T.fixedN) n = T.fixedN;
+  if (T.surface) return { T, U: 1.5, n: 1, j: 0, ...T.stones(1, bond, 1.5) };
   const st = T.stones(n, bond, U);
   return { T, U, n, j, ...st };
 }
@@ -631,7 +681,7 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
         for (const dy of [-L.py, 0, L.py]) {
           const X = (bx + dx) * sx, Y = (by + dy) * sy;
           if (X > c.width || Y > c.height || X + w * sx < 0 || Y + h * sy < 0) continue;
-          if (L.T.paint) L.T.paint(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, { col, fin, seed, bond, ppm: sx / L.U });
+          if (L.T.paint) L.T.paint(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, { col, fin, seed, bond, ppm: sx / L.U, offset: !!(dx || dy) });
           else paintStone(g, X + jx / 2, Y + jy / 2, w * sx - jx, h * sy - jy, col, fin, seed);
         }
       }
@@ -653,7 +703,18 @@ export function bondPattern(ctx, bond, rot = 0, origin = null) {
 /** Korte omschrijving van een verband. */
 export function describeBond(bond) {
   const cm = (v) => (Math.round(v * 1000) / 10).toLocaleString('nl-NL');
+  if (BOND_TYPES[bond.type]?.surface) return `Halfverharding · ${(FILLS[bond.fill] || FILLS.kalk).name.toLowerCase()}${bond.grain === 'grof' ? ', grove korrel' : ''}`;
   const pal = bondPalette(bond);
   const mix = pal ? ` · ${pal.length} kleuren, ${(MIX_MODES[bond.mix.mode] || MIX_MODES.willekeurig).name.toLowerCase()}` : '';
   return `${BOND_TYPES[bond.type]?.name || 'Verband'} · ${cm(Math.max(bond.l, bond.w))}×${cm(Math.min(bond.l, bond.w))} cm${mix}`;
+}
+
+/** Benodigde hoeveelheid: aantal stenen of platen, of m³ bij halfverharding. */
+export function materialAmount(bond, area, count) {
+  if (BOND_TYPES[bond.type]?.surface) {
+    const d = SURFACE_LAYER[bond.fill || 'kalk'] ?? 0.05;
+    const v = area * d;
+    return d ? `ca. ${v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)} m³ (laag ${Math.round(d * 100)} cm)` : '';
+  }
+  return `ca. ${count.toLocaleString('nl-NL')} st.`;
 }
