@@ -57,12 +57,12 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   console.log('Maatvoering en tekst leesbaar');
   const txt = await page.evaluate(async () => {
     const { renderExport } = await import('./js/export.js'); const { newDoc } = await import('./js/model.js');
-    // alleen een maatlijn en een tekst (3,5 mm op papier bij de tekenschaal), afgedrukt op 1:100
-    const ink = async (drawScale) => {
+    // afgedrukt op 1:100, getekend bij tekenschaal 1:20 of 1:100
+    const ink = async (drawScale, what) => {
       const doc = newDoc('Maten'); doc.scale = drawScale;
-      const mm = drawScale / 1000;
-      doc.layers[0].items.push({ type: 'dim', id: 'm1', a: [0, 0], b: [15, 0], offset: 0.5, color: '#1d2b36' });
-      doc.layers[0].items.push({ type: 'text', id: 't1', x: 1, y: 3, size: 3.5 * mm, text: 'Terras', color: '#1d2b36' });
+      if (what === 'dim') doc.layers[0].items.push({ type: 'dim', id: 'm1', a: [0, 0], b: [15, 0], offset: 0.5, color: '#1d2b36' });
+      // eigen tekst van 50 cm hoog in de tuin
+      else doc.layers[0].items.push({ type: 'text', id: 't1', x: 1, y: 3, size: 0.5, text: 'Terras', color: '#1d2b36' }, { type: 'shape', id: 'r', kind: 'line', points: [[0, 0], [15, 0]], color: '#1d2b36', width: 0.02 });
       const opts = { paper: 'A3', orientation: 'landscape', scale: 100, area: 'all', titleBlock: false, title: '', subtitle: '', plantView: 'planten', rot: 0, dpi: 150 };
       const { canvas } = await renderExport(doc, opts, null);
       // binnen het kader (marge 10 mm + 2 mm), zonder de kaderlijn zelf
@@ -71,10 +71,11 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
       let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 120 && d[i + 2] < 140) n++;
       return n;
     };
-    return { at20: await ink(20), at100: await ink(100) };
+    return { dim20: await ink(20, 'dim'), dim100: await ink(100, 'dim'), txt20: await ink(20, 'text'), txt100: await ink(100, 'text') };
   });
-  const ratio = txt.at20 / txt.at100;
-  assert(ratio > 0.8 && ratio < 1.25, `getekend bij 1:20, afgedrukt op 1:100: maatcijfers en tekst even groot als bij tekenschaal 1:100 (verhouding ${ratio.toFixed(2)})`);
+  const rd = txt.dim20 / txt.dim100, rt = txt.txt20 / txt.txt100;
+  assert(rd > 0.8 && rd < 1.25, `maatcijfers: getekend bij 1:20, afgedrukt op 1:100 even groot als bij tekenschaal 1:100 (verhouding ${rd.toFixed(2)})`);
+  assert(rt > 0.9 && rt < 1.1, `eigen tekst houdt zijn ware grootte, los van de tekenschaal (verhouding ${rt.toFixed(2)})`);
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
