@@ -11,7 +11,7 @@ import { BRUSHES, strokePath } from './brushes.js';
 import { HATCHES, hatchOptions } from './patterns.js';
 import { STENCILS, STENCIL_MAP, STENCIL_CATEGORIES, drawStencil, CLIMBERS, GROW, padLayout } from './stencils.js';
 import { setAssetLoadHandler } from './assets.js';
-import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS, itemOutline, mirrorItem } from './items.js';
+import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS, itemOutline, mirrorItem, FONTS } from './items.js';
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
@@ -1505,7 +1505,12 @@ class App {
         ? 'Tik in een vlak of vorm om de oppervlakte erin te zetten. Nogmaals tikken haalt hem weg.'
         : 'Tik het beginpunt en het eindpunt aan (of sleep). Snapt aan eindpunten, randen en het raster. Sleep daarna het midden van een maatlijn om hem opzij te leggen.'));
     } else if (t === 'text') {
-      add(this.slider('Tekstgrootte', 1.5, 12, 0.5, this.state.textSize, (v) => { this.state.textSize = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`));
+      add(this.slider('Tekstgrootte', 1.5, 30, 0.5, this.state.textSize, (v) => { this.state.textSize = v; }, (v) => `${v.toLocaleString('nl-NL')} mm`));
+      const fsel = document.createElement('select');
+      fsel.title = 'Lettertype';
+      fsel.innerHTML = Object.entries(FONTS).map(([k, f]) => `<option value="${k}" ${(this.state.textFont || 'schreefloos') === k ? 'selected' : ''} style="font-family:${f.css.replace(/"/g, "'")}">${f.name}</option>`).join('');
+      fsel.addEventListener('change', () => { this.state.textFont = fsel.value; this.persistSettings(); });
+      add(fsel);
       add(this.swatches());
     } else if (t === 'stencil') {
       add(this.stencilOptions());
@@ -2204,6 +2209,14 @@ class App {
       if (area != null && !isRect(it) && it.kind !== 'circle' && !isBed(it) && !isGroup(it)) html += `<span class="pinfo">${fmt(area, area < 100 ? 1 : 0)} m²</span>`;
       const roles = this.store.doc.planting?.roles || [];
       const roleSelect = (cur, empty) => `<select data-k="prole" title="Bouwsteen">${empty ? `<option value="">Geen bouwsteen</option>` : ''}${roles.map((r) => `<option value="${r.id}" ${r.id === cur ? 'selected' : ''}>${escapeHtml(r.code)} – ${escapeHtml(describeRole(r))}</option>`).join('')}</select>`;
+      if (it.type === 'text') {
+        // grootte in mm op papier (bij de tekenschaal), lettertype, vet en cursief; de kleur staat verderop
+        html += field('textSize', 'Grootte', fmt(it.size / (sc / 1000), 1), 'mm');
+        html += `<select data-k="textFont" title="Lettertype">${Object.entries(FONTS).map(([k2, f]) => `<option value="${k2}" ${(it.font || 'schreefloos') === k2 ? 'selected' : ''}>${f.name}</option>`).join('')}</select>`;
+        html += `<button type="button" class="tgl ${it.bold ? 'on' : ''}" data-act="bold" title="Vet"><b>V</b></button>`;
+        html += `<button type="button" class="tgl ${it.italic ? 'on' : ''}" data-act="italic" title="Cursief"><i>C</i></button>`;
+        html += `<button type="button" class="tgl" data-act="edittext" title="Tekst wijzigen (of dubbeltik op de tekst)">Tekst wijzigen</button>`;
+      }
       if (it.type === 'plant') html += roleSelect(it.role, false);
       if (it.type === 'stencil' && (it.role || isPlantStencil(it.symbol))) html += roleSelect(it.role, true);
       if (isBed(it) || isGroup(it)) {
@@ -2423,6 +2436,9 @@ class App {
       });
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
+    bar.querySelector('[data-act="bold"]')?.addEventListener('click', () => this.applyProperty('bold'));
+    bar.querySelector('[data-act="italic"]')?.addEventListener('click', () => this.applyProperty('italic'));
+    bar.querySelector('[data-act="edittext"]')?.addEventListener('click', () => this.editText(it.id));
     bar.querySelector('[data-act="points"]')?.addEventListener('click', () => {
       this.pointEdit = this.pointEdit === it.id ? null : it.id;
       if (this.pointEdit) this.toast(arc ? 'Sleep een hoekpunt langs de rand of naar binnen/buiten; de + in het midden verandert alleen de straal.' : 'Sleep een hoekpunt; met de + midden op een zijde voeg je een punt toe.', 4000);
@@ -2964,6 +2980,10 @@ class App {
           it.points = arcPolygon(p.c, r1, r2, p.mid, sweep, p.imid, p.isweep + (sweep - p.sweep));
           break;
         }
+        case 'textSize': { const v = num(raw); if (v >= 0.5 && v <= 200) for (const i of items) if (i.type === 'text') i.size = v * (sc / 1000); break; }
+        case 'textFont': for (const i of items) if (i.type === 'text' && FONTS[raw]) { if (raw === 'schreefloos') delete i.font; else i.font = raw; } break;
+        case 'bold': { const on = !items.every((i) => i.type !== 'text' || i.bold); for (const i of items) if (i.type === 'text') { if (on) i.bold = true; else delete i.bold; } break; }
+        case 'italic': { const on = !items.every((i) => i.type !== 'text' || i.italic); for (const i of items) if (i.type === 'text') { if (on) i.italic = true; else delete i.italic; } break; }
         case 'bondFill':
           for (const i of items) {
             if (!i.bond || !FILLS[raw]) continue;

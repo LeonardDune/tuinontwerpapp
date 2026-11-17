@@ -971,6 +971,7 @@ export class TextTool extends Tool {
     const item = {
       type: 'text', id: uid(), x: round4(e.w[0]), y: round4(e.w[1]), text,
       size: paperToWorld(app.state.textSize, app.store.doc.scale), color: app.state.color, rot: -app.cam.rot,
+      ...(app.state.textFont && app.state.textFont !== 'schreefloos' ? { font: app.state.textFont } : {}),
     };
     const layerId = layer.id;
     app.store.mutate((doc) => {

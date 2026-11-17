@@ -649,13 +649,29 @@ export function drawLabel(g, text, p, rc, italic = false, sizeMm = 2.5, color = 
   g.restore();
 }
 
+/** Lettertypen voor tekst (systeemletters, werken ook offline op iPad en laptop). */
+export const FONTS = {
+  schreefloos: { name: 'Schreefloos', css: 'system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif' },
+  schreef: { name: 'Schreef', css: 'Georgia, "Times New Roman", Times, serif' },
+  smal: { name: 'Smal', css: '"Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif' },
+  hand: { name: 'Handschrift', css: '"Bradley Hand", "Segoe Print", "Comic Sans MS", "Chalkboard SE", cursive' },
+  technisch: { name: 'Technisch', css: '"Courier New", Menlo, Consolas, monospace' },
+};
+
+function textFont(item) {
+  const f = FONTS[item.font] || FONTS.schreefloos;
+  return `${item.italic ? 'italic ' : ''}${item.bold ? '700' : '500'} 100px ${f.css}`;
+}
+
+let measureCtx = null;
+
 function drawText(g, item) {
   g.save();
   g.translate(item.x, item.y);
   g.rotate(item.rot || 0);
   const k = item.size / 100;
   g.scale(k, k);
-  g.font = `${item.bold ? '700' : '500'} 100px system-ui, -apple-system, sans-serif`;
+  g.font = textFont(item);
   g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
   g.fillStyle = item.color || '#222';
@@ -666,8 +682,16 @@ function drawText(g, item) {
 
 export function measureText(item) {
   const lines = String(item.text).split('\n');
-  const longest = Math.max(...lines.map((l) => l.length), 1);
-  return { w: longest * 0.56 * item.size, h: (lines.length - 1) * 1.2 * item.size + item.size };
+  let w;
+  try {
+    // werkelijke breedte in het gekozen lettertype
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = textFont(item);
+    w = Math.max(...lines.map((l) => measureCtx.measureText(l).width), 30) / 100 * item.size;
+  } catch {
+    w = Math.max(...lines.map((l) => l.length), 1) * 0.56 * item.size;
+  }
+  return { w, h: (lines.length - 1) * 1.2 * item.size + item.size };
 }
 
 function drawImage(g, item, rc) {
