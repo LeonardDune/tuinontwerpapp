@@ -258,6 +258,7 @@ button.primary:disabled { opacity: 0.5; }
 .props-bar .sepv { width: 1px; height: 24px; background: rgba(255, 255, 255, 0.25); margin: 0 4px; padding: 0; }
 .props-bar .tgl { border: 1px solid rgba(255, 255, 255, 0.3); height: 32px; font-size: 13px; }
 .props-bar .tgl.on { background: rgba(255, 255, 255, 0.22); }
+.props-bar button[data-act="points"].on { background: rgba(255, 255, 255, 0.28); border-radius: 8px; }
 
 /* ---------- beplanting ---------- */
 .side-panel {

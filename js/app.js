@@ -2150,6 +2150,7 @@ class App {
   updateSelectionUI() {
     const bar = $('#selection-bar');
     const found = [...this.selection].map((id) => this.store.findItem(id)).filter(Boolean);
+    if (this.pointEdit && !(found.length === 1 && found[0].item.id === this.pointEdit)) this.pointEdit = null;
     const mixDlg = document.getElementById('dlg-mix');
     if (mixDlg?.open && !(found.length === 1 && found[0].item.id === this.mixFor && found[0].item.bond && this.state.tool === 'lasso')) mixDlg.close();
     else if (mixDlg?.open && !mixDlg.contains(document.activeElement)) this.renderMixDialog();
@@ -2378,6 +2379,10 @@ class App {
       html += '</span>';
     }
     html += `<span class="aligns"><button type="button" data-flip="h" title="Horizontaal spiegelen (links ↔ rechts)">${icon('flipH', 20)}</button><button type="button" data-flip="v" title="Verticaal spiegelen (boven ↕ onder)">${icon('flipV', 20)}</button></span>`;
+    // rechthoek of boog: de losse hoekpunten verslepen (vrije vormen hebben hun punten al)
+    if (it && it.type === 'shape' && it.kind === 'polygon' && (isRect(it) || arc)) {
+      html += `<button type="button" class="${this.pointEdit === it.id ? 'on' : ''}" data-act="points" title="Punten bewerken: hoekpunten los verslepen (een rechthoek wordt dan een vrije vorm; bij een boog blijven de randen rond)">${icon('points', 20)}</button>`;
+    }
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
     html += `<button data-sel="back" title="Naar achteren">${icon('back', 20)}</button>`;
@@ -2418,6 +2423,12 @@ class App {
       });
     }
     bar.querySelector('[data-act="fill"]')?.addEventListener('click', () => this.applyProperty('fill'));
+    bar.querySelector('[data-act="points"]')?.addEventListener('click', () => {
+      this.pointEdit = this.pointEdit === it.id ? null : it.id;
+      if (this.pointEdit) this.toast(arc ? 'Sleep een hoekpunt langs de rand of naar binnen/buiten; de + in het midden verandert alleen de straal.' : 'Sleep een hoekpunt; met de + midden op een zijde voeg je een punt toe.', 4000);
+      this.updateSelectionUI();
+      this.requestRender();
+    });
     bar.querySelector('[data-act="mirror"]')?.addEventListener('click', () => this.applyProperty('mirror'));
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
@@ -2949,7 +2960,8 @@ class App {
           if (k === 'arcD' && v > 0.05) { const w = r2 - r1; r1 = v / 2; r2 = r1 + w; }
           if (k === 'arcW' && v > 0.02) r2 = r1 + v;
           if (k === 'arcDeg' && v >= 10 && v <= 350) sweep = (v * Math.PI) / 180;
-          it.points = arcPolygon(p.c, r1, r2, p.mid, sweep);
+          // de binnenrand houdt zijn eigen uiteinden (bijv. schuin afgesneden)
+          it.points = arcPolygon(p.c, r1, r2, p.mid, sweep, p.imid, p.isweep + (sweep - p.sweep));
           break;
         }
         case 'bondFill':

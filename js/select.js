@@ -1,7 +1,7 @@
 // Selecteren en bewerken: tikken of omcirkelen om te kiezen, daarna verplaatsen, draaien,
 // schalen, maten aanpassen met grepen en hoekpunten verslepen.
 
-import { arcParams } from './arc.js';
+import { arcParams, arcHandles, dragArc } from './arc.js';
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
 import { collectRefs, extentsOf, alignMove, matchSize, matchAngle, drawSmartGuides, toWorld } from './smartguides.js';
 import { edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
@@ -85,7 +85,9 @@ export class SelectTool extends Tool {
     const S = (p) => cam.toScreen(p);
     const list = [];
     const it = items.length === 1 ? items[0] : null;
-    const frame = it ? itemFrame(it) : null;
+    // "Punten bewerken": ook bij een rechthoek of boog de losse hoekpunten
+    const pe = it && it.type === 'shape' && this.app.pointEdit === it.id;
+    const frame = it && !pe ? itemFrame(it) : null;
     let outline, rotPos, pivot;
 
     if (frame) {
@@ -120,9 +122,12 @@ export class SelectTool extends Tool {
       outline = corners.map(S);
       pivot = it ? itemPivot(it) : toWorld((ext.u0 + ext.u1) / 2, (ext.v0 + ext.v1) / 2, th);
       // een boog heeft veel punten: verslepen en draaien als geheel, de maten in de balk
-      const editable = it && it.type === 'shape' && it.kind !== 'circle' && !(it.arc && arcParams(it.points)) || it?.type === 'dim' && it.kind !== 'area';
+      const arcP = it?.arc && it.type === 'shape' ? arcParams(it.points) : null;
+      const editable = it && it.type === 'shape' && it.kind !== 'circle' && !arcP || it?.type === 'dim' && it.kind !== 'area';
       const isCircle = it && it.type === 'shape' && it.kind === 'circle';
-      if (!editable && !isCircle) {
+      if (pe && arcP) {
+        for (const [role, p] of Object.entries(arcHandles(arcP))) list.push({ kind: 'arc', role, s: S(p), shape: role[1] === 'm' ? 'plus' : 'vertex' });
+      } else if (!editable && !isCircle) {
         corners.forEach((c, i) => list.push({ kind: 'scale', s: outline[i], opposite: corners[(i + 2) % 4], shape: 'square' }));
       }
       if (editable) {
@@ -388,6 +393,7 @@ export class SelectTool extends Tool {
       const pts = it.points;
       const a = pts[h.i], b = pts[(h.i + 1) % pts.length];
       pts.splice(h.i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+      if (it.rect) delete it.rect;
       invalidate(it);
       this.mode = 'vertex';
       this.drag.kind = 'vertex';
@@ -634,7 +640,18 @@ export class SelectTool extends Tool {
       const sc = app.store.doc.scale;
       this.liveInfo = `${formatLength(Math.abs(nf.w), sc)} × ${formatLength(Math.abs(nf.h), sc)}`;
       if (this.sizeMatch) this.liveInfo += ` · ${this.sizeMatch}`;
+    } else if (d.kind === 'arc') {
+      const p = arcParams(this.orig.get(it.id).points);
+      const snap = snapPoint(app, e.w, null, new Set([it.id]));
+      if (snap.kind) this.snap = snap;
+      if (p) {
+        it.points = dragArc(p, d.role, snap.p);
+        invalidate(it);
+        const q = arcParams(it.points);
+        if (q) this.liveInfo = `binnen Ø ${formatLength(q.r1 * 2, app.store.doc.scale)} · breedte ${formatLength(q.r2 - q.r1, app.store.doc.scale)}`;
+      }
     } else if (d.kind === 'vertex') {
+      if (it.rect) delete it.rect; // een losse hoek verschuiven: geen rechthoek meer
       const pts = it.type === 'dim' ? null : it.points;
       const prev = pts ? pts[d.i - 1] || (it.kind === 'polygon' ? pts[pts.length - 1] : null) : (d.i === 1 ? it.a : it.b);
       const snap = snapPoint(app, e.w, prev, new Set([it.id]));

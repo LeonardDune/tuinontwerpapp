@@ -72,6 +72,56 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const handles = await page.evaluate(() => window.app.tool.handles().list.filter((h) => h.kind === 'vertex').length);
   assert(handles === 0, 'geen tientallen hoekpuntgrepen op de boog');
 
+  console.log('Punten bewerken: boog');
+  const rect = await page.evaluate(() => { const r = document.querySelector('#canvas').getBoundingClientRect(); return [r.left, r.top]; });
+  const handle = (kind, role) => page.evaluate(([kind, role]) => { const h = window.app.tool.handles().list.find((g) => g.kind === kind && (role == null || g.role === role || g.i === role)); return h ? h.s : null; }, [kind, role]);
+  const dragTo = async (from, to) => {
+    await page.mouse.move(rect[0] + from[0], rect[1] + from[1]); await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(rect[0] + from[0] + ((to[0] - from[0]) * i) / 8, rect[1] + from[1] + ((to[1] - from[1]) * i) / 8);
+    await page.mouse.up();
+  };
+  await page.evaluate(async () => {
+    const a = window.app; const { arcParams } = await import('./js/arc.js');
+    const it = a.store.doc.layers[0].items.find((i) => i.arc); const p = arcParams(it.points);
+    a.settings.snap = false; a.cam.zoom = 60; a.cam.rot = 0; a.cam.x = 550 - p.c[0] * 60; a.cam.y = 220 - p.c[1] * 60; a.cameraChanged(); a.render();
+  });
+  await page.click('#selection-bar [data-act="points"]');
+  assert(await page.evaluate(() => window.app.tool.handles().list.filter((h) => h.kind === 'arc').length) === 6, 'boog: 4 hoekgrepen en 2 grepen midden op de randen');
+  let before = (await arcItem()).p;
+  // middengreep van de buitenrand 0,5 m naar buiten: alleen de buitenstraal verandert
+  let hs = await handle('arc', 'om');
+  const out = [Math.cos(before.mid), Math.sin(before.mid)];
+  await dragTo(hs, [hs[0] + out[0] * 30, hs[1] + out[1] * 30]);
+  r = await arcItem();
+  assert(r.p && near(r.p.r2, before.r2 + 0.5, 0.03) && near(r.p.r1, before.r1, 1e-3) && near(r.p.sweep, before.sweep, 1e-3), `buitenrand 0,5 m naar buiten (${before.r2.toFixed(2)} → ${r.p.r2.toFixed(2)} m), rest blijft`);
+  // hoekpunt van de buitenrand langs de rand verder trekken: de boog wordt langer, de binnenrand blijft
+  before = r.p;
+  hs = await handle('arc', 'o1');
+  const cS = await page.evaluate((c) => window.app.cam.toScreen(c), before.c);
+  const a1 = Math.atan2(hs[1] - cS[1], hs[0] - cS[0]) + 0.35, R = Math.hypot(hs[0] - cS[0], hs[1] - cS[1]);
+  await dragTo(hs, [cS[0] + Math.cos(a1) * R, cS[1] + Math.sin(a1) * R]);
+  r = await arcItem();
+  assert(r.p && r.p.sweep > before.sweep + 0.2 && near(r.p.isweep, before.isweep, 1e-3) && near(r.p.r2, before.r2, 0.03), `buitenhoek verder getrokken: buitenrand langer (${Math.round(before.sweep * 57.3)}° → ${Math.round(r.p.sweep * 57.3)}°), binnenrand blijft (schuin uiteinde)`);
+  await page.screenshot({ path: path.join(OUT, 'boog-punten.png') });
+
+  console.log('Punten bewerken: rechthoek');
+  await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js'); const { BOND_PRESETS } = await import('./js/bonds.js');
+    const d = newDoc('Hoeken');
+    d.layers[0].items.push({ type: 'shape', id: 'T', kind: 'polygon', rect: true, points: [[0, 0], [3, 0], [3, 2], [0, 2]], color: '#333', width: 0.02, hatch: 'bond', bond: JSON.parse(JSON.stringify(BOND_PRESETS['k-half-waal'].bond)) });
+    a.openDoc(d, true); a.cam.zoom = 80; a.cam.rot = 0; a.cam.x = 400; a.cam.y = 250; a.cameraChanged(); a.settings.snap = false;
+    a.setTool('lasso'); a.setSelection(new Set(['T']));
+  });
+  assert(await page.evaluate(() => window.app.tool.handles().list.filter((h) => h.kind === 'vertex').length) === 0, 'rechthoek: normaal geen losse hoekpunten (wel vergroten/verkleinen)');
+  await page.click('#selection-bar [data-act="points"]');
+  assert(await page.evaluate(() => window.app.tool.handles().list.filter((h) => h.kind === 'vertex').length) === 4, 'Punten bewerken: 4 hoekpunten');
+  hs = await handle('vertex', 2);
+  await dragTo(hs, [hs[0] + 80, hs[1] + 40]);
+  const T = await page.evaluate(() => window.app.store.findItem('T').item);
+  assert(!T.rect && Math.abs(T.points[2][0] - 4) < 0.02 && Math.abs(T.points[2][1] - 2.5) < 0.02 && T.points[1][0] === 3 && T.points[3][1] === 2, `één hoek verschoven naar (${T.points[2].map((v) => v.toFixed(2))}), de rest blijft; nu een vrije vorm`);
+  await page.evaluate(() => window.app.setSelection(new Set()));
+  assert(await page.evaluate(() => window.app.pointEdit) == null, 'selectie weg: Punten bewerken uit');
+
   console.log('Plantvak als boog');
   await page.evaluate(() => { const a = window.app; a.setSelection(new Set()); a.state.plantMode = 'vak'; a.state.plantShape = 'boog'; a.setTool('plant'); });
   assert(await page.isVisible('.arc-opt'), 'Beplanten → Boog: ook hier breedte en hoek');
