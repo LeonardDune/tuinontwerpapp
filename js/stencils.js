@@ -462,6 +462,149 @@ function espalierFruit(g, w, h, seed) {
 // ---------- water ----------
 const WATER = '#7fb2d9';
 
+// ---------------------------------------------------------------- hagen
+
+/** Vaste reeks per maat, zodat een haag er bij elke weergave hetzelfde uitziet. */
+const hedgeSeed = (w, h, k = 0) => Math.round(w * 137 + h * 911 + k * 53) + 7;
+
+/** Bladstructuur binnen het huidige pad: blaadjes in lichte en donkere tinten, licht van boven. */
+function leafTexture(g, w, h, c, { seed = 1, leaf = 0.035, density = 260, palette = null, long = false } = {}) {
+  if (fillOverride.paper) return;
+  const r = rng((Math.abs(Math.round(seed)) % 2147483646) + 1);
+  // licht van één kant: de bovenkant lichter, de onderkant iets in de schaduw
+  const gr = g.createLinearGradient(0, -h / 2, 0, h / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,0.22)');
+  gr.addColorStop(0.55, 'rgba(255,255,255,0)');
+  gr.addColorStop(1, 'rgba(0,0,0,0.18)');
+  g.fillStyle = gr;
+  g.fillRect(-w / 2, -h / 2, w, h);
+  const n = Math.min(900, Math.round(w * h * density));
+  for (let i = 0; i < n; i++) {
+    const x = -w / 2 + r() * w, y = -h / 2 + r() * h;
+    const a = r() * TAU, s = Math.max(1e-4, leaf * (0.6 + r() * 0.8));
+    const t = r();
+    if (palette) g.fillStyle = hexA(palette[Math.floor(r() * palette.length)], 0.55 + r() * 0.35);
+    else g.fillStyle = t < 0.45 ? `rgba(255,255,255,${0.12 + r() * 0.16})` : t < 0.9 ? `rgba(0,0,0,${0.08 + r() * 0.14})` : hexA(c, 0.7);
+    g.beginPath();
+    g.ellipse(x, y, long ? s * 2.4 : s, long ? s * 0.28 : s * 0.55, a, 0, TAU);
+    g.fill();
+  }
+}
+
+/** Strak geschoren haag: afgeronde rechthoek met bladstructuur. */
+function clippedHedge(g, w, h, c, lw, { radius = 0.12, seed = 1, leaf = 0.035, palette = null, alpha = 0.6 } = {}) {
+  const rad = Math.min(radius, h / 2, w / 2);
+  const path = () => { g.beginPath(); if (g.roundRect) g.roundRect(-w / 2, -h / 2, w, h, rad); else g.rect(-w / 2, -h / 2, w, h); };
+  path();
+  g.fillStyle = hexA(c, alpha);
+  g.fill();
+  g.save(); path(); g.clip();
+  leafTexture(g, w, h, c, { seed, leaf, palette });
+  g.restore();
+  path();
+  g.stroke();
+}
+
+/** Vrij uitgroeiende haag: bobbelige rand met wisselende bulten. */
+function lumpyPath(g, w, h, seed, bump = 0.6) {
+  const r = rng(seed);
+  const n = Math.max(3, Math.round(w / Math.max(h * bump, 0.2)));
+  const step = w / n, hh = h / 2;
+  const top = [], bot = [];
+  for (let i = 0; i <= n; i++) { top.push(0.78 + r() * 0.2); bot.push(0.78 + r() * 0.2); }
+  g.beginPath();
+  g.moveTo(-w / 2, 0);
+  g.quadraticCurveTo(-w / 2 - hh * 0.1, -hh * top[0], -w / 2 + step * 0.15, -hh * top[0]);
+  for (let i = 0; i < n; i++) {
+    const x0 = -w / 2 + i * step;
+    g.quadraticCurveTo(x0 + step / 2, -hh * (top[i] + 0.32 + r() * 0.12), x0 + step, -hh * top[i + 1]);
+  }
+  g.quadraticCurveTo(w / 2 + hh * 0.1, 0, w / 2, hh * bot[n]);
+  for (let i = n; i > 0; i--) {
+    const x0 = -w / 2 + i * step;
+    g.quadraticCurveTo(x0 - step / 2, hh * (bot[i] + 0.32 + r() * 0.12), x0 - step, hh * bot[i - 1]);
+  }
+  g.quadraticCurveTo(-w / 2 - hh * 0.1, hh * bot[0], -w / 2, 0);
+  g.closePath();
+}
+
+function looseHedge(g, w, h, c, lw, { seed = 1, bump = 0.6, leaf = 0.04, palette = null, flowers = null, berries = null, long = false, bloom = 40 } = {}) {
+  lumpyPath(g, w, h, seed, bump);
+  g.fillStyle = hexA(c, 0.66);
+  g.fill();
+  if (!fillOverride.paper) {
+    g.save(); lumpyPath(g, w, h, seed, bump); g.clip();
+    leafTexture(g, w * 1.1, h * 1.3, c, { seed: seed + 3, leaf, palette, long });
+    // binnenste takken: een paar donkere vlekken
+    const r = rng(seed + 9);
+    for (let i = 0; i < Math.round(w / Math.max(h * 0.5, 0.2)); i++) {
+      g.fillStyle = 'rgba(0,0,0,0.10)';
+      g.beginPath(); g.ellipse(-w / 2 + r() * w, (r() - 0.5) * h * 0.4, h * (0.12 + r() * 0.1), h * 0.08, r(), 0, TAU); g.fill();
+    }
+    const dots = (cols, size, count) => {
+      for (let i = 0; i < count; i++) {
+        g.fillStyle = hexA(cols[Math.floor(r() * cols.length)], 0.92);
+        const x = -w / 2 + r() * w, y = (r() - 0.5) * h * 0.85;
+        g.beginPath(); g.arc(x, y, size * (0.7 + r() * 0.6), 0, TAU); g.fill();
+      }
+    };
+    if (flowers) dots(flowers, Math.min(0.035, h * 0.05), Math.round(w * h * bloom));
+    if (berries) dots(berries, Math.min(0.022, h * 0.03), Math.round(w * h * 18));
+    g.restore();
+  }
+  g.globalAlpha = 0.75;
+  lumpyPath(g, w, h, seed, bump);
+  g.stroke();
+  g.globalAlpha = 1;
+}
+
+/** Wolkenhaag: aaneengesloten, bol geschoren wolken van wisselende grootte. */
+function cloudHedge(g, w, h, c, lw, seed) {
+  const r = rng(seed);
+  const balls = [];
+  let x = -w / 2;
+  while (x < w / 2) {
+    const rr = h * (0.3 + r() * 0.2);
+    const cx = Math.min(w / 2 - rr, Math.max(-w / 2 + rr, x + rr));
+    balls.push([cx, (r() - 0.5) * (h / 2 - rr) * 1.6, rr]);
+    x += rr * (1.25 + r() * 0.4);
+  }
+  // achterste wolken eerst
+  balls.sort((a, b) => a[2] - b[2]);
+  for (const [bx, by, rr] of balls) {
+    g.beginPath(); g.arc(bx, by, rr, 0, TAU);
+    g.fillStyle = hexA(c, 0.62);
+    g.fill();
+    if (!fillOverride.paper) {
+      g.save(); g.beginPath(); g.arc(bx, by, rr, 0, TAU); g.clip();
+      const gr = g.createRadialGradient(bx - rr * 0.35, by - rr * 0.4, rr * 0.1, bx, by, rr);
+      gr.addColorStop(0, 'rgba(255,255,255,0.32)');
+      gr.addColorStop(1, 'rgba(0,0,0,0.2)');
+      g.fillStyle = gr; g.fillRect(bx - rr, by - rr, rr * 2, rr * 2);
+      g.translate(bx, by);
+      leafTexture(g, rr * 2, rr * 2, c, { seed: Math.round(bx * 97 + 11), leaf: 0.03, density: 200 });
+      g.restore();
+    }
+    g.beginPath(); g.arc(bx, by, rr, 0, TAU); g.stroke();
+  }
+}
+
+/** Golvende haag: geschoren band die als een golf door het vak loopt. */
+function waveHedge(g, w, h, c, lw, seed) {
+  const t = h * 0.42, amp = (h - t) / 2, waves = Math.max(1, Math.round(w / (h * 2.2)));
+  const yc = (x) => Math.sin(((x + w / 2) / w) * waves * TAU) * amp;
+  const path = () => {
+    g.beginPath();
+    const n = 60;
+    for (let i = 0; i <= n; i++) { const x = -w / 2 + (w * i) / n; i ? g.lineTo(x, yc(x) - t / 2) : g.moveTo(x, yc(x) - t / 2); }
+    for (let i = n; i >= 0; i--) { const x = -w / 2 + (w * i) / n; g.lineTo(x, yc(x) + t / 2); }
+    g.closePath();
+  };
+  path(); g.fillStyle = hexA(c, 0.6); g.fill();
+  g.save(); path(); g.clip(); leafTexture(g, w, h, c, { seed, leaf: 0.035 }); g.restore();
+  path(); g.stroke();
+}
+
 function basinRound(g, rx, ry, rim, c, lw) {
   g.fillStyle = hexA(c, 0.95);
   g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, TAU); g.fill(); g.stroke();
@@ -801,25 +944,40 @@ export const STENCILS = [
     },
   },
   {
-    id: 'haag', name: 'Haag', cat: 'Heesters & planten', round: false, w: 5, h: 0.8, color: '#4f7f36',
-    draw(g, w, h, c) {
-      g.fillStyle = hexA(c, 0.3);
-      const n = Math.max(3, Math.round(w / (h * 0.7)));
-      const step = w / n;
-      g.beginPath();
-      g.moveTo(-w / 2, -h / 2);
-      for (let i = 0; i < n; i++) {
-        const x = -w / 2 + i * step;
-        g.quadraticCurveTo(x + step / 2, -h / 2 - h * 0.25, x + step, -h / 2);
-      }
-      g.lineTo(w / 2, h / 2);
-      for (let i = n; i > 0; i--) {
-        const x = -w / 2 + i * step;
-        g.quadraticCurveTo(x - step / 2, h / 2 + h * 0.25, x - step, h / 2);
-      }
-      g.closePath();
-      g.fill(); g.stroke();
-    },
+    id: 'haag', name: 'Haag, strak geschoren (liguster, taxus)', cat: 'Hagen', round: false, w: 5, h: 0.8, color: '#3f6b2d',
+    draw(g, w, h, c, lw) { clippedHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h), radius: 0.1 }); },
+  },
+  {
+    id: 'haag_beuk', name: 'Beukenhaag (koperbruin winterblad)', cat: 'Hagen', round: false, w: 5, h: 0.8, color: '#8a5a2e',
+    draw(g, w, h, c, lw) { clippedHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 1), radius: 0.12, leaf: 0.045, palette: ['#a8743d', '#8a5a2e', '#c08a4e', '#6f4a26', '#5e7a3a'] }); },
+  },
+  {
+    id: 'haag_vrij', name: 'Losse haag, vrij uitgroeiend', cat: 'Hagen', round: false, w: 5, h: 1.2, color: '#5b8a3c',
+    draw(g, w, h, c, lw) { looseHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 2) }); },
+  },
+  {
+    id: 'haag_bloei', name: 'Bloeiende haag (rozen, spirea)', cat: 'Hagen', round: false, w: 5, h: 1.2, color: '#5b8a3c',
+    draw(g, w, h, c, lw) { looseHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 3), flowers: ['#e58fb0', '#f4c3d4', '#ffffff', '#d4607f'] }); },
+  },
+  {
+    id: 'haag_inheems', name: 'Gemengde inheemse haag (meidoorn, hazelaar, sleedoorn)', cat: 'Hagen', round: false, w: 6, h: 1.5, color: '#55803a',
+    draw(g, w, h, c, lw) { looseHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 4), bump: 0.5, palette: ['#4f7a34', '#6f9a45', '#3e6630', '#86a856', '#5d7f2f'], flowers: ['#ffffff', '#f3efe0'], bloom: 10, berries: ['#b8262c', '#3a2f5a'] }); },
+  },
+  {
+    id: 'haag_laag', name: 'Lage randhaag (buxus, ilex crenata)', cat: 'Hagen', round: false, w: 3, h: 0.3, color: '#2f5a2a',
+    draw(g, w, h, c, lw) { clippedHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 5), radius: h / 2, leaf: 0.018, alpha: 0.7 }); },
+  },
+  {
+    id: 'haag_wolk', name: 'Wolkenhaag (bol geschoren)', cat: 'Hagen', round: false, w: 4, h: 1.2, color: '#3f6b2d',
+    draw(g, w, h, c, lw) { cloudHedge(g, w, h, c, lw, hedgeSeed(w, h, 6)); },
+  },
+  {
+    id: 'haag_golf', name: 'Golvende haag', cat: 'Hagen', round: false, w: 6, h: 1.2, color: '#3f6b2d',
+    draw(g, w, h, c, lw) { waveHedge(g, w, h, c, lw, hedgeSeed(w, h, 7)); },
+  },
+  {
+    id: 'bamboe', name: 'Bamboescherm (niet woekerend)', cat: 'Hagen', round: false, w: 4, h: 0.8, color: '#6f9a3a',
+    draw(g, w, h, c, lw) { looseHedge(g, w, h, c, lw, { seed: hedgeSeed(w, h, 8), bump: 0.45, leaf: 0.03, long: true, palette: ['#7fa845', '#5e8a30', '#9cbd5a', '#4d7426'] }); },
   },
   {
     id: 'siergras', name: 'Siergras', cat: 'Heesters & planten', round: true, w: 0.8, h: 0.8, color: '#a39a45',
