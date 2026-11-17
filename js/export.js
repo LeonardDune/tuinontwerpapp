@@ -91,7 +91,12 @@ export async function renderExport(doc, opts, viewBox) {
   cam.rot = opts.rot || 0;
   cam.x = dw / 2 - ((box.minX + box.maxX) / 2) * cam.zoom;
   cam.y = dh / 2 - ((box.minY + box.maxY) / 2) * cam.zoom;
-  const exportDoc = { ...doc, scale: doc.scale };
+  // maten, labels en tekst op papiergrootte voor de schaal van de afdruk (niet de tekenschaal)
+  const k = scale / (doc.scale || scale);
+  const exportDoc = {
+    ...doc, scale,
+    layers: k === 1 ? doc.layers : doc.layers.map((l) => ({ ...l, items: l.items.map((it) => (it.type === 'text' ? { ...it, size: it.size * k } : it)) })),
+  };
   renderScene(dc.getContext('2d'), {
     doc: exportDoc, cam, width: dw, height: dh, dpr: 1, background: '#ffffff', paperColor: '#ffffff', plantView: opts.plantView,
   });

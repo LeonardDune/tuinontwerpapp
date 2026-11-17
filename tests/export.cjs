@@ -54,6 +54,28 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(res.fits && res.scale >= 50 && res.scale <= 200, `passende schaal 1:${res.scale}`);
   assert(res.red > 500 && Math.abs(res.cx - 0.5) < 0.1 && res.cy > 0.3 && res.cy < 0.6, `terras staat midden op het blad (${(res.cx * 100).toFixed(0)}%, ${(res.cy * 100).toFixed(0)}%)`);
 
+  console.log('Maatvoering en tekst leesbaar');
+  const txt = await page.evaluate(async () => {
+    const { renderExport } = await import('./js/export.js'); const { newDoc } = await import('./js/model.js');
+    // alleen een maatlijn en een tekst (3,5 mm op papier bij de tekenschaal), afgedrukt op 1:100
+    const ink = async (drawScale) => {
+      const doc = newDoc('Maten'); doc.scale = drawScale;
+      const mm = drawScale / 1000;
+      doc.layers[0].items.push({ type: 'dim', id: 'm1', a: [0, 0], b: [15, 0], offset: 0.5, color: '#1d2b36' });
+      doc.layers[0].items.push({ type: 'text', id: 't1', x: 1, y: 3, size: 3.5 * mm, text: 'Terras', color: '#1d2b36' });
+      const opts = { paper: 'A3', orientation: 'landscape', scale: 100, area: 'all', titleBlock: false, title: '', subtitle: '', plantView: 'planten', rot: 0, dpi: 150 };
+      const { canvas } = await renderExport(doc, opts, null);
+      // binnen het kader (marge 10 mm + 2 mm), zonder de kaderlijn zelf
+      const pxmm = canvas.width / 420, m = Math.round(12 * pxmm);
+      const d = canvas.getContext('2d').getImageData(m, m, canvas.width - 2 * m, canvas.height - 2 * m).data;
+      let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 120 && d[i + 2] < 140) n++;
+      return n;
+    };
+    return { at20: await ink(20), at100: await ink(100) };
+  });
+  const ratio = txt.at20 / txt.at100;
+  assert(ratio > 0.8 && ratio < 1.25, `getekend bij 1:20, afgedrukt op 1:100: maatcijfers en tekst even groot als bij tekenschaal 1:100 (verhouding ${ratio.toFixed(2)})`);
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle export-tests geslaagd.');
