@@ -49,6 +49,22 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const placed = await page.evaluate(() => window.app.store.doc.layers[0].items.at(-1));
   assert(placed.symbol === 'rozenboog' && placed.grow === 'vol' && placed.growKind === 'roos', 'rozenboog komt meteen begroeid met een klimroos');
 
+  console.log('Berceau');
+  const bc = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js'); const { STENCIL_MAP, CLIMBERS, GROW } = await import('./js/stencils.js');
+    const ids = ['berceau', 'berceau_groen', 'berceau_hout'];
+    const d = newDoc('Berceau'); let y = 0;
+    for (const id of ids) for (const grow of Object.keys(GROW)) for (const kind of ['roos', 'haagbeuk']) {
+      const s = STENCIL_MAP[id]; d.layers[0].items.push({ type: 'stencil', id: `${id}-${grow}-${kind}-${y}`, symbol: id, x: 4, y, w: s.w, h: s.h, rot: 0, color: s.color, grow, growKind: kind }); y += 3;
+    }
+    a.openDoc(d, true); a.fitView(true); a.baseDirty = true; a.render();
+    a.setTool('lasso'); a.setSelection(new Set([d.layers[0].items[0].id]));
+    const dlg = [...document.querySelectorAll('#stencil-grid .stencil-item')].map((x) => x.dataset.id);
+    return { inDlg: ids.every((id) => dlg.includes(id)), climb: ids.every((id) => STENCIL_MAP[id].climb), cat: ids.every((id) => STENCIL_MAP[id].cat.startsWith('Pergola')), hb: !!CLIMBERS.haagbeuk, grow: !!document.querySelector('#selection-bar select[data-k="grow"]') };
+  });
+  assert(bc.inDlg && bc.cat, 'drie berceaus bij "Pergola\'s & klimplanten" in het stencilvenster');
+  assert(bc.climb && bc.grow && bc.hb, 'begroeiing te kiezen in de balk, ook haagbeuk (groene tunnel)');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle pergola-tests geslaagd.');

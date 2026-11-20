@@ -188,6 +188,7 @@ export const CLIMBERS = {
   clematis: { name: 'Clematis', leaf: '#5a8a40', flower: '#7b4fb0' },
   kamperfoelie: { name: 'Kamperfoelie', leaf: '#5f8f45', flower: '#e8c35a' },
   herfst: { name: 'Wingerd in de herfst', leaf: '#b5462f' },
+  haagbeuk: { name: 'Haagbeuk of beuk (groene tunnel)', leaf: '#3f6b2d' },
 };
 export const GROW = { geen: 'Geen begroeiing', deels: 'Deels begroeid', vol: 'Helemaal begroeid' };
 
@@ -307,6 +308,39 @@ function climbOver(g, w, h, lw, it, posts) {
   g.restore();
 }
 
+
+/**
+ * Berceau (tunnel over een pad) van boven: bogen dwars over het pad, langsliggers op de bogen en palen
+ * aan beide kanten. w = lengte van de tunnel, h = breedte. Geeft de paalposities terug.
+ */
+function berceauFrame(g, w, h, c, lw, { step = 1.2, rails = 3, wood: woody = false } = {}) {
+  const n = Math.max(1, Math.round(w / step));
+  const posts = [];
+  g.save();
+  // pad eronder (licht)
+  g.setLineDash([lw * 3, lw * 3]); g.globalAlpha = 0.5;
+  g.beginPath(); g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, -h / 2); g.moveTo(-w / 2, h / 2); g.lineTo(w / 2, h / 2); g.stroke();
+  g.setLineDash([]); g.globalAlpha = 1;
+  // bogen: een dubbele lijn (bij hout een lat) dwars over het pad
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + (w * i) / n;
+    if (woody) { wood(g, x - 0.035, -h / 2, 0.07, h, c, 0.75); } else {
+      g.lineWidth = lw * 1.1;
+      g.beginPath(); g.moveTo(x - 0.012, -h / 2); g.lineTo(x - 0.012, h / 2); g.moveTo(x + 0.012, -h / 2); g.lineTo(x + 0.012, h / 2); g.stroke();
+    }
+    posts.push([x, -h / 2], [x, h / 2]);
+  }
+  // langsliggers over de bogen (de nok in het midden, de andere op de flanken)
+  g.lineWidth = lw * (woody ? 1.2 : 0.8);
+  for (let k = 0; k < rails; k++) {
+    const y = rails === 1 ? 0 : -h * 0.32 + (h * 0.64 * k) / (rails - 1);
+    g.beginPath(); g.moveTo(-w / 2, y); g.lineTo(w / 2, y); g.stroke();
+  }
+  g.fillStyle = c;
+  for (const [x, y] of posts) dot(g, x, y, woody ? 0.05 : 0.03);
+  g.restore();
+  return posts;
+}
 
 /** Rolcontainer van boven: deksel met greep en scharnier achter (boven), wielen achter. */
 function drawBin(g, w, h, c, lw) {
@@ -1702,6 +1736,27 @@ export const STENCILS = [
       const ax = w * 0.22, sz = Math.min(h * 0.1, 0.3);
       g.beginPath(); g.moveTo(ax, -h * 0.25); g.lineTo(ax, h * 0.2); g.moveTo(ax - sz * 0.5, h * 0.2 - sz); g.lineTo(ax, h * 0.2); g.lineTo(ax + sz * 0.5, h * 0.2 - sz); g.stroke();
       g.restore();
+    },
+  },
+  {
+    id: 'berceau', name: 'Berceau (ijzeren bogen over een pad)', cat: 'Pergola\'s & klimplanten', round: false, w: 6, h: 2.2, color: '#3d3d3d', climb: true, defaults: { grow: 'vol', growKind: 'roos' },
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = berceauFrame(g, w, h, c, lw, { step: 1.2, rails: 3 });
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'berceau_groen', name: 'Berceau van haagbeuk (groene tunnel)', cat: 'Pergola\'s & klimplanten', round: false, w: 8, h: 2.4, color: '#3d3d3d', climb: true, defaults: { grow: 'vol', growKind: 'haagbeuk' },
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = berceauFrame(g, w, h, c, lw, { step: 1.5, rails: 5 });
+      climbOver(g, w, h, lw, it, posts);
+    },
+  },
+  {
+    id: 'berceau_hout', name: 'Houten berceau (gebogen latten)', cat: 'Pergola\'s & klimplanten', round: false, w: 5, h: 2.2, color: '#8a6a45', climb: true, defaults: { grow: 'deels', growKind: 'blauweregen' },
+    draw(g, w, h, c, lw, paper, it) {
+      const posts = berceauFrame(g, w, h, c, lw, { step: 1.0, rails: 4, wood: true });
+      climbOver(g, w, h, lw, it, posts);
     },
   },
   {
