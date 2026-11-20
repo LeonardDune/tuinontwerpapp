@@ -643,6 +643,75 @@ function speciesTree(g, w, h, c, lw, o) {
   }
 }
 
+// ---------------------------------------------------------------- kruidenspiraal
+
+/**
+ * Kruidenspiraal van boven: een droog gestapeld muurtje van natuursteen in een spiraal die naar het midden
+ * oploopt, aarde met kruidenpollen ertussen en (optioneel) een vijvertje aan de voet.
+ */
+function herbSpiral(g, w, h, c, lw, { pond = true, seed = 5 } = {}) {
+  const R = Math.min(w, h) / 2, sx = w / 2 / R, sy = h / 2 / R;
+  const r = rng(seed);
+  g.save();
+  g.scale(sx, sy);
+  const turns = 2, a0 = Math.PI * 0.5; // twee windingen: de spiraal eindigt onderaan (zuiden), bij het vijvertje
+  const spiral = (t) => { const a = a0 - t * turns * TAU; const rr = R * (0.12 + 0.86 * t); return [Math.cos(a) * rr, Math.sin(a) * rr]; };
+  // aarde (bed) binnen de omtrek
+  g.fillStyle = hexA('#6e5440', 0.7);
+  g.beginPath(); g.arc(0, 0, R * 0.98, 0, TAU); g.fill();
+  if (!fillOverride.paper) {
+    // kruidenpollen: verspreid over de plantstrook, nat (buiten, onder) tot droog (binnen, boven)
+    const herbs = [['#6f9a45', null], ['#8aa86a', '#9b7fd1'], ['#a3b08a', '#b48fd6'], ['#5d8a3c', '#ffffff'], ['#7fa64b', '#e8c35a'], ['#94a86a', '#c87fb0'], ['#4f7f36', null]];
+    // de plantstrook ligt tussen een winding van het muurtje en de volgende (een halve windingafstand verder naar buiten)
+    const gap = (R * 0.86) / turns;
+    for (let i = 0; i < 110; i++) {
+      const t = r();
+      const [x0, y0] = spiral(t);
+      const len = Math.hypot(x0, y0) || 1;
+      const rr = Math.min(R * 0.9, len + gap * (0.25 + r() * 0.5));
+      const x = (x0 / len) * rr, y = (y0 / len) * rr;
+      const [leaf, flower] = herbs[Math.floor(r() * herbs.length)];
+      const pr = R * (0.06 + r() * 0.05);
+      g.fillStyle = hexA(leaf, 0.85);
+      cloudAt(g, x, y, pr, 7, 0.22); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.18)';
+      g.beginPath(); g.arc(x - pr * 0.25, y - pr * 0.25, pr * 0.4, 0, TAU); g.fill();
+      if (flower) { g.fillStyle = hexA(flower, 0.95); for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(x + (r() - 0.5) * pr * 1.4, y + (r() - 0.5) * pr * 1.4, pr * 0.12, 0, TAU); g.fill(); } }
+    }
+  }
+  // het muurtje: stenen langs de spiraal, binnenin (hoger) iets groter
+  const n = 64;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const [x, y] = spiral(t);
+    const [x2, y2] = spiral(Math.min(1, t + 1 / n));
+    const ang = Math.atan2(y2 - y, x2 - x);
+    const sz = R * (0.075 + 0.025 * (1 - t)) * (0.85 + r() * 0.3);
+    g.save(); g.translate(x, y); g.rotate(ang);
+    g.fillStyle = hexA(c, 0.95);
+    blob(g, sz * 0.7, sz * 0.5, 100 + i, 7, 0.2);
+    g.fill(); g.lineWidth = lw * 0.7; g.strokeStyle = fillOverride.paper || hexA('#4a4038', 0.9); g.stroke();
+    g.restore();
+  }
+  // buitenrand: lage rij stenen rondom (op de plek waar de spiraal niet loopt)
+  g.lineWidth = lw;
+  g.beginPath(); g.arc(0, 0, R * 0.98, 0, TAU); g.stroke();
+  if (pond) {
+    // vijvertje aan de voet (zuidkant), half buiten de spiraal
+    const px = R * 0.1, py = R * 0.92, pr = R * 0.32;
+    g.fillStyle = fillOverride.paper || hexA('#7ab3d9', 0.97);
+    g.save(); g.translate(px, py); blob(g, pr * 1.15, pr * 0.8, 77, 9, 0.12); g.fill(); g.lineWidth = lw; g.stroke();
+    if (!fillOverride.paper) { g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = lw * 0.6; g.beginPath(); g.arc(-pr * 0.2, -pr * 0.1, pr * 0.35, Math.PI * 1.1, Math.PI * 1.6); g.stroke(); }
+    g.restore();
+  }
+  g.restore();
+}
+
+/** Wolkje rond (x, y) (voor kruidenpollen). */
+function cloudAt(g, x, y, rr, bumps, depth) {
+  g.save(); g.translate(x, y); cloud(g, rr, rr, bumps, depth); g.restore();
+}
+
 // ---------------------------------------------------------------- regenwater
 
 /** Kraantje aan de onderkant van een regenton. */
@@ -1509,6 +1578,14 @@ export const STENCILS = [
   },
 
   // --- Potten & bakken (maat = buitenmaat van pot plus plant; c = kleur van de pot) ---
+  {
+    id: 'kruidenspiraal', name: 'Kruidenspiraal met vijvertje', cat: 'Potten & bakken', round: true, w: 2.5, h: 2.5, color: '#d2c9b6',
+    draw(g, w, h, c, lw) { herbSpiral(g, w, h, c, lw, { pond: true, seed: 5 }); },
+  },
+  {
+    id: 'kruidenspiraal_klein', name: 'Kruidenspiraal, klein (zonder vijvertje)', cat: 'Potten & bakken', round: true, w: 1.6, h: 1.6, color: '#d8cdb5',
+    draw(g, w, h, c, lw) { herbSpiral(g, w, h, c, lw, { pond: false, seed: 9 }); },
+  },
   {
     id: 'potrond', name: 'Ronde pot met plant', cat: 'Potten & bakken', round: true, w: 0.5, h: 0.5, color: '#b5653a',
     draw(g, w, h, c, lw) {

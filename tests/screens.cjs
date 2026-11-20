@@ -41,6 +41,29 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(st.tool === 'wall' && st.fence === 'corten', 'cortenstalen scherm kiezen: tekenen als lijn met het juiste type');
   assert(await page.evaluate(() => [...document.querySelectorAll('#wall-fence, select')].some((s) => [...(s.options || [])].some((o) => o.value === 'corten'))), 'ook te kiezen in de opties van het lijngereedschap');
 
+  console.log('Kruidenspiraal');
+  const ks = await page.evaluate(async () => {
+    const { STENCIL_MAP, drawStencil } = await import('./js/stencils.js');
+    const dlg = [...document.querySelectorAll('#stencil-grid .stencil-item')].map((x) => x.dataset.id);
+    const c = document.createElement('canvas'); c.width = 160; c.height = 160; const g = c.getContext('2d');
+    const out = {};
+    for (const id of ['kruidenspiraal', 'kruidenspiraal_klein']) {
+      const s = STENCIL_MAP[id];
+      for (const size of [0.6, s.w, 6]) {
+        g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#fff'; g.fillRect(0, 0, 160, 160);
+        const k = 150 / size; g.setTransform(k, 0, 0, k, 80, 80);
+        drawStencil(g, { type: 'stencil', symbol: id, x: 0, y: 0, w: size, h: size, rot: 0, color: s.color }, 0.01 * size, '#ffffff');
+      }
+      const d = g.getImageData(0, 0, 160, 160).data; let blue = 0, green = 0;
+      for (let i = 0; i < d.length; i += 4) { if (d[i + 2] > d[i] + 40 && d[i + 2] > 180) blue++; if (d[i + 1] > d[i] + 15 && d[i + 1] > d[i + 2] + 15) green++; }
+      out[id] = { dlg: dlg.includes(id), blue, green };
+    }
+    return out;
+  });
+  assert(ks.kruidenspiraal.dlg && ks.kruidenspiraal_klein.dlg, 'kruidenspiraal (met en zonder vijvertje) in het stencilvenster');
+  assert(ks.kruidenspiraal.blue > 300 && ks.kruidenspiraal_klein.blue < 20, `vijvertje alleen bij de grote kruidenspiraal (${ks.kruidenspiraal.blue} / ${ks.kruidenspiraal_klein.blue} blauwe pixels)`);
+  assert(ks.kruidenspiraal.green > 500 && ks.kruidenspiraal_klein.green > 500, 'kruiden tussen de stenen');
+
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle scherm- en regenton-tests geslaagd.');
