@@ -462,6 +462,153 @@ function espalierFruit(g, w, h, seed) {
 // ---------- water ----------
 const WATER = '#7fb2d9';
 
+// ---------------------------------------------------------------- bomen per soort
+
+/** Kroonrand: wolkvormig (n bulten), onregelmatig (lobed), zuil (smalle ovaal) of treurend (rafelig). */
+function crownPath(g, rx, ry, o, r) {
+  if (o.shape === 'column') { g.beginPath(); g.ellipse(0, 0, rx * 0.55, ry, 0, 0, TAU); return; }
+  const n = o.bumps || 12, depth = o.depth ?? 0.1;
+  const k = Array.from({ length: n }, () => 1 - (o.irr || 0) / 2 + r() * (o.irr || 0));
+  g.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU, am = (a0 + a1) / 2;
+    const k0 = k[i], k1 = k[(i + 1) % n], km = (k0 + k1) / 2;
+    const p0 = [Math.cos(a0) * rx * (1 - depth) * k0, Math.sin(a0) * ry * (1 - depth) * k0];
+    const p1 = [Math.cos(a1) * rx * (1 - depth) * k1, Math.sin(a1) * ry * (1 - depth) * k1];
+    const cp = [Math.cos(am) * rx * (1 + depth) * km, Math.sin(am) * ry * (1 + depth) * km];
+    if (i === 0) g.moveTo(p0[0], p0[1]);
+    g.quadraticCurveTo(cp[0], cp[1], p1[0], p1[1]);
+  }
+  g.closePath();
+}
+
+/** Eén blaadje of bladgroepje van het type kind, rond (x, y) met grootte s en hoek a. */
+function leafMark(g, kind, x, y, s, a, r) {
+  g.save(); g.translate(x, y); g.rotate(a);
+  g.beginPath();
+  switch (kind) {
+    case 'pinnate': // geveerd blad (lijsterbes, es, walnoot): steeltje met blaadjes in paren
+      for (let i = -2; i <= 2; i++) { g.ellipse(i * s * 0.32, -s * 0.16, s * 0.15, s * 0.07, -0.5, 0, TAU); g.ellipse(i * s * 0.32, s * 0.16, s * 0.15, s * 0.07, 0.5, 0, TAU); }
+      g.ellipse(s * 0.82, 0, s * 0.16, s * 0.07, 0, 0, TAU);
+      break;
+    case 'palmate': // handvormig (esdoorn, kastanje, vijg)
+      for (let i = 0; i < 5; i++) { const b = (i / 5) * TAU; g.ellipse(Math.cos(b) * s * 0.28, Math.sin(b) * s * 0.28, s * 0.3, s * 0.12, b, 0, TAU); }
+      break;
+    case 'heart': // hartvormig (linde, trompetboom)
+      g.moveTo(0, s * 0.35); g.bezierCurveTo(-s * 0.55, 0, -s * 0.3, -s * 0.45, 0, -s * 0.18); g.bezierCurveTo(s * 0.3, -s * 0.45, s * 0.55, 0, 0, s * 0.35);
+      break;
+    case 'needle': // naaldbundel (den)
+      for (let i = 0; i < 7; i++) { const b = (i / 7) * TAU; g.moveTo(0, 0); g.lineTo(Math.cos(b) * s * 0.5, Math.sin(b) * s * 0.5); }
+      break;
+    case 'fan': // waaierblad (ginkgo)
+      g.moveTo(0, 0); g.arc(0, 0, s * 0.45, -0.9, 0.9); g.closePath();
+      break;
+    case 'lobed': // eikenblad: golvende rand
+      g.ellipse(0, 0, s * 0.45, s * 0.2, 0, 0, TAU);
+      for (let i = -1; i <= 1; i++) { g.ellipse(i * s * 0.2, -s * 0.15, s * 0.1, s * 0.08, 0, 0, TAU); g.ellipse(i * s * 0.2, s * 0.15, s * 0.1, s * 0.08, 0, 0, TAU); }
+      break;
+    case 'fine': // fijn blad (berk, valse christusdoorn)
+      g.ellipse(0, 0, s * 0.18, s * 0.11, 0, 0, TAU);
+      break;
+    default: // gewoon ovaal blad
+      g.ellipse(0, 0, s * 0.32, s * 0.17, 0, 0, TAU);
+  }
+  if (kind === 'needle') g.stroke(); else g.fill();
+  g.restore();
+}
+
+/**
+ * Boom van bovenaf. o: shape (cloud | column), bumps, depth, irr, leaf (bladtype), leafSize (deel van de
+ * kroon), density, branches (aantal hoofdtakken), droop (treurvorm), stems (meerstammig), blossom, berries,
+ * fruit (kleuren), candles (paardenkastanje), tones (eigen tinten), seed.
+ */
+function speciesTree(g, w, h, c, lw, o) {
+  const rx = w / 2, ry = h / 2;
+  const r = rng(o.seed || 1);
+  crownPath(g, rx, ry, o, r);
+  g.fillStyle = hexA(c, o.alpha ?? 0.42);
+  g.fill();
+  if (!fillOverride.paper) {
+    g.save();
+    crownPath(g, rx, ry, o, rng(o.seed || 1));
+    g.clip();
+    // licht van linksboven, schaduw rechtsonder
+    const gr = g.createRadialGradient(-rx * 0.35, -ry * 0.4, Math.min(rx, ry) * 0.05, 0, 0, Math.max(rx, ry) * 1.05);
+    gr.addColorStop(0, 'rgba(255,255,255,0.28)');
+    gr.addColorStop(0.6, 'rgba(255,255,255,0)');
+    gr.addColorStop(1, 'rgba(0,0,0,0.22)');
+    g.fillStyle = gr; g.fillRect(-rx, -ry, w, h);
+    // takken
+    const nb = o.branches ?? 6;
+    g.strokeStyle = hexA('#4a3a28', 0.35); g.lineWidth = lw * 0.9;
+    for (let i = 0; i < nb; i++) {
+      const a = (i / nb) * TAU + r() * 0.5, l = 0.55 + r() * 0.3;
+      g.beginPath(); g.moveTo(0, 0);
+      g.quadraticCurveTo(Math.cos(a + 0.25) * rx * l * 0.5, Math.sin(a + 0.25) * ry * l * 0.5, Math.cos(a) * rx * l, Math.sin(a) * ry * l);
+      g.stroke();
+    }
+    if (o.droop) {
+      // treurvorm: neerhangende twijgen als lange, licht gebogen strepen naar buiten
+      g.lineWidth = lw * 0.9;
+      for (let i = 0; i < 140; i++) {
+        g.strokeStyle = r() < 0.5 ? 'rgba(40,70,20,0.45)' : hexA(c, 0.9);
+        const a = r() * TAU, d0 = 0.25 + r() * 0.45;
+        g.beginPath(); g.moveTo(Math.cos(a) * rx * d0, Math.sin(a) * ry * d0);
+        g.quadraticCurveTo(Math.cos(a + 0.12) * rx * (d0 + 0.25), Math.sin(a + 0.12) * ry * (d0 + 0.25), Math.cos(a + 0.05) * rx * 1.02, Math.sin(a + 0.05) * ry * 1.02);
+        g.stroke();
+      }
+    }
+    // bladeren
+    const tones = o.tones || [c];
+    const n = Math.min(420, Math.round((o.density || 1) * 160));
+    const ls = Math.min(rx, ry) * (o.leafSize || 0.14);
+    g.lineWidth = lw * 0.5;
+    for (let i = 0; i < n; i++) {
+      const a = r() * TAU, d = Math.sqrt(r()) * 0.98;
+      const x = Math.cos(a) * rx * d, y = Math.sin(a) * ry * d;
+      const t = r();
+      const col = tones[Math.floor(r() * tones.length)];
+      g.fillStyle = t < 0.3 ? 'rgba(255,255,255,0.22)' : t < 0.55 ? 'rgba(0,0,0,0.16)' : hexA(col, 0.75);
+      g.strokeStyle = hexA(col, 0.8);
+      leafMark(g, o.leaf || 'oval', x, y, ls * (0.7 + r() * 0.6), r() * TAU, r);
+    }
+    const sprinkle = (cols, size, count, cluster = 1) => {
+      for (let i = 0; i < count; i++) {
+        const a = r() * TAU, d = 0.15 + r() * 0.8;
+        const x = Math.cos(a) * rx * d, y = Math.sin(a) * ry * d;
+        for (let k = 0; k < cluster; k++) {
+          g.fillStyle = hexA(cols[Math.floor(r() * cols.length)], 0.95);
+          g.beginPath(); g.arc(x + (r() - 0.5) * size * 2.5, y + (r() - 0.5) * size * 2.5, size * (0.7 + r() * 0.5), 0, TAU); g.fill();
+        }
+      }
+    };
+    const unit = Math.min(rx, ry);
+    if (o.blossom) sprinkle(o.blossom, unit * 0.045, Math.round(60 * (o.bloom || 1)), 2);
+    if (o.berries) sprinkle(o.berries, unit * 0.022, 22, 6);
+    if (o.fruit) sprinkle(o.fruit, unit * 0.05, 14, 1);
+    if (o.candles) {
+      for (let i = 0; i < 26; i++) {
+        const a = r() * TAU, d = 0.2 + r() * 0.75;
+        g.fillStyle = 'rgba(255,255,255,0.92)'; g.strokeStyle = hexA('#d8b4c8', 0.8); g.lineWidth = lw * 0.3;
+        g.beginPath(); g.ellipse(Math.cos(a) * rx * d, Math.sin(a) * ry * d, unit * 0.04, unit * 0.09, a, 0, TAU); g.fill(); g.stroke();
+      }
+    }
+    g.restore();
+  }
+  // omtrek
+  g.globalAlpha = 0.85;
+  crownPath(g, rx, ry, o, rng(o.seed || 1));
+  g.stroke();
+  g.globalAlpha = 1;
+  // stam(men)
+  g.fillStyle = fillOverride.paper ? fillOverride.paper : (o.trunk || '#5a4632');
+  const st = o.stems || 1;
+  for (let i = 0; i < st; i++) {
+    const a = (i / st) * TAU + 0.4, d = st > 1 ? Math.min(rx, ry) * 0.12 : 0;
+    dot(g, Math.cos(a) * d, Math.sin(a) * d, Math.max(Math.min(rx, ry) * (st > 1 ? 0.03 : 0.045), lw * 1.5));
+  }
+}
+
 // ---------------------------------------------------------------- regenwater
 
 /** Kraantje aan de onderkant van een regenton. */
@@ -877,6 +1024,102 @@ export const STENCILS = [
   },
 
   // --- Leibomen (B = breedte langs het rek of de muur, D = diepte van het blad) ---
+  {
+    id: 'lijsterbes', name: 'Lijsterbes (Sorbus) · 4 m', cat: 'Bomen', round: true, w: 4, h: 4, color: '#5f8f3a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 11, bumps: 10, depth: 0.12, irr: 0.15, leaf: 'pinnate', leafSize: 0.2, density: 1.1, berries: ['#e2571e', '#f07a2a', '#c8401a'] }); },
+  },
+  {
+    id: 'populier', name: 'Zuilpopulier (Populus nigra Italica) · 2,5 m', cat: 'Bomen', round: true, w: 2.5, h: 2.5, color: '#4f7f36',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 12, shape: 'column', leaf: 'oval', leafSize: 0.14, density: 1.6, branches: 3 }); },
+  },
+  {
+    id: 'berk', name: 'Ruwe berk (Betula) · 5 m', cat: 'Bomen', round: true, w: 5, h: 5, color: '#7fa64b',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 13, bumps: 14, depth: 0.08, irr: 0.25, leaf: 'fine', leafSize: 0.16, density: 2.2, alpha: 0.3, trunk: '#e8e4dc', tones: ['#7fa64b', '#9bbd5a', '#6a9440'] }); },
+  },
+  {
+    id: 'eik', name: 'Zomereik (Quercus robur) · 12 m', cat: 'Bomen', round: true, w: 12, h: 12, color: '#4d7a33',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 14, bumps: 11, depth: 0.14, irr: 0.3, leaf: 'lobed', leafSize: 0.12, density: 1.8, branches: 7, tones: ['#4d7a33', '#5d8a3c', '#3f6a2a'] }); },
+  },
+  {
+    id: 'beuk', name: 'Beuk (Fagus) · 12 m', cat: 'Bomen', round: true, w: 12, h: 12, color: '#4f8236',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 15, bumps: 16, depth: 0.07, irr: 0.12, leaf: 'oval', leafSize: 0.08, density: 2.5, branches: 8 }); },
+  },
+  {
+    id: 'rodebeuk', name: 'Rode beuk (Fagus purpurea) · 10 m', cat: 'Bomen', round: true, w: 10, h: 10, color: '#6b2f3a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 16, bumps: 16, depth: 0.07, irr: 0.12, leaf: 'oval', leafSize: 0.08, density: 2.5, branches: 8, tones: ['#6b2f3a', '#7f3a45', '#55252f'] }); },
+  },
+  {
+    id: 'linde', name: 'Linde (Tilia) · 10 m', cat: 'Bomen', round: true, w: 10, h: 10, color: '#5b8a3c',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 17, bumps: 13, depth: 0.1, irr: 0.15, leaf: 'heart', leafSize: 0.1, density: 2.0, branches: 7 }); },
+  },
+  {
+    id: 'esdoorn', name: 'Noorse esdoorn (Acer platanoides) · 9 m', cat: 'Bomen', round: true, w: 9, h: 9, color: '#4f8236',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 18, bumps: 12, depth: 0.12, irr: 0.18, leaf: 'palmate', leafSize: 0.11, density: 1.8, branches: 7 }); },
+  },
+  {
+    id: 'japanseesdoorn', name: 'Japanse esdoorn (Acer palmatum) · 3 m', cat: 'Bomen', round: true, w: 3, h: 3, color: '#a8322e',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 19, bumps: 9, depth: 0.16, irr: 0.3, leaf: 'palmate', leafSize: 0.18, density: 1.4, alpha: 0.38, branches: 5, tones: ['#a8322e', '#c4452c', '#8a2a2a'] }); },
+  },
+  {
+    id: 'bolesdoorn', name: 'Bolboom (bolesdoorn, bolacacia) · 4 m', cat: 'Bomen', round: true, w: 4, h: 4, color: '#4f8236',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 20, bumps: 18, depth: 0.05, irr: 0.05, leaf: 'oval', leafSize: 0.12, density: 1.8, alpha: 0.5 }); },
+  },
+  {
+    id: 'krentenboom', name: 'Krentenboompje (Amelanchier, meerstammig) · 4 m', cat: 'Bomen', round: true, w: 4, h: 4, color: '#6a9440',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 21, bumps: 10, depth: 0.14, irr: 0.3, leaf: 'oval', leafSize: 0.14, density: 1.2, stems: 4, branches: 8, blossom: ['#ffffff', '#f6f1e6'], bloom: 1.2 }); },
+  },
+  {
+    id: 'sierkers', name: 'Japanse sierkers (Prunus serrulata) · 6 m', cat: 'Bomen', round: true, w: 6, h: 6, color: '#6a8f3e',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 22, bumps: 11, depth: 0.12, irr: 0.25, leaf: 'oval', leafSize: 0.11, density: 1.0, branches: 6, blossom: ['#f4b6c8', '#ee9ab4', '#fbd3df'], bloom: 2.4 }); },
+  },
+  {
+    id: 'magnolia', name: 'Magnolia · 5 m', cat: 'Bomen', round: true, w: 5, h: 5, color: '#6a8f3e',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 23, bumps: 9, depth: 0.15, irr: 0.3, leaf: 'oval', leafSize: 0.2, density: 0.8, branches: 6, blossom: ['#fbe7ef', '#f2c0d4', '#ffffff'], bloom: 0.8 }); },
+  },
+  {
+    id: 'treurwilg', name: 'Treurwilg (Salix) · 10 m', cat: 'Bomen', round: true, w: 10, h: 10, color: '#8cae4c',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 24, bumps: 22, depth: 0.05, irr: 0.18, leaf: 'fine', leafSize: 0.08, density: 1.4, droop: true, alpha: 0.5, branches: 5, tones: ['#8cae4c', '#6f9a3a', '#a8c45e'] }); },
+  },
+  {
+    id: 'walnoot', name: 'Walnoot (Juglans) · 12 m', cat: 'Bomen', round: true, w: 12, h: 12, color: '#5b8a3c',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 25, bumps: 10, depth: 0.15, irr: 0.25, leaf: 'pinnate', leafSize: 0.12, density: 1.5, branches: 6 }); },
+  },
+  {
+    id: 'kastanje', name: 'Paardenkastanje (Aesculus) · 12 m', cat: 'Bomen', round: true, w: 12, h: 12, color: '#4a7d32',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 26, bumps: 12, depth: 0.12, irr: 0.2, leaf: 'palmate', leafSize: 0.13, density: 1.5, branches: 7, candles: true }); },
+  },
+  {
+    id: 'den', name: 'Grove den (Pinus) · 7 m', cat: 'Bomen', round: true, w: 7, h: 7, color: '#3f6b4a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 27, bumps: 9, depth: 0.18, irr: 0.35, leaf: 'needle', leafSize: 0.14, density: 1.6, branches: 6, trunk: '#9a5a32' }); },
+  },
+  {
+    id: 'ginkgo', name: 'Japanse notenboom (Ginkgo) · 6 m', cat: 'Bomen', round: true, w: 6, h: 6, color: '#8aa83c',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 28, bumps: 10, depth: 0.12, irr: 0.3, leaf: 'fan', leafSize: 0.14, density: 1.3, branches: 6 }); },
+  },
+  {
+    id: 'amberboom', name: 'Amberboom (Liquidambar, herfstkleur) · 7 m', cat: 'Bomen', round: true, w: 7, h: 7, color: '#c4552a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 29, bumps: 12, depth: 0.1, irr: 0.18, leaf: 'palmate', leafSize: 0.12, density: 1.8, branches: 6, tones: ['#c4552a', '#d98a2b', '#9a2f2a', '#e0b030'] }); },
+  },
+  {
+    id: 'gleditsia', name: 'Valse christusdoorn (Gleditsia, luchtig) · 8 m', cat: 'Bomen', round: true, w: 8, h: 8, color: '#b3c24a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 30, bumps: 14, depth: 0.1, irr: 0.3, leaf: 'fine', leafSize: 0.1, density: 2.2, alpha: 0.25, branches: 7 }); },
+  },
+  {
+    id: 'olijf', name: 'Olijfboom · 3 m', cat: 'Bomen', round: true, w: 3, h: 3, color: '#8a9a6a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 31, bumps: 10, depth: 0.15, irr: 0.35, leaf: 'oval', leafSize: 0.12, density: 1.6, branches: 5, trunk: '#6e6458', tones: ['#8a9a6a', '#a3b08a', '#6f7f55'] }); },
+  },
+  {
+    id: 'vijg', name: 'Vijgenboom · 4 m', cat: 'Bomen', round: true, w: 4, h: 4, color: '#4f7f36',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 32, bumps: 9, depth: 0.16, irr: 0.3, leaf: 'palmate', leafSize: 0.24, density: 0.9, branches: 5, fruit: ['#5a3a5a', '#6e4a6a'] }); },
+  },
+  {
+    id: 'trompetboom', name: 'Trompetboom bolvorm (Catalpa bungei) · 5 m', cat: 'Bomen', round: true, w: 5, h: 5, color: '#6a9a3a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 33, bumps: 14, depth: 0.07, irr: 0.08, leaf: 'heart', leafSize: 0.2, density: 1.0, alpha: 0.5 }); },
+  },
+  {
+    id: 'appel', name: 'Appelboom (halfstam) · 4 m', cat: 'Bomen', round: true, w: 4, h: 4, color: '#5f8f3a',
+    draw(g, w, h, c, lw) { speciesTree(g, w, h, c, lw, { seed: 34, bumps: 10, depth: 0.14, irr: 0.25, leaf: 'oval', leafSize: 0.13, density: 1.4, branches: 5, fruit: ['#c8302a', '#d84a2a', '#9ab83a'] }); },
+  },
   {
     id: 'leifruitmuur', name: 'Leifruit tegen een muur (waaier / etages)', cat: 'Bomen', round: false, w: 3, h: 0.4, color: '#5a8f3c',
     draw(g, w, h, c, lw) {
