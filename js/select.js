@@ -5,7 +5,7 @@ import { arcParams, arcHandles, dragArc } from './arc.js';
 import { Tool, snapPoint, drawBubble, drawSnapMarker } from './tools.js';
 import { collectRefs, extentsOf, alignMove, matchSize, matchAngle, drawSmartGuides, toWorld } from './smartguides.js';
 import { edgeTargets, itemEdges, flushEdge, slideAlong, drawEdgeMarker } from './snap.js';
-import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate } from './items.js';
+import { hitItem, itemOutline, itemSnapPoints, transformItem, measureText, invalidate, stretchItem } from './items.js';
 import { STENCIL_MAP } from './stencils.js';
 import { isBed, isGroup } from './planting.js';
 import { isWall, isOpening, syncOpenings } from './walls.js';
@@ -127,6 +127,11 @@ export class SelectTool extends Tool {
       const isCircle = it && it.type === 'shape' && it.kind === 'circle';
       if (pe && arcP) {
         for (const [role, p] of Object.entries(arcHandles(arcP))) list.push({ kind: 'arc', role, s: S(p), shape: role[1] === 'm' ? 'plus' : 'vertex' });
+      } else if (!it) {
+        // groep of meerdere elementen: hoeken en zijmiddens om het geheel op te rekken (zoals bij één element)
+        const P = (hx, hy) => toWorld(ext.u0 - pad + (ext.u1 - ext.u0 + 2 * pad) * hx, ext.v0 - pad + (ext.v1 - ext.v0 + 2 * pad) * hy, th);
+        for (const [hx, hy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) list.push({ kind: 'box', hx, hy, s: S(P(hx, hy)), shape: 'square' });
+        for (const [hx, hy] of [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]) list.push({ kind: 'box', hx, hy, s: S(P(hx, hy)), shape: 'round' });
       } else if (!editable && !isCircle) {
         corners.forEach((c, i) => list.push({ kind: 'scale', s: outline[i], opposite: corners[(i + 2) % 4], shape: 'square' }));
       }
@@ -382,6 +387,12 @@ export class SelectTool extends Tool {
     if (h.kind === 'frame') {
       this.drag.frame = itemFrame(it);
       this.drag.refs = app.settings.snap ? collectRefs(app, new Set([it.id]), this.drag.frame.ang) : [];
+    }
+    if (h.kind === 'box') {
+      // kader van het geheel, zonder de marge van de grepen
+      const its = items.map(({ item }) => item);
+      const th = selectionAngle(its, app.cam);
+      this.drag.box = { th, ...extentsOf(its.flatMap((i) => itemOutline(i) || []), th) };
     }
     if (h.kind === 'rotate') {
       const hs = this.handles();
@@ -640,6 +651,19 @@ export class SelectTool extends Tool {
       const sc = app.store.doc.scale;
       this.liveInfo = `${formatLength(Math.abs(nf.w), sc)} × ${formatLength(Math.abs(nf.h), sc)}`;
       if (this.sizeMatch) this.liveInfo += ` · ${this.sizeMatch}`;
+    } else if (d.kind === 'box') {
+      const { th, u0, u1, v0, v1 } = d.box;
+      const c = Math.cos(th), sn = Math.sin(th);
+      // verschuiving sinds het oppakken (de greep ligt iets buiten het kader)
+      const du = (e.w[0] - d.startW[0]) * c + (e.w[1] - d.startW[1]) * sn, dv = -(e.w[0] - d.startW[0]) * sn + (e.w[1] - d.startW[1]) * c;
+      const W = Math.max(u1 - u0, 1e-6), H = Math.max(v1 - v0, 1e-6), min = 0.02;
+      let sx = 1, sy = 1, ou = u0, ov = v0;
+      if (d.hx === 0) { ou = u1; sx = Math.max(min, W - du) / W; } else if (d.hx === 1) { ou = u0; sx = Math.max(min, W + du) / W; }
+      if (d.hy === 0) { ov = v1; sy = Math.max(min, H - dv) / H; } else if (d.hy === 1) { ov = v0; sy = Math.max(min, H + dv) / H; }
+      this.restore();
+      for (const { item } of [...this.selectedItems(), ...this.followers]) stretchItem(item, th, ou, ov, sx, sy);
+      const sc = app.store.doc.scale;
+      this.liveInfo = `${formatLength(W * sx, sc)} × ${formatLength(H * sy, sc)}`;
     } else if (d.kind === 'arc') {
       const p = arcParams(this.orig.get(it.id).points);
       const snap = snapPoint(app, e.w, null, new Set([it.id]));

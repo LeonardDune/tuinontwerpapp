@@ -2372,6 +2372,7 @@ class App {
     }
     html += '<span class="sepv"></span>';
     if (items.length > 1 && !wholeGroup) html += `<button type="button" class="tgl" data-sel="group" title="Groeperen: blijven los, maar bewegen als één geheel (Ctrl/Cmd+G)">Groeperen</button>`;
+    if (this.openGroup) html += `<button type="button" class="tgl on" data-sel="closegroup" title="De groep is open (na dubbeltikken): je bewerkt één onderdeel. Sluiten = weer de hele groep selecteren">Groep sluiten</button>`;
     if (gidsSel.length && !this.openGroup) html += `<button type="button" class="tgl" data-sel="ungroup" title="Groep opheffen (Ctrl/Cmd+Shift+G)">Groep opheffen</button>`;
     if (it && it.type === 'stencil' && STENCIL_MAP[it.symbol]?.asHatch) html += `<button type="button" class="tgl" data-sel="toshape" title="Omzetten naar een vlak met hetzelfde materiaal: dan kun je de hoeken verslepen en het samenvoegen">Omzetten naar vlak</button>`;
     if (items.filter((i) => mergeable(i)).length > 1) html += `<button type="button" class="tgl" data-sel="merge" title="Samenvoegen tot één vlak (de instellingen van het grootste vak blijven)">Samenvoegen</button>`;
@@ -3060,6 +3061,13 @@ class App {
   }
 
   selectionAction(action, arg) {
+    if (action === 'closegroup') {
+      const g = this.openGroup;
+      this.openGroup = null;
+      if (g) this.setSelection(new Set(this.store.doc.layers.flatMap((l) => l.items.filter((i) => i.gid === g).map((i) => i.id))));
+      this.requestRender();
+      return;
+    }
     if (!this.selection.size) return;
     const ids = [...this.selection];
     const found = ids.map((id) => this.store.findItem(id)).filter(Boolean);

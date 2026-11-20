@@ -857,6 +857,71 @@ export function transformItem(item, m, s, r) {
 }
 
 /**
+ * Rek een item op in het assenstelsel met hoek th: u-richting met factor sx en v-richting met sy,
+ * vanuit het vaste punt (ou, ov). Vormen en lijnen rekken echt mee; stencils, afbeeldingen, planten en tekst
+ * verschuiven mee en schalen langs hun eigen assen (of in verhouding als ze schuin staan of rond zijn).
+ */
+export function stretchItem(item, th, ou, ov, sx, sy) {
+  const c = Math.cos(th), s = Math.sin(th);
+  const map = (p) => {
+    const u = p[0] * c + p[1] * s, v = -p[0] * s + p[1] * c;
+    const u2 = ou + (u - ou) * sx, v2 = ov + (v - ov) * sy;
+    const q = [u2 * c - v2 * s, u2 * s + v2 * c];
+    return p.length > 2 ? [q[0], q[1], ...p.slice(2)] : q;
+  };
+  // ronde of schuine elementen blijven rond: ze groeien alleen mee als je in beide richtingen rekt
+  const avg = Math.min(Math.abs(sx), Math.abs(sy));
+  // ligt een richting (hoek a) langs de assen van het kader? 0 = langs u, 1 = langs v, -1 = schuin
+  const along = (a) => {
+    const d = ((((a - th) % Math.PI) + Math.PI) % Math.PI);
+    if (Math.min(d, Math.PI - d) < 1e-4) return 0;
+    if (Math.abs(d - Math.PI / 2) < 1e-4) return 1;
+    return -1;
+  };
+  switch (item.type) {
+    case 'stroke':
+    case 'shape':
+      if (item.kind === 'circle') {
+        const ctr = map(item.points[0]), r = dist(item.points[0], item.points[1]) * avg;
+        item.points = [ctr, [ctr[0] + r, ctr[1]]];
+        break;
+      }
+      if (item.rect && Math.abs(sx - sy) > 1e-9) {
+        const p = item.points;
+        if (along(Math.atan2(p[1][1] - p[0][1], p[1][0] - p[0][0])) < 0) delete item.rect; // schuin opgerekt: geen rechthoek meer
+      }
+      item.points = item.points.map(map);
+      break;
+    case 'dim':
+      if (item.kind === 'area') break;
+      item.a = map(item.a); item.b = map(item.b);
+      break;
+    case 'stencil':
+    case 'image': {
+      const ctr = map([item.x, item.y]);
+      item.x = ctr[0]; item.y = ctr[1];
+      const def = item.type === 'stencil' ? STENCIL_MAP[item.symbol] : null;
+      const ax = item.type === 'image' || (def && def.round && Math.abs(item.w - item.h) < 1e-9) ? -1 : along(item.rot || 0);
+      if (ax === 0) { item.w *= Math.abs(sx); item.h *= Math.abs(sy); } else if (ax === 1) { item.w *= Math.abs(sy); item.h *= Math.abs(sx); } else { item.w *= avg; item.h *= avg; }
+      break;
+    }
+    case 'plant': {
+      const ctr = map([item.x, item.y]);
+      item.x = ctr[0]; item.y = ctr[1];
+      item.d *= avg;
+      break;
+    }
+    case 'text': {
+      const ctr = map([item.x, item.y]);
+      item.x = ctr[0]; item.y = ctr[1];
+      item.size *= avg;
+      break;
+    }
+  }
+  invalidate(item);
+}
+
+/**
  * Spiegel een item in de lijn door c met richting phi (radialen). Stencils en afbeeldingen krijgen
  * een gespiegelde tekening (mirror) en een aangepaste draaiing; tekst blijft leesbaar.
  */
