@@ -68,6 +68,24 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   });
   assert(await page.isVisible('#plant-panel .mixlist .unfit') && /Past niet bij laag/.test(await page.textContent('#selection-bar')), 'struisriet in een laag vak: gemarkeerd als "past niet"');
 
+  console.log('Route in drie stappen');
+  const steps = await page.evaluate(() => [...document.querySelectorAll('#plant-panel .steps [data-step]')].map((b) => b.textContent.trim()));
+  assert(steps.length === 3 && /Schetsen/.test(steps[0]) && /Invullen/.test(steps[1]) && /Verfijnen/.test(steps[2]), `stappen: ${steps.join(' → ')}`);
+  assert(await page.evaluate(() => window.app.state.plantStep) === 2, 'paneel geopend met een vak geselecteerd: stap 2 Invullen');
+  await page.click('#plant-panel .steps [data-step="1"]');
+  assert(await page.isVisible('#plant-panel .btypes') && await page.isVisible('#plant-panel .bedlist .bedrow') && !(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]')), 'stap 1: types en de lijst met plantvakken, geen invullen');
+  await page.click('#plant-panel .btypes [data-btype="middel"]');
+  assert(await page.evaluate(() => window.app.store.findItem('B').item.btype) === 'middel', 'type kiezen in stap 1 geldt voor het geselecteerde vak');
+  await page.evaluate(() => window.app.store.undo());
+  await page.click('#plant-panel [data-tool="vak"]');
+  assert(await page.evaluate(() => window.app.state.tool === 'plant' && window.app.state.plantMode === 'vak'), '"Plantvak tekenen" kiest het juiste gereedschap');
+  await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set(['B'])); });
+  await page.click('#plant-panel .steps [data-step="3"]');
+  assert(await page.isVisible('#plant-panel [data-plan="suggest"]') && await page.isVisible('#plant-panel .year'), 'stap 3: groepen voorstellen, solitairen en het hele jaar');
+  await page.click('#plant-panel [data-plan="suggest"]');
+  assert(await page.evaluate(() => window.app.store.doc.layers[0].items.some((i) => i.group && i.bedId === 'B')), 'groepen voorgesteld in het vak');
+  await page.screenshot({ path: path.join(OUT, 'plantdb-stap3.png') });
+
   console.log('Stencil en bouwsteen zijn dezelfde plant');
   const tr = await page.evaluate(async () => {
     const P = await import('./js/planting.js');

@@ -26,7 +26,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   console.log('Kleurenschema en bouwstenen');
   await page.click('#btn-planting');
   assert(await page.isVisible('#plant-panel'), 'paneel Beplanting open');
+  await page.click('#plant-panel .steps [data-step="2"]'); // stap 2 Invullen: kleurenschema en bouwstenen
+  await page.evaluate(() => document.querySelectorAll('#plant-panel details').forEach((d) => { d.open = true; }));
   await page.selectOption('#plant-panel [data-k="scheme"]', 'verwant');
+  await page.evaluate(() => document.querySelectorAll('#plant-panel details').forEach((d) => { d.open = true; }));
   const pal = await page.locator('#plant-panel .palette i').count();
   assert(pal >= 6, `verwant palet met ${pal} kleuren`);
 
@@ -73,6 +76,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   console.log('Jaarrond en adviezen');
   const yr = await page.evaluate(async () => { const { yearRound } = await import('./js/planting.js'); return yearRound(window.app.store.doc).months.map((m) => Math.round(m.score * 100)); });
   assert(yr[6] > 80 && yr[0] < 30 && yr[11] > yr[0] - 1, `jul ${yr[6]}%, jan ${yr[0]}%`);
+  await page.click('#plant-panel .steps [data-step="3"]'); // stap 3 Verfijnen: het hele jaar
   const advice = await page.locator('#plant-panel .advice').innerText();
   assert(/Weinig te zien in/.test(advice) && /jan/.test(advice), 'advies: weinig te zien in de winter');
   assert(/Buiten het kleurenschema/.test(advice), 'advies: kleur buiten schema');

@@ -39,6 +39,8 @@ export class PlantPanel {
     $('#layers-panel').hidden = true;
     this.app.pavePanel?.close();
     this.el.hidden = false;
+    // met een plantvak geselecteerd begin je bij het invullen
+    if (this.scopeBed() && this.step() === 1) this.app.state.plantStep = 2;
     $('#btn-planting').classList.add('on');
     document.body.classList.add('side-open');
     this.render();
@@ -92,6 +94,22 @@ export class PlantPanel {
     return c;
   }
 
+  /** Huidige stap van de route (1 schetsen, 2 invullen, 3 verfijnen). */
+  step() {
+    const s2 = Number(this.app.state.plantStep);
+    return s2 >= 1 && s2 <= 3 ? s2 : 1;
+  }
+
+  /** Alle zichtbare plantvakken met hun oppervlak. */
+  beds() {
+    const out = [];
+    for (const l of this.doc.layers) {
+      if (!l.visible) continue;
+      for (const it of l.items) if (isBed(it)) out.push({ item: it, area: Math.abs(polygonArea(shapePolygon(it))) });
+    }
+    return out;
+  }
+
   /** Plantvak waarop het overzicht betrekking heeft (geselecteerd vak of het vak van een groep). */
   scopeBed() {
     const sel = [...this.app.selection];
@@ -113,11 +131,33 @@ export class PlantPanel {
     const off = p.roles.filter((r) => !inScheme(r.color, p.scheme));
     const low = yr.total ? yr.months.filter((m) => m.score < 0.3) : [];
     const el = this.el;
+    const step = this.step();
+    const beds = this.beds();
+    const stepBtn = (n, t) => `<button type="button" data-step="${n}" class="${step === n ? 'on' : ''}"><b>${n}</b> ${t}</button>`;
     el.innerHTML = `
       <div class="panel-head">
         <h2>Beplanting</h2>
         <button class="tb" data-act="close" title="Sluiten">${icon('close')}</button>
       </div>
+      <nav class="steps">${stepBtn(1, 'Schetsen')}${stepBtn(2, 'Invullen')}${stepBtn(3, 'Verfijnen')}</nav>
+      <section class="step-intro">${[
+        '',
+        '<p><b>Schets de beplanting.</b> Teken plantvakken en geef elk vak een <b>type</b>: hoe hoog wordt het ongeveer? Welke planten erin komen, kies je in stap 2.</p>',
+        '<p><b>Vul de vakken.</b> Selecteer een vak en kies planten uit de database of een kant-en-klare combinatie. Wat bij het type past, staat bovenaan.</p>',
+        '<p><b>Maak het af.</b> Leg vlekken (groepen) van structuurplanten en accenten in een vak, zet losse solitairen, en kijk hoe de tuin er het hele jaar uitziet.</p>',
+      ][step]}</section>
+      ${step === 1 ? `<section>
+        <h3>Type voor nieuwe vakken</h3>
+        <div class="btypes">${Object.entries(BED_TYPES).map(([k, v]) => `<button type="button" data-btype="${k}" class="${(this.app.state.bedType || '') === k ? 'on' : ''}" title="${esc(v.name)}${v.examples ? ` (${esc(v.examples)})` : ''}"><i style="background:${v.color}"></i>${esc(v.label)}<small>${v.range}</small></button>`).join('')}</div>
+        <div class="row add">
+          <button type="button" class="primary" data-tool="vak">${icon('area', 16)} Plantvak tekenen</button>
+        </div>
+        <p class="hint">De vorm kies je onderin: vrij, rechthoek, cirkel, boog, of <b>tik in ruimte</b> (het vak volgt de lijnen eromheen). Is er een vak geselecteerd, dan krijgt dat vak het gekozen type.</p>
+      </section>` : ''}
+      ${step <= 2 && !(step === 2 && bed) ? `<section>
+        <h3>Plantvakken <small>${beds.length ? `${beds.length} in de tekening` : ''}</small></h3>
+        <ul class="bedlist"></ul>
+      </section>` : ''}
       <section>
         <div class="row">
           <div class="seg" title="Weergave van plantvakken en groepen">
@@ -128,7 +168,7 @@ export class PlantPanel {
           <small class="scope">${bed ? `Overzicht: <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Overzicht: hele tuin'}</small>
         </div>
       </section>
-      ${bed ? `<section class="bedsec">
+      ${step !== 2 ? '' : bed ? `<section class="bedsec">
         <h3>Dit vak <small>${bed.name ? esc(bed.name) : ''}</small></h3>
         <label class="row">Type
           <select data-k="bedtype">${[['', 'nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(bed.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -139,28 +179,35 @@ export class PlantPanel {
           <button type="button" data-act="combos" title="Vul het vak met een kant-en-klare plantcombinatie">Vul met een combinatie</button>
         </div>
         <div class="combos" hidden></div>
-      </section>` : `<section class="bedsec"><p class="hint"><b>Tip:</b> selecteer een plantvak om het te vullen met planten uit de database of met een kant-en-klare combinatie.</p></section>`}
-      <section>
+      </section>` : `<section class="bedsec"><p class="hint">Tik op een plantvak in de tekening of in de lijst hierboven om het te vullen.</p></section>`}
+      ${step === 3 ? `<section>
+        <h3>Groepen en solitairen ${bed ? `<small>${bed.name ? esc(bed.name) : 'dit vak'}</small>` : ''}</h3>
+        <div class="row add">
+          ${bed ? '<button type="button" class="primary" data-plan="suggest" title="Vlekken (drifts) van structuurplanten en accenten voorstellen in dit vak">Stel groepen voor</button>' : ''}
+          <button type="button" data-tool="groep" title="Zelf een vlek van één of een paar soorten tekenen, binnen een plantvak">Groep tekenen</button>
+          <button type="button" data-tool="plant" title="Eén losse plant of boom zetten (mag overal)">Solitair zetten</button>
+        </div>
+        <p class="hint">${bed ? 'Groepen liggen bovenop de basis van het vak. Hun inhoud kies je in de balk als je een groep selecteert.' : 'Selecteer een plantvak om er groepen in te laten voorstellen.'}</p>
+      </section>` : ''}
+      <section data-in="1">
         <h3>Schets: soorten plantvak</h3>
         <div class="sketch"></div>
       </section>
-      <section>
-        <h3>Kleurenschema</h3>
+      <details data-in="2" ${p.scheme.type !== 'vrij' ? 'open' : ''}><summary>Kleurenschema <small>${esc(SCHEMES[p.scheme.type]?.name || '')}</small></summary><section>
         <div class="row">
           <select data-k="scheme">${Object.entries(SCHEMES).map(([k, v]) => `<option value="${k}" ${p.scheme.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>
           <input type="color" data-k="base" value="${p.scheme.base}" title="Basiskleur" ${['vrij', 'warm', 'koel', 'wit'].includes(p.scheme.type) ? 'hidden' : ''}>
         </div>
         <div class="palette">${palette.map((c) => `<i style="background:${c}" title="${c}"></i>`).join('')}</div>
-      </section>
-      <section>
-        <h3>Bouwstenen</h3>
+      </section></details>
+      <details data-in="2" ${bed ? '' : 'open'}><summary>Alle bouwstenen in deze tuin <small>${p.roles.length}</small></summary><section>
         <ul class="roles"></ul>
         <div class="row add">
           <button type="button" data-act="pickrole" class="primary" title="Een bouwsteen maken van een echte plant uit de plantendatabase">+ Plant uit de database</button>
           ${Object.entries(ROLES).map(([k, v]) => `<button type="button" data-add="${k}" title="Een eigen bouwsteen zonder soort (${v.note})">+ ${v.name}</button>`).join('')}
         </div>
-      </section>
-      <section>
+      </section></details>
+      <section data-in="3">
         <h3>Het hele jaar <small>${this.month ? MONTH_NAMES[this.month - 1] : 'tik een maand om de tekening zo te zien'}</small></h3>
         <div class="year"></div>
         <div class="row month-row">
@@ -170,7 +217,10 @@ export class PlantPanel {
         </div>
         <canvas class="wheel" width="300" height="300"></canvas>
         <div class="advice"></div>
-      </section>`;
+      </section>
+      ${step < 3 ? `<div class="row next"><button type="button" class="primary" data-step="${step + 1}">Verder: ${step === 1 ? '2 Invullen' : '3 Verfijnen'} ›</button></div>` : ''}`;
+    // onderdelen die alleen bij één stap horen
+    for (const sec of el.querySelectorAll('[data-in]')) if (Number(sec.dataset.in) !== step) sec.hidden = true;
 
     // schets: oppervlakte per type plantvak
     const sk = {};
@@ -254,7 +304,7 @@ export class PlantPanel {
     $('.advice', el).innerHTML = adv.map((t) => `<p>${t}</p>`).join('');
 
     this.drawWheel($('.wheel', el), p, areas);
-    if (bed) this.renderBed(el, bed);
+    if (bed && step === 2) this.renderBed(el, bed);
     el.querySelector('[data-act="pickrole"]').addEventListener('click', () => this.openPicker({
       title: 'Plant kiezen voor een nieuwe bouwsteen',
       onPick: (pl) => {
@@ -270,6 +320,41 @@ export class PlantPanel {
 
     // gebeurtenissen
     el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
+    for (const b of el.querySelectorAll('[data-step]')) b.addEventListener('click', () => { this.app.state.plantStep = Number(b.dataset.step); this.app.persistSettings(); this.render(); });
+    for (const b of el.querySelectorAll('[data-btype]')) {
+      b.addEventListener('click', () => {
+        this.app.state.bedType = b.dataset.btype;
+        this.app.persistSettings();
+        if (bed) this.app.store.mutate(() => { bed.btype = b.dataset.btype; }, 'bedtype');
+        this.render();
+      });
+    }
+    for (const b of el.querySelectorAll('[data-tool]')) {
+      b.addEventListener('click', () => {
+        this.app.state.plantMode = b.dataset.tool;
+        this.app.persistSettings();
+        if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
+        this.app.toast({ vak: 'Teken een plantvak in de tekening (vorm kiezen onderin).', groep: 'Teken een groep binnen een plantvak.', plant: 'Tik in de tekening om een solitair te zetten; kies de plant onderin of bij de bouwstenen.' }[b.dataset.tool], 3000);
+      });
+    }
+    el.querySelector('[data-plan="suggest"]')?.addEventListener('click', () => this.app.planAction('suggest'));
+    const bl = $('.bedlist', el);
+    if (bl) {
+      if (!beds.length) bl.innerHTML = '<li class="hint">Nog geen plantvakken. Kies een type en teken een vak.</li>';
+      for (const { item: b2, area } of beds) {
+        const li = document.createElement('li');
+        li.className = 'bedrow' + (bed && bed.id === b2.id ? ' active' : '');
+        const bt = BED_TYPES[b2.btype];
+        const n = (b2.planting?.mix || []).length;
+        li.innerHTML = `<i style="background:${bt ? bt.color : '#cdb9a4'}"></i><span><b>${esc(b2.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}</small></span>`;
+        li.addEventListener('click', () => {
+          if (this.app.state.tool !== 'lasso') this.app.setTool('lasso');
+          this.app.setSelection(new Set([b2.id]));
+          this.render();
+        });
+        bl.appendChild(li);
+      }
+    }
     for (const b of el.querySelectorAll('[data-view]')) {
       b.addEventListener('click', () => {
         this.app.state.plantView = b.dataset.view;
