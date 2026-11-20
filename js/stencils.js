@@ -3,6 +3,8 @@
 
 import { drawFence } from './fences.js';
 import { STONE_SIZES, STONE_COLORS, paintStone } from './bonds.js';
+import { drawPlant as drawPlantImpression } from './plantdraw.js';
+import { stencilPlantSpec } from './planting.js';
 
 const TAU = Math.PI * 2;
 
@@ -2653,6 +2655,19 @@ export const STENCILS = [
     },
   },
 ];
+
+// Planten in de stencils worden net zo getekend als dezelfde plant in een plantvak (één tekening voor beide)
+const IMPRESSION_STENCILS = ['heester', 'bloeiend', 'siergras', 'vasteplant', 'bodembedekker', 'vp_aar', 'vp_knop', 'vp_pluim', 'vp_scherm', 'vp_schijf', 'vp_kussen', 'vp_blad', 'varen', 'vp_zwaard', 'bolgewas'];
+for (const s of STENCILS) {
+  if (!IMPRESSION_STENCILS.includes(s.id)) continue;
+  s.draw = (g, w, h, c, lw) => {
+    if (fillOverride.paper) { g.beginPath(); g.ellipse(0, 0, w * 0.48, h * 0.48, 0, 0, TAU); g.fill(); return; }
+    const spec = { ...stencilPlantSpec(s.id), color: c };
+    g.save(); g.scale(1, h / w);
+    drawPlantImpression(g, spec, 0, 0, w, { lw, seed: 7 });
+    g.restore();
+  };
+}
 
 export const STENCIL_MAP = Object.fromEntries(STENCILS.map((s) => [s.id, s]));
 

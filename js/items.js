@@ -10,6 +10,7 @@ import { getImage } from './assets.js';
 import {
   drawRoleSymbol, rolesMap, layoutPoints, roleDiameter, plantOutline, hitPlant, shapePolygon, monthState, plantCount, isBed, BED_TYPES,
 } from './planting.js';
+import { drawPlant as drawPlantImpression } from './plantdraw.js';
 import { paperToWorld } from './model.js';
 import { wallShape } from './walls.js';
 import { formatLength, formatArea } from './units.js';
@@ -70,7 +71,22 @@ function drawPlant(g, item, rc) {
   const roles = rc.roles || rolesMap(rc.doc);
   const r = roles[item.role];
   if (!r) return;
-  drawRoleSymbol(g, r, item.x, item.y, item.d, rc.month || null, paperToWorld(0.2, rc.scale));
+  if (rc.plantView === 'symbolen') drawRoleSymbol(g, r, item.x, item.y, item.d, rc.month || null, paperToWorld(0.2, rc.scale));
+  else drawPlantImpression(g, r, item.x, item.y, item.d, { month: rc.month || null, lw: paperToWorld(0.15, rc.scale), pxPerM: rc.zoom * (rc.dpr || 1) });
+}
+
+const HEIGHT_RANK = { bodem: 0, laag: 1, middel: 2, hoog: 3, xhoog: 4 };
+
+/** Planten in een vak als impressie: iets verschoven en verschillend van maat, lage planten eerst. */
+function drawImpressions(g, pts, rc, lw) {
+  const sorted = [...pts].sort((a, b) => (HEIGHT_RANK[a.role.height] ?? 1) - (HEIGHT_RANK[b.role.height] ?? 1) || a.y - b.y);
+  const pxPerM = rc.zoom * (rc.dpr || 1);
+  for (const p of sorted) {
+    const h = Math.sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453, f = h - Math.floor(h);
+    const h2 = Math.sin(p.x * 39.346 + p.y * 11.135) * 24634.6345, f2 = h2 - Math.floor(h2);
+    const d = roleDiameter(p.role) * (0.92 + f * 0.26);
+    drawPlantImpression(g, p.role, p.x + (f - 0.5) * d * 0.22, p.y + (f2 - 0.5) * d * 0.22, d, { month: rc.month || null, lw, pxPerM });
+  }
 }
 
 const layoutCache = new WeakMap();
@@ -162,9 +178,9 @@ function drawBed(g, item, rc) {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
     if (item.clipPlants) g.clip();
-    for (const p of cachedLayout(item, poly, rc, groups)) {
-      drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
-    }
+    const pts = cachedLayout(item, poly, rc, groups);
+    if (view === 'symbolen') for (const p of pts) drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
+    else drawImpressions(g, pts, rc, lw);
     g.restore();
   }
   if (item.stroke !== false) {
@@ -195,28 +211,23 @@ function drawBedSketch(g, item, poly, groups, bt, rc, lw) {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   g.save();
   if (item.clipPlants) { tracePath(g, item); g.clip(); }
-  g.beginPath();
+  // de schets: plantmassa's in groentinten (nog zonder bloei), getekend zoals de planten zelf
+  const shape = { bodem: 'mat', laag: 'kussen', middel: 'kussen', hoog: 'rechtop', heesters: 'heester' }[item.btype] || 'kussen';
+  const greens = [bt.color, mixHex(bt.color, '#ffffff', 0.18), mixHex(bt.color, '#1f3a14', 0.22)];
+  const pxPerM = rc.zoom * (rc.dpr || 1);
+  const pts = [];
   let row = 0;
   for (let y = minY + sp * 0.4; y <= maxY; y += sp * 0.87, row++) {
     for (let x = minX + sp * 0.4 + (row % 2) * sp * 0.5; x <= maxX; x += sp) {
       const px = x + (rnd() - 0.5) * sp * 0.35, py = y + (rnd() - 0.5) * sp * 0.35;
+      const r = bt.r * (0.85 + rnd() * 0.35), tint = greens[Math.floor(rnd() * greens.length)];
       if (!pointInPolygon([px, py], poly) || groups.some((q) => pointInPolygon([px, py], q))) continue;
-      const r = bt.r * (0.85 + rnd() * 0.3);
-      // blad als wolkje
-      const k = 10;
-      for (let i = 0; i <= k; i++) {
-        const a = (i / k) * Math.PI * 2, rr = r * (i % 2 ? 0.9 : 1);
-        const qx = px + Math.cos(a) * rr, qy = py + Math.sin(a) * rr;
-        if (i === 0) g.moveTo(qx, qy); else g.lineTo(qx, qy);
-      }
-      g.closePath();
+      // hoog: af en toe een losse, rechtopgaande pol tussen de bollen
+      pts.push({ x: px, y: py, d: r * 2.15, spec: { shape: shape === 'rechtop' && rnd() < 0.5 ? 'kussen' : shape, foliageColor: tint, bloom: [], form: 'blad' } });
     }
   }
-  g.fillStyle = hexA(bt.color, 0.55);
-  g.fill('nonzero');
-  g.strokeStyle = hexA('#2f4a25', 0.5);
-  g.lineWidth = lw * 0.8;
-  g.stroke();
+  pts.sort((p, q) => p.y - q.y);
+  for (const p of pts) drawPlantImpression(g, p.spec, p.x, p.y, p.d, { lw, pxPerM });
   g.restore();
 }
 
@@ -275,7 +286,7 @@ function drawGroup(g, item, rc) {
     g.clip();
   }
   tracePath(g, item);
-  g.fillStyle = hexA(color, view === 'groepen' ? 0.45 : 0.12);
+  g.fillStyle = hexA(color, view === 'groepen' ? 0.45 : view === 'symbolen' ? 0.12 : 0.05);
   g.fill();
   g.restore();
   if (view !== 'groepen') {
@@ -285,13 +296,13 @@ function drawGroup(g, item, rc) {
     const later = (rc.groupsByBed?.[item.bedId] || []);
     const idx = later.indexOf(item);
     const exclude = idx >= 0 ? later.slice(idx + 1).map((q) => shapePolygon(q)) : [];
-    for (const p of cachedLayout(item, poly, rc, exclude, bedPoly)) {
-      drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.75 });
-    }
+    const pts = cachedLayout(item, poly, rc, exclude, bedPoly);
+    if (view === 'symbolen') for (const p of pts) drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.75 });
+    else drawImpressions(g, pts, rc, lw);
     g.restore();
   }
   tracePath(g, item);
-  g.strokeStyle = view === 'groepen' ? hexA('#2f4a25', 0.7) : hexA('#2f4a25', 0.45);
+  g.strokeStyle = view === 'groepen' ? hexA('#2f4a25', 0.7) : hexA('#2f4a25', view === 'symbolen' ? 0.45 : 0.2);
   g.lineWidth = paperToWorld(0.2, rc.scale);
   if (item.stroke !== false) { g.globalAlpha *= item.strokeAlpha ?? 1; g.stroke(); }
   g.restore();

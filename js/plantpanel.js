@@ -101,8 +101,9 @@ export class PlantPanel {
       <section>
         <div class="row">
           <div class="seg" title="Weergave van plantvakken en groepen">
-            <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}">Planten</button>
-            <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}">Groepen</button>
+            <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}" title="Impressie: de planten zoals ze er (in de gekozen maand) uitzien">Impressie</button>
+            <button type="button" data-view="symbolen" class="${view === 'symbolen' ? 'on' : ''}" title="Plansymbolen: technisch beplantingsplan met codes">Symbolen</button>
+            <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}" title="Groepen: vlakken per mix, met aantallen">Groepen</button>
           </div>
           <small class="scope">${bed ? `Overzicht: <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Overzicht: hele tuin'}</small>
         </div>

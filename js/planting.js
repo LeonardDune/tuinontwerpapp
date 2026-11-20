@@ -617,12 +617,12 @@ const STENCIL_ROLE = {
   fruitboom: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'knop', bloom: [4], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#f6f1e3' },
   meerstammig: { role: 'structuur', height: 'xhoog', habit: 'ijl', form: 'blad', bloom: [], foliage: 'groen', autumn: 'rood', winter: 'silhouet', color: '#7a9a5a' },
   bestaandeboom: { role: 'structuur', height: 'xhoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
-  heester: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
-  bloeiend: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'knop', bloom: [5, 6], foliage: 'groen', autumn: 'geen', winter: 'silhouet', color: '#d77fa1' },
-  haag: { role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
-  siergras: { role: 'structuur', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9, 10], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
+  heester: { kind: 'heester', role: 'structuur', height: 'hoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
+  bloeiend: { kind: 'heester', role: 'structuur', height: 'hoog', habit: 'bol', form: 'knop', bloom: [5, 6], foliage: 'groen', autumn: 'geen', winter: 'silhouet', color: '#d77fa1' },
+  haag: { kind: 'haag', role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
+  siergras: { kind: 'gras', role: 'structuur', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9, 10], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
   vasteplant: { role: 'vulling', height: 'laag', habit: 'kussen', form: 'schijf', bloom: [6, 7], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#8e5bb5' },
-  bodembedekker: { role: 'vulling', height: 'bodem', habit: 'spreidend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geen', winter: 'groen', color: '#6b9c5a' },
+  bodembedekker: { kind: 'bodem', role: 'vulling', height: 'bodem', habit: 'spreidend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geen', winter: 'groen', color: '#6b9c5a' },
   leifruitmuur: { role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'knop', bloom: [4, 5], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#f6f1e3' },
   leifruitrek: { role: 'structuur', height: 'hoog', habit: 'rechtop', form: 'knop', bloom: [4, 5], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#f6f1e3' },
   leiboom: { role: 'structuur', height: 'xhoog', habit: 'rechtop', form: 'blad', bloom: [], foliage: 'groen', autumn: 'geel', winter: 'silhouet', color: '#7a9a5a' },
@@ -636,14 +636,19 @@ const STENCIL_ROLE = {
   vp_schijf: { role: 'accent', height: 'middel', habit: 'rechtop', form: 'schijf', bloom: [7, 8, 9], foliage: 'groen', autumn: 'geen', winter: 'silhouet', color: '#d9822b' },
   vp_kussen: { role: 'vulling', height: 'laag', habit: 'kussen', form: 'schijf', bloom: [5, 6, 7, 8], foliage: 'groen', autumn: 'rood', winter: 'weg', color: '#6c7fc8' },
   vp_blad: { role: 'vulling', height: 'laag', habit: 'kussen', form: 'blad', bloom: [], foliage: 'blauw', autumn: 'geel', winter: 'weg', color: '#5f8f7a' },
-  varen: { role: 'vulling', height: 'laag', habit: 'overhangend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'brons', winter: 'weg', color: '#4f8a3a' },
-  vp_zwaard: { role: 'structuur', height: 'middel', habit: 'overhangend', form: 'blad', bloom: [6, 7], foliage: 'groen', autumn: 'geel', winter: 'weg', color: '#e0a030' },
-  bolgewas: { role: 'accent', height: 'laag', habit: 'rechtop', form: 'knop', bloom: [3, 4, 5], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#d9577a' },
-  potbol: { role: 'structuur', height: 'laag', habit: 'bol', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
-  potgras: { role: 'accent', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
+  varen: { kind: 'varen', role: 'vulling', height: 'laag', habit: 'overhangend', form: 'blad', bloom: [], foliage: 'groen', autumn: 'brons', winter: 'weg', color: '#4f8a3a' },
+  vp_zwaard: { kind: 'zwaard', role: 'structuur', height: 'middel', habit: 'overhangend', form: 'blad', bloom: [6, 7], foliage: 'groen', autumn: 'geel', winter: 'weg', color: '#e0a030' },
+  bolgewas: { kind: 'bol', role: 'accent', height: 'laag', habit: 'rechtop', form: 'knop', bloom: [3, 4, 5], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#d9577a' },
+  potbol: { kind: 'heester', role: 'structuur', height: 'laag', habit: 'bol', form: 'blad', bloom: [], foliage: 'donker', autumn: 'geen', winter: 'groen', color: '#4a6b3a' },
+  potgras: { kind: 'gras', role: 'accent', height: 'middel', habit: 'overhangend', form: 'pluim', bloom: [8, 9], foliage: 'groen', autumn: 'brons', winter: 'silhouet', color: '#d9c58a' },
   potboom: { role: 'structuur', height: 'hoog', habit: 'bol', form: 'blad', bloom: [], foliage: 'zilver', autumn: 'geen', winter: 'groen', color: '#8a9a6a' },
   potbloei: { role: 'accent', height: 'laag', habit: 'kussen', form: 'knop', bloom: [5, 6, 7, 8, 9], foliage: 'groen', autumn: 'geen', winter: 'weg', color: '#d0569a' },
 };
+
+/** Eigenschappen van de plant achter een plantstencil (voor de tekening), of null. */
+export function stencilPlantSpec(symbol) {
+  return STENCIL_ROLE[symbol] || null;
+}
 
 export function isPlantStencil(symbol) {
   return !!STENCIL_ROLE[symbol];
