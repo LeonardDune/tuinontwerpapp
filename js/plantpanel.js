@@ -3,8 +3,12 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon,
+  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant,
 } from './planting.js';
+import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
+import { combosFor } from './combos.js';
+import { drawPlant } from './plantdraw.js';
+import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { polygonArea } from './geom.js';
 import { icon } from './icons.js';
 
@@ -72,6 +76,22 @@ export class PlantPanel {
     return c;
   }
 
+  /** Impressie van een plant of bouwsteen (bomen als hun stencil), als klein plaatje. */
+  thumb(spec, px = 34, month = null) {
+    const c = document.createElement('canvas');
+    const dpr = 2;
+    c.width = c.height = px * dpr;
+    c.style.width = c.style.height = px + 'px';
+    const g = c.getContext('2d');
+    const d = 1;
+    const s = (px * dpr * 0.92) / d;
+    g.setTransform(s, 0, 0, s, (px * dpr) / 2, (px * dpr) / 2);
+    const def = spec.stencil && STENCIL_MAP[spec.stencil];
+    if (def && def.round) drawStencil(g, { type: 'stencil', symbol: spec.stencil, x: 0, y: 0, w: d, h: d, rot: 0, color: def.color }, 0.012, '#ffffff', { noMask: true });
+    else drawPlant(g, spec, 0, 0, d, { month, lw: 0.01, pxPerM: 400, seed: 3 });
+    return c;
+  }
+
   /** Plantvak waarop het overzicht betrekking heeft (geselecteerd vak of het vak van een groep). */
   scopeBed() {
     const sel = [...this.app.selection];
@@ -108,6 +128,18 @@ export class PlantPanel {
           <small class="scope">${bed ? `Overzicht: <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Overzicht: hele tuin'}</small>
         </div>
       </section>
+      ${bed ? `<section class="bedsec">
+        <h3>Dit vak <small>${bed.name ? esc(bed.name) : ''}</small></h3>
+        <label class="row">Type
+          <select data-k="bedtype">${[['', 'nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(bed.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+        <ul class="roles mixlist"></ul>
+        <div class="row add">
+          <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in dit vak">+ Plant toevoegen</button>
+          <button type="button" data-act="combos" title="Vul het vak met een kant-en-klare plantcombinatie">Vul met een combinatie</button>
+        </div>
+        <div class="combos" hidden></div>
+      </section>` : `<section class="bedsec"><p class="hint"><b>Tip:</b> selecteer een plantvak om het te vullen met planten uit de database of met een kant-en-klare combinatie.</p></section>`}
       <section>
         <h3>Schets: soorten plantvak</h3>
         <div class="sketch"></div>
@@ -124,7 +156,8 @@ export class PlantPanel {
         <h3>Bouwstenen</h3>
         <ul class="roles"></ul>
         <div class="row add">
-          ${Object.entries(ROLES).map(([k, v]) => `<button type="button" data-add="${k}" title="${v.note}">+ ${v.name}</button>`).join('')}
+          <button type="button" data-act="pickrole" class="primary" title="Een bouwsteen maken van een echte plant uit de plantendatabase">+ Plant uit de database</button>
+          ${Object.entries(ROLES).map(([k, v]) => `<button type="button" data-add="${k}" title="Een eigen bouwsteen zonder soort (${v.note})">+ ${v.name}</button>`).join('')}
         </div>
       </section>
       <section>
@@ -156,13 +189,13 @@ export class PlantPanel {
       : '') + '<p class="hint">Kies bij een plantvak het <b>Type</b> (beloopbaar groen, bodembedekkers, laag, middelhoog, hoog, heesters) voor de ruwe schets. Welke planten erin komen, voeg je later toe met de bouwstenen hieronder.</p>';
 
     // bouwstenen
-    const ul = $('.roles', el);
+    const ul = $('.roles:not(.mixlist)', el);
     const areas = yr.areas;
     if (!p.roles.length) ul.innerHTML = '<li class="hint">Nog geen bouwstenen. Begin met een paar structuurplanten en een vulling.</li>';
     for (const r of p.roles) {
       const li = document.createElement('li');
       li.className = 'role' + (this.app.state.plantRole === r.id ? ' active' : '');
-      li.appendChild(this.symbol(r, 34, this.month));
+      li.appendChild(view === 'symbolen' ? this.symbol(r, 34, this.month) : this.thumb(r, 34, this.month));
       const txt = document.createElement('div');
       txt.className = 'rtxt';
       const a = areas[r.id];
@@ -221,6 +254,19 @@ export class PlantPanel {
     $('.advice', el).innerHTML = adv.map((t) => `<p>${t}</p>`).join('');
 
     this.drawWheel($('.wheel', el), p, areas);
+    if (bed) this.renderBed(el, bed);
+    el.querySelector('[data-act="pickrole"]').addEventListener('click', () => this.openPicker({
+      title: 'Plant kiezen voor een nieuwe bouwsteen',
+      onPick: (pl) => {
+        const roles = this.ensure().roles;
+        const { role, created } = roleForPlant(roles, pl);
+        if (created) this.mutate((x) => { x.roles.push(role); });
+        this.app.state.plantRole = role.id;
+        this.app.persistSettings();
+        this.app.toast(created ? `Bouwsteen ${role.code}: ${pl.nl}. Kies Beplanten om hem te plaatsen, of zet hem in een vak.` : `${pl.nl} is al bouwsteen ${role.code}.`, 3500);
+        this.render();
+      },
+    }));
 
     // gebeurtenissen
     el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
@@ -309,6 +355,162 @@ export class PlantPanel {
     }
   }
 
+  // ---------------------------------------------------------------- dit vak
+
+  /** Het geselecteerde plantvak: type, inhoud (mix) met aandelen, plant toevoegen en combinaties. */
+  renderBed(el, bed) {
+    const roles = this.ensure().roles;
+    const byId = Object.fromEntries(roles.map((r) => [r.id, r]));
+    const mix = bed.planting?.mix || [];
+    const tot = mix.reduce((a, m) => a + (Number(m.w) || 0), 0) || 1;
+    const ul = $('.mixlist', el);
+    if (!mix.length) ul.innerHTML = `<li class="hint">Nog leeg. ${bed.btype ? `Kies een plant of een combinatie die past bij <b>${BED_TYPES[bed.btype].name.toLowerCase()}</b>.` : 'Kies eerst een type (hoe hoog wordt het?), dan een plant of combinatie.'}</li>`;
+    for (const m of mix) {
+      const r = byId[m.role];
+      if (!r) continue;
+      const fits = fitsBedType(r.height, bed.btype, r.kind);
+      const li = document.createElement('li');
+      li.className = 'role' + (fits ? '' : ' unfit');
+      li.appendChild(this.thumb(r, 34, this.month));
+      const txt = document.createElement('div');
+      txt.className = 'rtxt';
+      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · ${HEIGHTS[r.height]?.range || ''} · bloei ${bloomText(r)}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[bed.btype].label.toLowerCase())}</em>`}</small>`;
+      li.appendChild(txt);
+      const w = document.createElement('input');
+      w.type = 'number'; w.min = '0'; w.max = '100'; w.step = '5'; w.value = String(Math.round(((Number(m.w) || 0) / tot) * 100));
+      w.title = 'Aandeel in dit vak (%)'; w.className = 'share';
+      w.addEventListener('click', (e) => e.stopPropagation());
+      w.addEventListener('change', () => this.app.store.mutate(() => {
+        const mm = bed.planting.mix.find((x) => x.role === m.role);
+        if (mm) mm.w = Math.max(0, Number(w.value) || 0);
+      }, 'mix'));
+      li.appendChild(w);
+      const pct = document.createElement('span'); pct.className = 'u'; pct.textContent = '%'; li.appendChild(pct);
+      const del = document.createElement('button');
+      del.type = 'button'; del.title = 'Uit dit vak halen'; del.innerHTML = icon('trash', 16);
+      del.addEventListener('click', (e) => { e.stopPropagation(); this.app.store.mutate(() => { bed.planting.mix = bed.planting.mix.filter((x) => x.role !== m.role); }, 'mix'); });
+      li.appendChild(del);
+      ul.appendChild(li);
+    }
+    el.querySelector('[data-k="bedtype"]').addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.btype = e.target.value; else delete bed.btype;
+    }, 'bedtype'));
+    el.querySelector('[data-act="addplant"]').addEventListener('click', () => this.openPicker({
+      title: `Plant toevoegen aan ${bed.name ? bed.name : 'dit vak'}`,
+      btype: bed.btype,
+      onPick: (pl) => this.addPlantToBed(bed, pl),
+    }));
+    const cbox = $('.combos', el);
+    el.querySelector('[data-act="combos"]').addEventListener('click', () => {
+      cbox.hidden = !cbox.hidden;
+      if (cbox.hidden) return;
+      const list = combosFor(bed.btype);
+      cbox.innerHTML = list.length ? '' : '<p class="hint">Nog geen combinaties voor dit type.</p>';
+      for (const c of list) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'combo';
+        const thumbs = document.createElement('span'); thumbs.className = 'thumbs';
+        for (const [id] of c.items.slice(0, 5)) { const pl = plantById(id); if (pl) thumbs.appendChild(this.thumb(pl, 26)); }
+        b.appendChild(thumbs);
+        const t = document.createElement('span');
+        t.innerHTML = `<b>${esc(c.name)}</b><small>${c.items.map(([id]) => esc(plantById(id)?.nl || id)).join(', ')}</small>`;
+        b.appendChild(t);
+        b.addEventListener('click', () => this.applyCombo(bed, c));
+        cbox.appendChild(b);
+      }
+    });
+  }
+
+  /** Plant uit de database in een vak zetten (als bouwsteen; bestaat die al, dan die). */
+  addPlantToBed(bed, pl) {
+    const roles = this.ensure().roles;
+    const { role, created } = roleForPlant(roles, pl);
+    this.app.store.mutate((doc) => {
+      if (created) doc.planting.roles.push(role);
+      bed.planting = bed.planting || { mix: [] };
+      if (!bed.planting.mix.some((m) => m.role === role.id)) bed.planting.mix.push({ role: role.id, w: ROLES[role.role].weight });
+    }, 'mix');
+    if (!fitsBedType(role.height, bed.btype, role.kind)) this.app.toast(`${pl.nl} past eigenlijk niet bij ${BED_TYPES[bed.btype].name.toLowerCase()} (${HEIGHTS[role.height].range}).`, 3500);
+  }
+
+  /** Een vak vullen met een kant-en-klare combinatie. */
+  applyCombo(bed, combo) {
+    if ((bed.planting?.mix || []).length && !confirm(`"${combo.name}" vervangt wat er nu in dit vak staat. Doorgaan?`)) return;
+    this.ensure();
+    this.app.store.mutate((doc) => {
+      const mix = [];
+      for (const [id, roleName, w] of combo.items) {
+        const pl = plantById(id);
+        if (!pl) continue;
+        const { role, created } = roleForPlant(doc.planting.roles, pl, roleName);
+        if (created) doc.planting.roles.push(role);
+        mix.push({ role: role.id, w });
+      }
+      bed.planting = { ...(bed.planting || {}), mix };
+      if (!bed.btype) bed.btype = combo.btype;
+    }, 'combo');
+    this.app.toast(`Vak gevuld met "${combo.name}". Pas aandelen aan of voeg planten toe.`, 3500);
+  }
+
+  // ---------------------------------------------------------------- plant kiezen
+
+  /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
+  openPicker({ title, btype = null, onPick }) {
+    let dlg = document.getElementById('dlg-plants');
+    if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
+    const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
+    const f = { q: '', type: '', height: '', light: '', soil: '', color: '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
+    dlg.innerHTML = `
+      <form method="dialog" class="dlg wide picker">
+        <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
+        <input type="search" data-f="q" placeholder="Zoek op Nederlandse of Latijnse naam" autocomplete="off">
+        <div class="filters">
+          <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
+          <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), '', 'Elke hoogte')}</select>
+          <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, '', 'Elke standplaats')}</select>
+          <select data-f="soil">${opt({ droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' }, '', 'Elke grond')}</select>
+          <select data-f="color">${opt({ wit: 'Wit', geel: 'Geel', oranje: 'Oranje', rood: 'Rood', roze: 'Roze', paars: 'Paars', blauw: 'Blauw', groen: 'Groen' }, '', 'Elke bloeikleur')}</select>
+          <select data-f="month">${opt(Object.fromEntries(MONTH_NAMES.map((m, i) => [String(i + 1), `Bloeit in ${m}`])), '', 'Elke bloeitijd')}</select>
+          <label class="check"><input type="checkbox" data-f="native"> Inheems</label>
+          <label class="check"><input type="checkbox" data-f="bees"> Bijen en vlinders</label>
+          <label class="check"><input type="checkbox" data-f="evergreen"> Wintergroen</label>
+          ${btype ? `<label class="check"><input type="checkbox" data-f="onlyFit" checked> Alleen wat past bij ${esc(BED_TYPES[btype].name.toLowerCase())}</label>` : ''}
+        </div>
+        <p class="hint count"></p>
+        <ul class="plantlist"></ul>
+      </form>`;
+    const list = $('.plantlist', dlg);
+    const show = () => {
+      const res = searchPlants(f);
+      $('.count', dlg).textContent = `${res.length} planten${res.length > 150 ? ', de eerste 150 getoond' : ''}. Tik op een plant om hem te kiezen.`;
+      list.innerHTML = '';
+      for (const { p, fits } of res.slice(0, 150)) {
+        const li = document.createElement('li');
+        li.className = 'plant' + (fits ? '' : ' unfit');
+        li.appendChild(this.thumb(p, 48));
+        const t = document.createElement('div');
+        t.className = 'ptxt';
+        const tags = [p.native ? 'inheems' : '', p.bees ? 'bijen' : '', p.evergreen ? 'wintergroen' : ''].filter(Boolean);
+        const sun = p.light.map((l) => ({ zon: '☀', half: '◐', schaduw: '●' }[l])).join('');
+        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${p.h >= 300 ? `${Math.round(p.h / 100)} m` : `${p.h} cm`} hoog · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>`;
+        li.appendChild(t);
+        const sw = document.createElement('i');
+        sw.className = 'pcolor'; sw.style.background = p.bloom.length ? p.color : 'transparent';
+        li.appendChild(sw);
+        li.addEventListener('click', () => { dlg.close(); onPick(p); });
+        list.appendChild(li);
+      }
+    };
+    for (const inp of dlg.querySelectorAll('[data-f]')) {
+      const ev = inp.type === 'search' ? 'input' : 'change';
+      inp.addEventListener(ev, () => { f[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value; show(); });
+    }
+    show();
+    dlg.showModal();
+    setTimeout(() => $('[data-f="q"]', dlg)?.focus(), 50);
+  }
+
   // ---------------------------------------------------------------- bouwsteen bewerken
 
   editRole(id) {
@@ -322,6 +524,7 @@ export class PlantPanel {
     form.innerHTML = `
       <header><h2>Bouwsteen ${esc(r.code)}</h2><button class="x" value="close">${icon('close')}</button></header>
       <div class="role-preview"></div>
+      <div class="row"><button type="button" data-act="choose" title="De eigenschappen van een echte plant uit de database overnemen">${r.plant ? 'Andere plant kiezen…' : 'Kies een plant uit de database…'}</button>${r.plant ? `<small class="hint">gebaseerd op ${esc(plantById(r.plant)?.lat || '')}</small>` : ''}</div>
       <label>Omschrijving (optioneel)<input type="text" data-k="label" value="${esc(r.label || '')}" placeholder="${esc(describeRole({ ...r, label: '' }))}"></label>
       <div class="grid2">
         <label>Rol in het vak${sel('role', ROLES, r.role)}</label>
@@ -354,7 +557,8 @@ export class PlantPanel {
     const preview = () => {
       const box = $('.role-preview', form);
       box.innerHTML = '';
-      box.appendChild(this.symbol(draft, 64));
+      box.appendChild(this.thumb(draft, 64));
+      box.appendChild(this.symbol(draft, 40));
       const strip = document.createElement('div');
       strip.className = 'strip';
       for (let m = 1; m <= 12; m++) {
@@ -394,6 +598,20 @@ export class PlantPanel {
         draft.bloom = draft.bloom.includes(m) ? draft.bloom.filter((x) => x !== m) : [...draft.bloom, m].sort((a, c) => a - c);
         b.classList.toggle('on');
         preview();
+      } else if (b.dataset.act === 'choose') {
+        this.openPicker({
+          title: `Plant kiezen voor bouwsteen ${draft.code}`,
+          onPick: (pl) => {
+            Object.assign(draft, roleFromPlant(pl));
+            done = true;
+            this.app.store.mutate((doc) => {
+              const i = doc.planting.roles.findIndex((x) => x.id === id);
+              if (i >= 0) doc.planting.roles[i] = JSON.parse(JSON.stringify(draft));
+            }, 'role');
+            dlg.close();
+            setTimeout(() => this.editRole(id), 30);
+          },
+        });
       } else if (b.dataset.act === 'delete') {
         const used = this.doc.layers.some((l) => l.items.some((i) => i.role === id || i.planting?.mix?.some((m) => m.role === id)));
         if (used && !confirm(`${r.code} staat in de tekening. Verwijderen haalt ook die planten weg. Doorgaan?`)) return;

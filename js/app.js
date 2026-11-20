@@ -27,6 +27,7 @@ import { SelectTool, selectionAngle } from './select.js';
 import { syncOpenings, isOpening } from './walls.js';
 import { PlantTool, PaveTool, newBed, newGroup, hasBeds } from './planttool.js';
 import { arcPolygon, arcParams } from './arc.js';
+import { fitsBedType } from './plantdb.js';
 import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
 import { extentsOf, toWorld } from './smartguides.js';
 import { PlantPanel } from './plantpanel.js';
@@ -2223,7 +2224,12 @@ class App {
       if (isBed(it) || isGroup(it)) {
         const mix = it.planting?.mix || [];
         const inMix = new Set(mix.map((m) => m.role));
-        html += `<span class="pf">${isBed(it) ? 'Basis' : 'Mix'}</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}">${escapeHtml(r.code)}</button>`).join('')}`;
+        // past de bouwsteen bij het type vak uit de schets (hoogte)?
+        const bt = isBed(it) ? it.btype : this.store.findItem(it.bedId)?.item?.btype;
+        const fit = (r) => fitsBedType(r.height, bt, r.kind);
+        html += `<span class="pf">${isBed(it) ? 'Basis' : 'Mix'}</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''} ${fit(r) ? '' : 'unfit'}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}${fit(r) ? '' : ` – past niet bij ${escapeHtml(BED_TYPES[bt].name.toLowerCase())}`}">${escapeHtml(r.code)}</button>`).join('')}`;
+        const off = roles.filter((r) => inMix.has(r.id) && !fit(r));
+        if (off.length) html += `<span class="pinfo warn" title="Deze bouwstenen zijn hoger of lager dan het type vak uit de schets">Past niet bij ${escapeHtml(BED_TYPES[bt].label.toLowerCase())}: ${off.map((r) => escapeHtml(r.code)).join(', ')}</span>`;
         const st = this.planStats(it);
         if (st) {
           const m2 = (v) => fmt(v, v < 100 ? 1 : 0);

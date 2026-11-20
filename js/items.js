@@ -67,10 +67,19 @@ function drawItemInner(g, item, rc) {
   }
 }
 
+/** Bouwsteen van een boom met een eigen stencil (bijv. lijsterbes): teken het stencil, zodat hij overal hetzelfde oogt. */
+function drawRoleStencil(g, r, x, y, d, rc) {
+  const def = r.stencil && STENCIL_MAP[r.stencil];
+  if (!def || !def.round) return false;
+  drawStencil(g, { type: 'stencil', symbol: r.stencil, x, y, w: d, h: d, rot: 0, color: def.color }, paperToWorld(0.25, rc.scale), rc.paper, { noMask: true });
+  return true;
+}
+
 function drawPlant(g, item, rc) {
   const roles = rc.roles || rolesMap(rc.doc);
   const r = roles[item.role];
   if (!r) return;
+  if (rc.plantView !== 'symbolen' && drawRoleStencil(g, r, item.x, item.y, item.d, rc)) return;
   if (rc.plantView === 'symbolen') drawRoleSymbol(g, r, item.x, item.y, item.d, rc.month || null, paperToWorld(0.2, rc.scale));
   else drawPlantImpression(g, r, item.x, item.y, item.d, { month: rc.month || null, lw: paperToWorld(0.15, rc.scale), pxPerM: rc.zoom * (rc.dpr || 1) });
 }
@@ -85,7 +94,8 @@ function drawImpressions(g, pts, rc, lw) {
     const h = Math.sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453, f = h - Math.floor(h);
     const h2 = Math.sin(p.x * 39.346 + p.y * 11.135) * 24634.6345, f2 = h2 - Math.floor(h2);
     const d = roleDiameter(p.role) * (0.92 + f * 0.26);
-    drawPlantImpression(g, p.role, p.x + (f - 0.5) * d * 0.22, p.y + (f2 - 0.5) * d * 0.22, d, { month: rc.month || null, lw, pxPerM });
+    const x = p.x + (f - 0.5) * d * 0.22, y = p.y + (f2 - 0.5) * d * 0.22;
+    if (!drawRoleStencil(g, p.role, x, y, d, rc)) drawPlantImpression(g, p.role, x, y, d, { month: rc.month || null, lw, pxPerM });
   }
 }
 

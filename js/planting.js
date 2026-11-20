@@ -7,6 +7,7 @@
 //  - rol in het vak: structuur, vulling (matrix), accent (o.a. Rainer & West)
 
 import { pointInPolygon, polygonArea, bbox, dist } from './geom.js';
+import { PLANTS, roleFromPlant, defaultRole } from './plantdb.js';
 
 export const MONTHS = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 export const MONTH_NAMES = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
@@ -151,6 +152,15 @@ export function inScheme(color, scheme) {
 }
 
 // ------------------------------------------------------------------ bouwstenen
+
+/** Bouwsteen maken (of de bestaande vinden) voor een plant uit de database. */
+export function roleForPlant(roles, plant, role = null) {
+  const found = roles.find((r) => r.plant === plant.id);
+  if (found) return { role: found, created: false };
+  const r = newRole(roles, role || defaultRole(plant));
+  Object.assign(r, roleFromPlant(plant));
+  return { role: r, created: true };
+}
 
 export function newRole(roles, role = 'vulling') {
   const prefix = ROLES[role].prefix;
@@ -650,16 +660,32 @@ export function stencilPlantSpec(symbol) {
   return STENCIL_ROLE[symbol] || null;
 }
 
+/** Boom uit de plantendatabase die bij een boomstencil hoort (bijv. lijsterbes), of null. */
+export function plantForStencil(symbol) {
+  for (const p of PLANTS.values()) if (p.stencil === symbol && p.type === 'boom') return p;
+  return null;
+}
+
 export function isPlantStencil(symbol) {
-  return !!STENCIL_ROLE[symbol];
+  return !!STENCIL_ROLE[symbol] || !!plantForStencil(symbol);
 }
 
 /** Zoek of maak de bouwsteen bij een plantstencil (muteert roles). */
 export function ensureStencilRole(roles, symbol, name) {
-  const tpl = STENCIL_ROLE[symbol];
-  if (!tpl) return null;
   const found = roles.find((r) => r.fromStencil === symbol);
   if (found) return found;
+  const plant = plantForStencil(symbol);
+  if (plant) {
+    // boomstencil van een soort uit de database: de bouwsteen is die boom
+    const pr = roles.find((r) => r.plant === plant.id);
+    if (pr) return pr;
+    const r = newRole(roles, defaultRole(plant));
+    Object.assign(r, roleFromPlant(plant), { fromStencil: symbol });
+    roles.push(r);
+    return r;
+  }
+  const tpl = STENCIL_ROLE[symbol];
+  if (!tpl) return null;
   const r = newRole(roles, tpl.role);
   Object.assign(r, tpl, { fromStencil: symbol, label: name, light: ['zon', 'halfschaduw'] });
   roles.push(r);

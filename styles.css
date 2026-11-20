@@ -655,3 +655,33 @@ body.side-open .north-btn { right: 364px; }
 .arc-opt .pf { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .arc-opt .pf input { width: 52px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; font-size: 15px; color: var(--ink); background: #fff; }
 .arc-opt .seg button { padding: 4px 8px; }
+
+/* ---------- beplanting: dit vak, combinaties en plant kiezen ---------- */
+.bedsec { background: var(--accent-soft); border-radius: 12px; padding: 8px 10px; }
+.bedsec .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.bedsec select { flex: 1; min-width: 140px; }
+.mixlist .role { display: flex; align-items: center; gap: 6px; }
+.mixlist .role .rtxt { flex: 1; min-width: 0; }
+.mixlist input.share { width: 52px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 14px; }
+.mixlist .u { font-size: 12px; color: var(--muted); }
+.role.unfit, .plant.unfit { opacity: 0.6; }
+.role.unfit em, .plant.unfit em { color: #b0392b; font-style: normal; }
+.combos { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.combos .combo { display: flex; align-items: center; gap: 8px; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; background: #fff; }
+.combos .combo .thumbs { display: flex; flex-shrink: 0; }
+.combos .combo .thumbs canvas { margin-right: -6px; }
+.combos .combo b { display: block; font-size: 13px; }
+.combos .combo small { display: block; font-size: 11px; color: var(--muted); }
+.picker .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.picker .filters select { flex: 1 1 150px; width: auto; font-size: 14px; padding: 6px 8px; }
+.picker .filters label.check { font-size: 13px; }
+.picker input[type=search] { font-size: 16px; }
+.plantlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 52vh; overflow: auto; }
+.plantlist .plant { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+.plantlist .plant:hover { border-color: var(--line); background: #fbfaf6; }
+.plantlist .ptxt { flex: 1; min-width: 0; }
+.plantlist .ptxt i { color: var(--muted); font-size: 13px; }
+.plantlist .ptxt small { display: block; font-size: 12px; color: var(--muted); }
+.plantlist .pcolor { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.props-bar .tgl.unfit { box-shadow: inset 0 -3px 0 #e07a5f; }
+.props-bar .pinfo.warn { color: #ffb4a0; }

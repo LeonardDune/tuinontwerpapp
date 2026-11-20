@@ -29,7 +29,7 @@ export function plantShape(p) {
   if (p.kind === 'varen') return 'varen';
   if (p.kind === 'zwaard') return 'zwaard';
   if (p.kind === 'bol') return 'bol';
-  if (p.kind === 'heester' || p.kind === 'haag') return 'heester';
+  if (p.kind === 'heester' || p.kind === 'haag' || p.kind === 'boom' || p.kind === 'klimmer') return 'heester';
   if (p.habit === 'spreidend' || p.kind === 'bodem') return 'mat';
   if (p.form === 'blad' && p.habit !== 'rechtop') return 'bladplant';
   if (p.habit === 'ijl') return 'ijl';
