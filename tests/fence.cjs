@@ -23,8 +23,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Kiezen in het stencilvenster');
   await page.evaluate(() => { window.app.setTool('stencil'); document.querySelector('#dlg-stencils').showModal(); });
-  const cat = await page.evaluate(() => { const h = [...document.querySelectorAll('#stencil-grid h3')].find((x) => x.textContent === 'Hekwerk en poorten'); return h ? [...h.nextElementSibling.querySelectorAll('.stencil-item')].map((x) => x.dataset.id) : []; });
-  assert(cat.includes('hek_schutting') && cat.includes('hek_glas') && cat.includes('poort') && cat.includes('poortdubbel') && cat.includes('schuifpoort'), `categorie "Hekwerk en poorten" (${cat.length} items)`);
+  const catOf = (name) => page.evaluate((name) => { const h = [...document.querySelectorAll('#stencil-grid h3')].find((x) => x.textContent === name); return h ? [...h.nextElementSibling.querySelectorAll('.stencil-item')].map((x) => x.dataset.id) : []; }, name);
+  const cat = await catOf('Hekwerk en poorten');
+  assert((await catOf('Schermen en schuttingen')).includes('hek_schutting'), 'houten schutting staat bij "Schermen en schuttingen"');
+  assert(cat.includes('hek_glas') && cat.includes('poort') && cat.includes('poortdubbel') && cat.includes('schuifpoort'), `categorie "Hekwerk en poorten" (${cat.length} items)`);
   await page.click('#stencil-grid .stencil-item[data-id="hek_schutting"]');
   assert(await page.evaluate(() => window.app.state.tool === 'wall' && window.app.state.fenceType === 'schutting'), 'schutting kiezen opent het tekengereedschap voor hekwerk');
 

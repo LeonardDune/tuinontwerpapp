@@ -1967,7 +1967,7 @@ class App {
             this.persistSettings();
             $('#dlg-stencils').close();
             this.setTool('wall');
-            this.toast(`${FENCES[def.fenceTool].name}: tik punt voor punt, dubbeltik of Enter om te stoppen. Poorten vind je in dezelfde lijst; ze klikken in het hek.`, 4500);
+            this.toast(`${FENCES[def.fenceTool].name}: tik punt voor punt, dubbeltik of Enter om te stoppen. Poorten vind je bij Hekwerk en poorten; ze klikken in het hek.`, 4500);
             return;
           }
           this.state.stencil = def.id;

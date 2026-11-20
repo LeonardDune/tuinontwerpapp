@@ -462,6 +462,36 @@ function espalierFruit(g, w, h, seed) {
 // ---------- water ----------
 const WATER = '#7fb2d9';
 
+// ---------------------------------------------------------------- regenwater
+
+/** Kraantje aan de onderkant van een regenton. */
+function tap(g, w, h, lw) {
+  if (fillOverride.paper) return;
+  g.save();
+  g.fillStyle = '#c9a33a'; g.strokeStyle = '#6b5a20'; g.lineWidth = lw * 0.5;
+  const y = h / 2;
+  g.beginPath(); g.rect(-Math.min(w, h) * 0.04, y - Math.min(w, h) * 0.02, Math.min(w, h) * 0.08, Math.min(w, h) * 0.1); g.fill(); g.stroke();
+  g.restore();
+}
+
+/** Ronde kunststof regenton van bovenaf: deksel met ribbels, vulopening en kraantje. */
+function rainBarrel(g, w, h, c, lw, { ribs = 2 } = {}) {
+  g.fillStyle = hexA(c, 0.6);
+  g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill(); g.stroke();
+  if (fillOverride.paper) return;
+  g.save();
+  const gr = g.createRadialGradient(-w * 0.15, -h * 0.18, w * 0.05, 0, 0, w / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(0,0,0,0.15)');
+  g.fillStyle = gr; g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill();
+  g.lineWidth = lw * 0.6;
+  for (let i = 1; i <= ribs; i++) { const k = 0.5 - i * 0.07; g.beginPath(); g.ellipse(0, 0, w * k, h * k, 0, 0, TAU); g.stroke(); }
+  // vulopening met zeef en de aansluiting van de regenpijp
+  g.fillStyle = hexA('#3d7fb5', 0.55); g.beginPath(); g.ellipse(0, 0, w * 0.13, h * 0.13, 0, 0, TAU); g.fill(); g.stroke();
+  g.lineWidth = lw * 0.3; g.beginPath(); g.moveTo(-w * 0.13, 0); g.lineTo(w * 0.13, 0); g.moveTo(0, -h * 0.13); g.lineTo(0, h * 0.13); g.stroke();
+  g.restore();
+  tap(g, w, h, lw);
+}
+
 // ---------------------------------------------------------------- hagen
 
 /** Vaste reeks per maat, zodat een haag er bij elke weergave hetzelfde uitziet. */
@@ -762,7 +792,7 @@ export function padStones(w, h, gapIn, seed) {
   return out;
 }
 
-export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Stenen, tegels en klinkers', 'Stapstenen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
+export const STENCIL_CATEGORIES = ['Bomen', 'Heesters & planten', 'Hagen', 'Vaste planten', 'Potten & bakken', 'Pergola\'s & klimplanten', 'Meubilair', 'Bouw & water', 'Water', 'Regenwater', 'Stenen, tegels en klinkers', 'Stapstenen', 'Schermen en schuttingen', 'Hekwerk en poorten', 'Huis: deuren en ramen', 'Overig'];
 
 export const STENCILS = [
   // --- Bomen (maat = kroondiameter) ---
@@ -1682,32 +1712,75 @@ export const STENCILS = [
 
   // --- Huis: deuren, ramen en puien (bovenaanzicht; h = muurdikte, ze klikken in een muur) ---
   {
-    id: 'hek_schutting', name: 'Houten schutting', cat: 'Hekwerk en poorten', fenceTool: 'schutting', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_schutting', name: 'Houten schutting', cat: 'Schermen en schuttingen', fenceTool: 'schutting', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'schutting', lw); },
   },
   {
-    id: 'hek_houtbeton', name: 'Hout-betonschutting', cat: 'Hekwerk en poorten', fenceTool: 'houtbeton', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_houtbeton', name: 'Hout-betonschutting', cat: 'Schermen en schuttingen', fenceTool: 'houtbeton', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'houtbeton', lw); },
   },
   {
-    id: 'hek_lamellen', name: 'Lamellenschutting', cat: 'Hekwerk en poorten', fenceTool: 'lamellen', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_lamellen', name: 'Lamellenschutting', cat: 'Schermen en schuttingen', fenceTool: 'lamellen', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'lamellen', lw); },
   },
   {
-    id: 'hek_dubbelstaaf', name: 'Dubbelstaafmat / gaashek', cat: 'Hekwerk en poorten', fenceTool: 'dubbelstaaf', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_dubbelstaaf', name: 'Dubbelstaafmat / gaashek', cat: 'Schermen en schuttingen', fenceTool: 'dubbelstaaf', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'dubbelstaaf', lw); },
   },
   {
-    id: 'hek_vlecht', name: 'Wilgentenen vlechtscherm', cat: 'Hekwerk en poorten', fenceTool: 'vlecht', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_vlecht', name: 'Wilgentenen vlechtscherm', cat: 'Schermen en schuttingen', fenceTool: 'vlecht', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'vlecht', lw); },
   },
   {
-    id: 'hek_groen', name: 'Groenscherm (klimop)', cat: 'Hekwerk en poorten', fenceTool: 'groen', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_groen', name: 'Groenscherm (klimop)', cat: 'Schermen en schuttingen', fenceTool: 'groen', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'groen', lw); },
   },
   {
-    id: 'hek_gabion', name: 'Schanskorf (gabion)', cat: 'Hekwerk en poorten', fenceTool: 'gabion', w: 2.4, h: 0.3, color: '#555555',
+    id: 'hek_gabion', name: 'Schanskorf (gabion)', cat: 'Schermen en schuttingen', fenceTool: 'gabion', w: 2.4, h: 0.3, color: '#555555',
     draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'gabion', lw); },
+  },
+  {
+    id: 'hek_composiet', name: 'Composiet schutting (antraciet)', cat: 'Schermen en schuttingen', fenceTool: 'composiet', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'composiet', lw); },
+  },
+  {
+    id: 'hek_steigerhout', name: 'Steigerhouten scherm', cat: 'Schermen en schuttingen', fenceTool: 'steigerhout', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'steigerhout', lw); },
+  },
+  {
+    id: 'hek_beton', name: 'Betonschutting', cat: 'Schermen en schuttingen', fenceTool: 'beton', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'beton', lw); },
+  },
+  {
+    id: 'hek_corten', name: 'Cortenstalen sierscherm', cat: 'Schermen en schuttingen', fenceTool: 'corten', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'corten', lw); },
+  },
+  {
+    id: 'hek_bamboe', name: 'Bamboescherm', cat: 'Schermen en schuttingen', fenceTool: 'bamboe', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'bamboe', lw); },
+  },
+  {
+    id: 'hek_riet', name: 'Rietmat', cat: 'Schermen en schuttingen', fenceTool: 'riet', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'riet', lw); },
+  },
+  {
+    id: 'hek_trellis', name: 'Trellisscherm met klimplant', cat: 'Schermen en schuttingen', fenceTool: 'trellis', w: 2.4, h: 0.3, color: '#555555',
+    draw(g, w, h, c, lw) { if (!fillOverride.paper) drawFence(g, [[-w / 2, 0], [w / 2, 0]], false, 'trellis', lw); },
+  },
+  {
+    id: 'scherm_bak', name: 'Terrasscherm met plantenbak (los)', cat: 'Schermen en schuttingen', round: false, w: 1.8, h: 0.5, color: '#4a4d52',
+    draw(g, w, h, c, lw) {
+      // bak met beplanting, scherm (lamellen) aan de achterkant
+      const sh = Math.min(0.06, h * 0.15);
+      g.fillStyle = hexA(c, 0.85);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, sh); g.fill(); g.stroke();
+      if (!fillOverride.paper) { g.save(); g.lineWidth = lw * 0.4; g.strokeStyle = hexA('#ffffff', 0.35); g.beginPath(); g.moveTo(-w / 2, -h / 2 + sh / 2); g.lineTo(w / 2, -h / 2 + sh / 2); g.stroke(); g.restore(); }
+      g.fillStyle = hexA(c, 0.35);
+      g.beginPath(); g.rect(-w / 2, -h / 2 + sh, w, h - sh); g.fill(); g.stroke();
+      const n = Math.max(2, Math.round(w / 0.35));
+      const centers = Array.from({ length: n }, (_, i) => [-w / 2 + (w * (i + 0.5)) / n, (sh) / 2]);
+      foliage(g, centers, Math.min((h - sh) * 0.42, w / n * 0.6), lw, { leaf: '#5b8a3c' }, 41, c);
+    },
   },
   {
     id: 'hek_spijlen', name: 'Spijlenhek (terras)', cat: 'Hekwerk en poorten', fenceTool: 'spijlen', w: 2.4, h: 0.3, color: '#555555',
@@ -2050,11 +2123,91 @@ export const STENCILS = [
     },
   },
   {
-    id: 'regenton', name: 'Regenton', cat: 'Bouw & water', round: true, w: 0.6, h: 0.6, color: '#3d7fb5',
-    draw(g, w, h, c) {
-      g.fillStyle = hexA(c, 0.3);
+    id: 'regenton', name: 'Regenton rond (200 l)', cat: 'Regenwater', round: true, w: 0.6, h: 0.6, color: '#3f6b3a',
+    draw(g, w, h, c, lw) { rainBarrel(g, w, h, c, lw); },
+  },
+  {
+    id: 'regenton_groot', name: 'Regenton groot (300–500 l)', cat: 'Regenwater', round: true, w: 0.85, h: 0.85, color: '#4a4d52',
+    draw(g, w, h, c, lw) { rainBarrel(g, w, h, c, lw, { ribs: 3 }); },
+  },
+  {
+    id: 'regenton_vat', name: 'Eikenhouten regenton (wijnvat)', cat: 'Regenwater', round: true, w: 0.7, h: 0.7, color: '#7a5233',
+    draw(g, w, h, c, lw) {
+      g.fillStyle = hexA(c, 0.7);
       g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.fill(); g.stroke();
-      g.beginPath(); g.ellipse(0, 0, w * 0.3, h * 0.3, 0, 0, TAU); g.stroke();
+      if (fillOverride.paper) return;
+      // duigen en ijzeren hoepel
+      g.save(); g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, TAU); g.clip();
+      g.lineWidth = lw * 0.5; g.strokeStyle = hexA('#3d2b1a', 0.6); g.beginPath();
+      for (let x = -w / 2 + w / 9; x < w / 2; x += w / 9) { g.moveTo(x, -h / 2); g.lineTo(x, h / 2); }
+      g.stroke(); g.restore();
+      g.lineWidth = lw * 1.4; g.strokeStyle = '#3a3a3a';
+      g.beginPath(); g.ellipse(0, 0, w * 0.47, h * 0.47, 0, 0, TAU); g.stroke();
+      tap(g, w, h, lw);
+    },
+  },
+  {
+    id: 'regenton_plat', name: 'Platte regenton tegen de gevel (muurmodel)', cat: 'Regenwater', round: false, w: 0.8, h: 0.35, color: '#3f6b3a',
+    draw(g, w, h, c, lw) {
+      const r = Math.min(h, w) * 0.3;
+      g.fillStyle = hexA(c, 0.55);
+      g.beginPath(); if (g.roundRect) g.roundRect(-w / 2, -h / 2, w, h, r); else g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      if (fillOverride.paper) return;
+      g.fillStyle = hexA(c, 0.85);
+      g.beginPath(); g.ellipse(0, 0, w * 0.18, h * 0.28, 0, 0, TAU); g.fill(); g.stroke();
+      g.lineWidth = lw * 0.5; g.beginPath(); g.moveTo(-w / 2 + r, -h / 2 + h * 0.15); g.lineTo(w / 2 - r, -h / 2 + h * 0.15); g.stroke();
+      tap(g, w, h, lw);
+    },
+  },
+  {
+    id: 'regenton_zuil', name: 'Regenzuil / amfora', cat: 'Regenwater', round: true, w: 0.5, h: 0.5, color: '#b5a48a',
+    draw(g, w, h, c, lw) {
+      g.fillStyle = hexA(c, 0.6);
+      cloud(g, w / 2, h / 2, 12, 0.05); g.fill(); g.stroke();
+      if (fillOverride.paper) return;
+      g.fillStyle = hexA(c, 0.9);
+      g.beginPath(); g.ellipse(0, 0, w * 0.22, h * 0.22, 0, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = hexA('#3d7fb5', 0.5); g.beginPath(); g.ellipse(0, 0, w * 0.12, h * 0.12, 0, 0, TAU); g.fill();
+    },
+  },
+  {
+    id: 'regenton_bak', name: 'Regenton met plantenbak', cat: 'Regenwater', round: false, w: 0.9, h: 0.45, color: '#4a4d52',
+    draw(g, w, h, c, lw) {
+      g.fillStyle = hexA(c, 0.6);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      g.fillStyle = hexA('#6e5440', 0.8);
+      g.beginPath(); g.rect(-w / 2 + h * 0.08, -h / 2 + h * 0.08, w - h * 0.16, h * 0.84); g.fill();
+      const n = Math.max(2, Math.round(w / 0.3));
+      foliage(g, Array.from({ length: n }, (_, i) => [-w / 2 + (w * (i + 0.5)) / n, 0]), Math.min(h * 0.38, (w / n) * 0.6), lw, { leaf: '#5b8a3c', flower: '#e8a33d' }, 17, c);
+      tap(g, w, h, lw);
+    },
+  },
+  {
+    id: 'regentank_ibc', name: 'Regenwatertank 1000 l (IBC)', cat: 'Regenwater', round: false, w: 1.2, h: 1.0, color: '#6f7378',
+    draw(g, w, h, c, lw) {
+      g.fillStyle = hexA('#e8ecef', 0.8);
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      if (fillOverride.paper) return;
+      // stalen kooi
+      g.save(); g.lineWidth = lw * 0.6; g.strokeStyle = c; g.beginPath();
+      for (let x = -w / 2 + w / 6; x < w / 2 - 1e-6; x += w / 6) { g.moveTo(x, -h / 2); g.lineTo(x, h / 2); }
+      for (let y = -h / 2 + h / 5; y < h / 2 - 1e-6; y += h / 5) { g.moveTo(-w / 2, y); g.lineTo(w / 2, y); }
+      g.stroke(); g.restore();
+      g.fillStyle = hexA('#3d7fb5', 0.35); g.beginPath(); g.arc(0, 0, Math.min(w, h) * 0.15, 0, TAU); g.fill(); g.stroke();
+      tap(g, w, h, lw);
+    },
+  },
+  {
+    id: 'regentank_ondergronds', name: 'Ondergrondse regenwatertank', cat: 'Regenwater', round: false, w: 2.0, h: 1.2, color: '#3d7fb5', fixedPaper: true, // ligt onder de grond: wat erboven ligt blijft zichtbaar
+    draw(g, w, h, c, lw) {
+      // onder de grond: gestippelde omtrek met het deksel van de put
+      g.save(); g.setLineDash([lw * 4, lw * 3]);
+      g.fillStyle = hexA(c, 0.08);
+      g.beginPath(); if (g.roundRect) g.roundRect(-w / 2, -h / 2, w, h, Math.min(w, h) * 0.3); else g.rect(-w / 2, -h / 2, w, h); g.fill(); g.stroke();
+      g.restore();
+      g.fillStyle = hexA('#6f7378', 0.7);
+      g.beginPath(); g.arc(0, 0, Math.min(w, h) * 0.2, 0, TAU); g.fill(); g.stroke();
+      g.beginPath(); g.arc(0, 0, Math.min(w, h) * 0.14, 0, TAU); g.stroke();
     },
   },
   {

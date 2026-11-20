@@ -11,6 +11,13 @@ export const FENCES = {
   dubbelstaaf: { name: 'Dubbelstaafmat / gaashek', t: 0.03, post: 0.06, every: 2.5, color: '#2f4a35', postColor: '#2f4a35', style: 'gaas', height: 1.8, use: 'tuin' },
   vlecht: { name: 'Wilgentenen vlechtscherm', t: 0.05, post: 0.06, every: 1.0, color: '#9b7b4f', postColor: '#6b4f33', style: 'vlecht', height: 1.8, use: 'tuin' },
   groen: { name: 'Groenscherm (klimop, kant-en-klaar)', t: 0.14, post: 0.05, every: 1.2, color: '#4f7f36', postColor: '#2f4a35', style: 'groen', height: 1.8, use: 'tuin' },
+  composiet: { name: 'Composiet schutting (antraciet)', t: 0.05, post: 0.09, every: 1.8, color: '#4a4d52', postColor: '#2f3033', style: 'planken', plank: 0.15, height: 1.8, use: 'tuin' },
+  steigerhout: { name: 'Steigerhouten scherm', t: 0.06, post: 0.1, every: 1.9, color: '#b39a7a', postColor: '#8a7356', style: 'planken', plank: 0.2, height: 1.8, use: 'tuin' },
+  beton: { name: 'Betonschutting (platen)', t: 0.06, post: 0.12, every: 2.0, color: '#9a968e', postColor: '#7d7a73', style: 'beton', height: 1.8, use: 'tuin' },
+  corten: { name: 'Cortenstalen sierscherm', t: 0.02, post: 0.06, every: 1.2, color: '#9a4f25', postColor: '#6e3a1c', style: 'corten', height: 1.8, use: 'tuin' },
+  bamboe: { name: 'Bamboescherm (rollen of mat)', t: 0.04, post: 0.06, every: 1.8, color: '#c2a35a', postColor: '#8a7340', style: 'bamboe', height: 1.8, use: 'tuin' },
+  riet: { name: 'Rietmat', t: 0.03, post: 0.06, every: 1.8, color: '#c9ad6e', postColor: '#8a7340', style: 'riet', height: 1.8, use: 'tuin' },
+  trellis: { name: 'Trellisscherm met klimplant', t: 0.08, post: 0.08, every: 1.8, color: '#8a6a45', postColor: '#6b4f33', style: 'trellis', height: 1.8, use: 'tuin' },
   gabion: { name: 'Schanskorf (gabion)', t: 0.3, post: 0, every: 2, color: '#5b5f63', postColor: '#5b5f63', style: 'gabion', height: 1.0, use: 'tuin' },
   spijlen: { name: 'Spijlenhek (staal)', t: 0.04, post: 0.06, every: 2.0, color: '#2b2b2b', postColor: '#2b2b2b', style: 'spijlen', height: 1.0, use: 'terras' },
   glas: { name: 'Glazen windscherm', t: 0.03, post: 0.05, every: 1.0, color: '#5b6066', postColor: '#5b6066', style: 'glas', height: 1.0, use: 'terras' },
@@ -69,7 +76,7 @@ export function drawFence(g, pts, closed, type, lw, color = null, gaps = {}) {
       case 'planken':
         strip(-t / 2, t / 2); g.fillStyle = hexA(c, 0.75); g.fill(); g.stroke();
         g.save(); g.lineWidth = lw * 0.4; g.strokeStyle = hexA('#3d2b1a', 0.5); g.beginPath();
-        for (let s = 0.14; s < L; s += 0.14) { g.moveTo(...P(s, -t / 2)); g.lineTo(...P(s, t / 2)); }
+        for (let s = F.plank || 0.14; s < L; s += F.plank || 0.14) { g.moveTo(...P(s, -t / 2)); g.lineTo(...P(s, t / 2)); }
         g.stroke(); g.restore();
         break;
       case 'lamel':
@@ -115,6 +122,51 @@ export function drawFence(g, pts, closed, type, lw, color = null, gaps = {}) {
         g.save(); g.lineWidth = lw * 0.5; g.beginPath();
         for (let s = 1; s < L; s += 1) { g.moveTo(...P(s, -t / 2)); g.lineTo(...P(s, t / 2)); }
         g.stroke(); g.restore();
+        break;
+      }
+      case 'beton': {
+        // betonplaten tussen betonpalen, met een licht motief
+        strip(-t / 2, t / 2); g.fillStyle = hexA(c, 0.8); g.fill(); g.stroke();
+        g.save(); g.lineWidth = lw * 0.35; g.strokeStyle = hexA('#5f5c56', 0.5); g.beginPath();
+        for (let s = 0.25; s < L; s += 0.5) { g.moveTo(...P(s, -t / 4)); g.lineTo(...P(s + 0.12, t / 4)); }
+        g.stroke(); g.restore();
+        break;
+      }
+      case 'corten': {
+        // dunne roestbruine plaat met uitgesneden motief
+        strip(-t / 2, t / 2);
+        g.fillStyle = hexA(c, 0.95); g.fill(); g.stroke();
+        g.save(); g.fillStyle = hexA('#d9893f', 0.8);
+        for (let s = 0.04; s < L; s += 0.06) { const [x, y] = P(s, (rnd() - 0.5) * t * 0.3); g.beginPath(); g.arc(x, y, t * 0.22, 0, TAU); g.fill(); }
+        g.restore();
+        break;
+      }
+      case 'bamboe': {
+        // rij bamboestengels (rondjes) met bindtouw
+        g.save(); g.fillStyle = hexA(c, 0.85); g.strokeStyle = hexA('#7a6430', 0.9); g.lineWidth = lw * 0.4;
+        const r = t / 2;
+        for (let s = r; s < L; s += r * 2) { const [x, y] = P(s, 0); g.beginPath(); g.arc(x, y, r * (0.8 + rnd() * 0.2), 0, TAU); g.fill(); g.stroke(); }
+        g.strokeStyle = hexA('#5a4a2a', 0.8); g.lineWidth = lw * 0.5; g.beginPath(); g.moveTo(...P(0, 0)); g.lineTo(...P(L, 0)); g.stroke();
+        g.restore();
+        break;
+      }
+      case 'riet':
+        strip(-t / 2, t / 2); g.fillStyle = hexA(c, 0.7); g.fill();
+        g.save(); g.lineWidth = lw * 0.3; g.strokeStyle = hexA('#7a6430', 0.6); g.beginPath();
+        for (let s = 0.015; s < L; s += 0.015) { g.moveTo(...P(s, -t / 2)); g.lineTo(...P(s, t / 2)); }
+        g.stroke(); g.restore();
+        strip(-t / 2, t / 2); g.stroke();
+        break;
+      case 'trellis': {
+        // houten raster met klimplant ertegen (bladeren aan één kant)
+        g.save(); g.lineWidth = lw * 0.7;
+        g.beginPath(); g.moveTo(...P(0, -t / 4)); g.lineTo(...P(L, -t / 4)); g.stroke();
+        g.lineWidth = lw * 0.4; g.beginPath();
+        for (let s = 0.15; s < L; s += 0.15) { g.moveTo(...P(s - 0.05, -t / 4 - t * 0.12)); g.lineTo(...P(s + 0.05, -t / 4 + t * 0.12)); }
+        g.stroke();
+        g.fillStyle = hexA('#5b8a3c', 0.6); g.strokeStyle = hexA('#3f6b2d', 0.8); g.lineWidth = lw * 0.4;
+        for (let s = 0.1; s < L; s += 0.16) { const [x, y] = P(s + (rnd() - 0.5) * 0.06, t * (0.05 + rnd() * 0.25)); const r = t * (0.25 + rnd() * 0.2); g.beginPath(); g.ellipse(x, y, r, r * 0.7, rnd() * 3, 0, TAU); g.fill(); g.stroke(); }
+        g.restore();
         break;
       }
       case 'spijlen':
