@@ -139,6 +139,27 @@ function simplify(ring) {
   return pts;
 }
 
+/**
+ * Overbodige hoekpunten weghalen: punten (vrijwel) op een rechte zijde, en piepkleine trapjes of
+ * dubbele punten die overblijven als vakken niet precies tegen elkaar lagen. tol in meters.
+ */
+export function cleanRing(ring, tol = 0.005) {
+  let pts = ring.slice();
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length && pts.length > 3; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length], b = pts[i], c = pts[(i + 1) % pts.length];
+      const ab = Math.hypot(b[0] - a[0], b[1] - a[1]), bc = Math.hypot(c[0] - b[0], c[1] - b[1]), ac = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      const off = ac > 1e-9 ? Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / ac : ab;
+      // knik bij b (graden): bijna rechtdoor = overbodig punt
+      const turn = ab > 1e-9 && bc > 1e-9 ? Math.abs(Math.atan2((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]), (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]))) * 180 / Math.PI : 0;
+      if (ab < tol || (off < tol && turn < 2) || off < 1e-7) { pts.splice(i, 1); changed = true; i--; }
+    }
+  }
+  return pts;
+}
+
 /** Is deze ring een rechthoek (4 rechte hoeken)? */
 export function isRectRing(r) {
   if (r.length !== 4) return false;

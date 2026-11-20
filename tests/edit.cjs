@@ -113,6 +113,9 @@ const close = (a, b, t = 1e-3) => Math.abs(a - b) < t;
   await page.mouse.click(X(pp[0] + 30), Y(pp[1] + 20)); // tik binnen de driehoek
   sel = await page.evaluate(() => [...window.app.selection]);
   assert(sel[0] === 'P', 'driehoek geselecteerd');
+  const hk = await page.evaluate(() => window.app.tool.handles().list.map((h) => h.kind));
+  assert(hk.filter((k) => k === 'box').length === 8 && !hk.includes('vertex'), 'vrije vorm: 8 grepen om het geheel, geen losse hoekpunten');
+  await page.evaluate(() => { const a = window.app; a.pointEdit = 'P'; a.updateSelectionUI(); a.requestRender(); }); // Punten bewerken
   const v2 = await S([7, 6]);
   await drag([v2, [v2[0] + 40, v2[1] + 40]]);
   it = await page.evaluate(() => window.app.store.findItem('P').item);

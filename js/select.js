@@ -123,12 +123,15 @@ export class SelectTool extends Tool {
       pivot = it ? itemPivot(it) : toWorld((ext.u0 + ext.u1) / 2, (ext.v0 + ext.v1) / 2, th);
       // een boog heeft veel punten: verslepen en draaien als geheel, de maten in de balk
       const arcP = it?.arc && it.type === 'shape' ? arcParams(it.points) : null;
-      const editable = it && it.type === 'shape' && it.kind !== 'circle' && !arcP || it?.type === 'dim' && it.kind !== 'area';
+      // vrije vorm (vlak): als geheel oprekken; losse hoekpunten pas bij "Punten bewerken".
+      // Lijnen, maatlijnen en muren houden hun punten (daar zijn de eindpunten het element).
+      const freeShape = it && it.type === 'shape' && it.kind === 'polygon' && !it.wall && !arcP;
+      const editable = (it && it.type === 'shape' && it.kind !== 'circle' && !arcP && (!freeShape || pe)) || (it?.type === 'dim' && it.kind !== 'area');
       const isCircle = it && it.type === 'shape' && it.kind === 'circle';
       if (pe && arcP) {
         for (const [role, p] of Object.entries(arcHandles(arcP))) list.push({ kind: 'arc', role, s: S(p), shape: role[1] === 'm' ? 'plus' : 'vertex' });
-      } else if (!it) {
-        // groep of meerdere elementen: hoeken en zijmiddens om het geheel op te rekken (zoals bij één element)
+      } else if (!it || (freeShape && !pe)) {
+        // groep, meerdere elementen of een vrije vorm: hoeken en zijmiddens om het geheel op te rekken (zoals bij één element)
         const P = (hx, hy) => toWorld(ext.u0 - pad + (ext.u1 - ext.u0 + 2 * pad) * hx, ext.v0 - pad + (ext.v1 - ext.v0 + 2 * pad) * hy, th);
         for (const [hx, hy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) list.push({ kind: 'box', hx, hy, s: S(P(hx, hy)), shape: 'square' });
         for (const [hx, hy] of [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]) list.push({ kind: 'box', hx, hy, s: S(P(hx, hy)), shape: 'round' });

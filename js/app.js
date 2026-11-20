@@ -4,7 +4,7 @@ import { Store, newDoc, newLayer, uid, paperToWorld } from './model.js';
 import { Camera } from './camera.js';
 import { renderScene, renderScaleBar, plantContext } from './render.js';
 import { Guide, GUIDE_TYPES, setGuideView } from './guides.js';
-import { unionPolygons, isRectRing } from './union.js';
+import { unionPolygons, isRectRing, cleanRing } from './union.js';
 import { FENCES } from './fences.js';
 import { BOND_TYPES, BOND_PRESETS, STONE_SIZES, FINISHES, FILLS, describeBond, materialAmount, MIX_MODES, bondPalette, STONE_COLORS } from './bonds.js';
 import { BRUSHES, strokePath } from './brushes.js';
@@ -184,6 +184,7 @@ class App {
     }
     doc.scale = doc.scale || 100;
     migratePlanting(doc);
+    cleanMergedShapes(doc);
     migrateOpenings(doc);
     this.store.load(doc);
     // andere tekening: hulpmiddelen blijven waar ze op het scherm liggen en hechten aan deze tekening
@@ -2394,8 +2395,8 @@ class App {
     }
     html += `<span class="aligns"><button type="button" data-flip="h" title="Horizontaal spiegelen (links ↔ rechts)">${icon('flipH', 20)}</button><button type="button" data-flip="v" title="Verticaal spiegelen (boven ↕ onder)">${icon('flipV', 20)}</button></span>`;
     // rechthoek of boog: de losse hoekpunten verslepen (vrije vormen hebben hun punten al)
-    if (it && it.type === 'shape' && it.kind === 'polygon' && (isRect(it) || arc)) {
-      html += `<button type="button" class="${this.pointEdit === it.id ? 'on' : ''}" data-act="points" title="Punten bewerken: hoekpunten los verslepen (een rechthoek wordt dan een vrije vorm; bij een boog blijven de randen rond)">${icon('points', 20)}</button>`;
+    if (it && it.type === 'shape' && it.kind === 'polygon' && !it.wall) {
+      html += `<button type="button" class="${this.pointEdit === it.id ? 'on' : ''}" data-act="points" title="Punten bewerken: hoekpunten los verslepen en met + punten toevoegen (een rechthoek wordt dan een vrije vorm; bij een boog blijven de randen rond)">${icon('points', 20)}</button>`;
     }
     html += `<button data-sel="duplicate" title="Dupliceren">${icon('copy', 20)}</button>`;
     html += `<button data-sel="front" title="Naar voren">${icon('front', 20)}</button>`;
@@ -3214,7 +3215,7 @@ class App {
     this.store.mutate((doc) => {
       if (big.type === 'stencil') stencilToShape(big);
       big.kind = 'polygon';
-      big.points = ring.map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000]);
+      big.points = cleanRing(ring.map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000]));
       if (isRectRing(big.points)) big.rect = true; else delete big.rect;
       // groepen (drifts) in de andere vakken horen voortaan bij het samengevoegde vak
       for (const l of doc.layers) {
@@ -3957,4 +3958,18 @@ function tintHex(hex, t) {
     const r = t >= 0 ? v + (255 - v) * t : v * (1 + t);
     return Math.max(0, Math.min(255, Math.round(r))).toString(16).padStart(2, '0');
   }).join('');
+}
+
+/** Oudere samengevoegde vakken: hoekpunten van de oorspronkelijke vakken die midden op een zijde liggen weghalen. */
+function cleanMergedShapes(doc) {
+  for (const l of doc.layers || []) {
+    for (const i of l.items) {
+      if (i.type !== 'shape' || i.kind !== 'polygon' || i.arc || i.wall || !i.points || i.points.length < 5) continue;
+      const pts = cleanRing(i.points);
+      if (pts.length < i.points.length) {
+        i.points = pts;
+        if (isRectRing(pts)) i.rect = true;
+      }
+    }
+  }
 }

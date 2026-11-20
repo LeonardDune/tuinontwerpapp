@@ -57,6 +57,42 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(it.B.points[2][1] > 2.3 && it.B.points[1][0] > 5.5 && near(it.A.points[0][0], 0) && near(it.A.points[0][1], 0), `hoek: breder en hoger, linksboven blijft (${it.B.points[1][0].toFixed(2)}, ${it.B.points[2][1].toFixed(2)})`);
   await page.screenshot({ path: path.join(OUT, 'groep-oprekken.png') });
 
+  console.log('Vrije vorm (bijv. samengevoegd plantvak)');
+  await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Vrij');
+    d.layers[0].items.push({ type: 'shape', id: 'L', kind: 'polygon', bed: true, planting: { mix: [] }, points: [[0, 0], [4, 0], [4, 1], [1, 1], [1, 3], [0, 3]], color: '#3f7a2e', width: 0.03 });
+    a.openDoc(d, true); a.cam.zoom = 80; a.cam.rot = 0; a.cam.x = 250; a.cam.y = 200; a.cameraChanged(); a.settings.snap = false;
+    a.setTool('lasso'); a.setSelection(new Set(['L']));
+  });
+  const kk = await page.evaluate(() => window.app.tool.handles().list.map((h) => h.kind));
+  assert(kk.filter((k) => k === 'box').length === 8 && !kk.includes('vertex') && !kk.includes('insert'), 'L-vormig plantvak: 8 grepen om het geheel, geen losse hoekpunten');
+  s = await handle(0.5, 1);
+  await dragBy(s, 0, 80 * 1.5); // onderzijde 1,5 m omlaag: 3 → 4,5 m hoog
+  it = await items();
+  assert(near(it.L.points[4][1], 4.5) && near(it.L.points[2][1], 1.5) && near(it.L.points[1][0], 4), `onderzijde verschoven: vorm 1,5× hoger, breedte gelijk (${it.L.points[4][1].toFixed(2)} m)`);
+  assert(await page.isVisible('#selection-bar [data-act="points"]'), 'knop Punten bewerken voor de losse hoekpunten');
+  await page.click('#selection-bar [data-act="points"]');
+  assert((await page.evaluate(() => window.app.tool.handles().list.filter((h) => h.kind === 'vertex').length)) === 6, 'Punten bewerken: de 6 hoekpunten');
+
+  console.log('Samenvoegen: geen oude zijden meer');
+  const mg = await page.evaluate(async () => {
+    const a = window.app; const { newDoc } = await import('./js/model.js');
+    const d = newDoc('Samenvoegen');
+    // twee vakken naast elkaar, net niet precies uitgelijnd (2 mm), en een ouder samengevoegd vak met punten midden op de zijden
+    d.layers[0].items.push({ type: 'shape', id: 'P', kind: 'polygon', rect: true, bed: true, planting: { mix: [] }, points: [[0, 0], [3, 0], [3, 1], [0, 1]], color: '#3f7a2e', width: 0.03 });
+    d.layers[0].items.push({ type: 'shape', id: 'Q', kind: 'polygon', rect: true, bed: true, planting: { mix: [] }, points: [[3, 0.002], [5, 0.002], [5, 1.002], [3, 1.002]], color: '#3f7a2e', width: 0.03 });
+    d.layers[0].items.push({ type: 'shape', id: 'O', kind: 'polygon', bed: true, planting: { mix: [] }, points: [[0, 3], [2, 3], [2.001, 3], [4, 3], [4, 4], [3, 4], [1, 4.001], [0, 4]], color: '#3f7a2e', width: 0.03 });
+    a.openDoc(d, true);
+    const old = a.store.findItem('O').item;
+    a.setTool('lasso'); a.setSelection(new Set(['P', 'Q']));
+    a.selectionAction('merge');
+    const m = a.store.doc.layers[0].items.find((i) => i.id === 'P' || i.id === 'Q');
+    return { merged: m.points.length, rect: !!m.rect, old: old.points.length, oldRect: !!old.rect };
+  });
+  assert(mg.merged === 4, `samengevoegd vak: alleen de 4 buitenhoeken, geen punten van de oude zijden (${mg.merged} punten)`);
+  assert(mg.old === 4 && mg.oldRect, `ouder samengevoegd vak opgeruimd bij openen: ${mg.old} punten`);
+
   console.log('Open groep');
   await setup();
   await page.evaluate(() => { window.app.openGroup = 'G1'; window.app.setSelection(new Set(['B'])); });
