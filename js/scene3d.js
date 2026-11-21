@@ -13,7 +13,7 @@ import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, mon
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
 import { plantForStencil, stencilPlantSpec } from './planting.js';
 import { plantShape } from './plantdraw.js';
-import { stencilModel, openingModel, hasModel } from './models3d.js';
+import { stencilModel, openingModel, hasModel, buildHouse, buildCanopy, climberRole } from './models3d.js';
 import { Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
 import { wallShape } from './walls.js';
 import { FENCES } from './fences.js';
@@ -254,12 +254,26 @@ export function buildGarden(T, doc, opts = {}) {
   const roles = rolesMap(doc);
   const houses = [];
   const wallsById = {};
+  // gebouwen (voor gedeelde muren zonder ramen) en het midden van de tuin (waar de pui naartoe kijkt)
+  const buildings = [];
+  let gx = 0, gy = 0, gn = 0;
+  for (const layer of doc.layers) if (layer.visible) for (const it of layer.items) {
+    if (it.type === 'shape' && it.kind === 'polygon' && !it.wall && (it.source === '3dbag' || itemHeight(it) >= 2.4) && HATCHES[it.hatch]?.group !== 'Overkapping') buildings.push(it);
+    else if (it.type !== 'image' && it.type !== 'text' && it.type !== 'dim') { const o = itemOutline(it); for (const p of o) { gx += p[0]; gy += p[1]; gn++; } }
+  }
+  const gardenCenter = gn ? [gx / gn, gy / gn] : [(box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2];
+  const sharedWall = (self, a, b) => {
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    return buildings.some((o) => o !== self && o.points.some((p, i) => distToSegment(m, p, o.points[(i + 1) % o.points.length]) < 0.35));
+  };
   for (const layer of doc.layers) for (const it of layer.items) if (it.type === 'shape' && it.wall) wallsById[it.id] = it;
 
   /** Blad, bloei of kaal in deze maand voor een eenvoudige plantbeschrijving. */
   const season = (role) => {
-    const st = monthState({ autumn: 'geen', ...role }, month);
-    const foliage = (FOLIAGE[role.foliage] || FOLIAGE.groen).color;
+    const st = monthState({ autumn: 'geen', ...role, winter: role.winter === 'bruin' ? 'silhouet' : role.winter }, month);
+    const foliage = role.leaf || (FOLIAGE[role.foliage] || FOLIAGE.groen).color;
+    if (role.winter === 'bruin' && (st.kind === 'silhouet' || st.kind === 'weg')) return { leaf: '#9a6b3c' };
+    if (role.fruitMonths?.includes(month)) return { leaf: foliage, flower: role.fruit };
     if (st.kind === 'weg') return { leaf: foliage, bare: true };
     if (st.kind === 'silhouet') return { leaf: '#9c8763', straw: true };
     return { leaf: st.kind === 'bloei' ? foliage : st.color || foliage, flower: st.kind === 'bloei' ? role.color : null };
@@ -327,6 +341,22 @@ export function buildGarden(T, doc, opts = {}) {
       }
       if (item.type === 'shape' && !isGroup(item) && h > 0 && item.points?.length >= 2) {
         const closed = item.kind === 'polygon' || item.kind === 'circle';
+        const canopy = closed && HATCHES[item.hatch]?.group === 'Overkapping';
+        if (canopy) {
+          // overkapping: dak op staanders, je kijkt eronder en erdoorheen
+          const g = buildCanopy(T, shapePolygon(item), h, item.hatch === 'pergola' ? 'pergola' : item.hatch === 'lamellen' ? 'lamellen' : 'veranda', item.matColor);
+          add(g, item.name || HATCHES[item.hatch].name);
+          stats.frames++;
+          continue;
+        }
+        if (closed && (item.source === '3dbag' || h >= 2.4) && item.kind === 'polygon') {
+          const ring = shapePolygon(item);
+          const g = buildHouse(T, ring, h, { name: item.name || 'huis', garden: gardenCenter, shared: (a, b) => sharedWall(item, a, b) });
+          add(g, item.name || 'huis');
+          stats.prisms++;
+          houses.push(ring);
+          continue;
+        }
         if (closed) {
           const ring = shapePolygon(item);
           const house = item.source === '3dbag' || h >= 2.4;
@@ -484,6 +514,7 @@ export function buildGarden(T, doc, opts = {}) {
   function stencil(item, h) {
     const def = STENCIL_MAP[item.symbol];
     if (!def) return;
+    if (def.defaults) item = { ...def.defaults, ...item };
     if (TILE_CATS.has(def.cat)) return tile(item, def);
     if (def.opening) {
       // deur of raam in een muur; poort of hekje in een hek (of los)
@@ -586,6 +617,13 @@ export function buildGarden(T, doc, opts = {}) {
     const w = item.w, d = item.h, rot = item.rot || 0;
     const c = Math.cos(rot), s = Math.sin(rot);
     const P = (u, v) => [item.x + u * c - v * s, item.y + u * s + v * c];
+    if (/veranda/.test(item.symbol)) {
+      // veranda: glazen (of opaal) dak op slanke staanders; je kijkt eronder en erdoorheen
+      add(buildCanopy(T, itemOutline(item), h, item.symbol === 'veranda' ? 'dicht' : 'veranda', item.color && item.color !== def.color ? item.color : null), def.name);
+      if (item.symbol === 'verandaterras') { const deck = prism(itemOutline(item), 0.12, [mat('#a07850', { name: 'vlonder' }), mat('#8a6643', { name: 'vlonder' })], 0); if (deck) add(deck, 'vlonder'); }
+      stats.frames++;
+      return;
+    }
     const wood = mat(def.color || '#8a6a45', { name: def.name || 'pergola' });
     const ps = item.symbol.startsWith('berceau') ? 0.05 : 0.12;
     const nx = Math.max(1, Math.round(w / 3));
@@ -602,22 +640,26 @@ export function buildGarden(T, doc, opts = {}) {
         if (b) { b.rotation.x = 0.6; add(b, 'lamel'); }
       }
       for (const u of [-w / 2 + ps, w / 2 - ps]) { const b = beam(P(u, -d / 2), P(u, d / 2), ps, h - 0.2, h, wood); if (b) add(b, 'ligger'); }
-    } else if (/veranda/.test(item.symbol)) {
-      const roof = prism(itemOutline(item), 0.08, [mat('#5a5f65', { name: 'dak' }), mat('#5a5f65', { name: 'dak' })], h);
-      if (roof) add(roof, 'dak');
-      if (item.symbol === 'verandaterras') { const deck = prism(itemOutline(item), 0.12, [mat('#a07850', { name: 'vlonder' }), mat('#8a6643', { name: 'vlonder' })], 0); if (deck) add(deck, 'vlonder'); }
     } else {
-      const green = item.symbol === 'berceau_groen' || item.grow === 'vol';
       const step = item.symbol === 'pergolalatten' ? 0.3 : 0.55;
       for (let u = -w / 2 + 0.1; u <= w / 2 - 0.05; u += step) {
         const b = beam(P(u, -d / 2 - 0.15), P(u, d / 2 + 0.15), 0.06, h, h + 0.12, wood);
         if (b) add(b, 'dwarsbalk');
       }
-      if (green || item.grow === 'deels') {
-        const lm = mat(item.symbol === 'berceau_groen' ? '#4f7d3c' : '#5e8a45', { name: 'klimplant', opacity: green ? 1 : 0.85 });
-        const top = prism(itemOutline(item), 0.25, [lm, lm], h + 0.08);
-        if (top) add(top, 'klimplant');
+    }
+    // klimplanten: langs de palen omhoog en over de balken
+    const cr = climberRole(item);
+    if (cr) {
+      const pts = [];
+      const st = cr.full ? 0.32 : 0.55;
+      for (let u = -w / 2 + 0.1; u < w / 2; u += st) for (let v = -d / 2; v <= d / 2; v += st) {
+        if (!cr.full && Math.abs(v) < d * 0.25 && (Math.round(u / st) % 2)) continue;
+        const [x, z] = P(u, v);
+        pts.push([x, h + 0.12, z]);
       }
+      for (const [x, z] of posts) for (let y = 0.3; y < h; y += cr.full ? 0.3 : 0.5) pts.push([x, y, z]);
+      const m = mctx.climber(pts, 0.22, cr.role, hashId(item.id), cr.full ? 0.36 : 0.3);
+      add(m, 'klimplant');
     }
     stats.frames++;
   }

@@ -7,6 +7,24 @@ import { Geo, CELL, buildPlant, buildShrub, buildTree } from './flora3d.js';
 
 const TAU = Math.PI * 2;
 
+/** Klimplanten (zoals in het stencilmenu): blad, bloei per maand en wat ze in de winter doen. */
+const CLIMB_ROLES = {
+  groen: { leaf: '#4f7f36', bloom: [], winter: 'groen' },
+  druif: { leaf: '#6b8f3a', bloom: [], winter: 'weg', autumn: 'geel', fruit: '#6a3d7a', fruitMonths: [8, 9, 10] },
+  blauweregen: { leaf: '#6d9a4a', bloom: [5], color: '#9b7fd1', winter: 'weg', autumn: 'geel' },
+  roos: { leaf: '#4f7a3a', bloom: [6, 7, 8, 9], color: '#d9577a', winter: 'weg' },
+  clematis: { leaf: '#5a8a40', bloom: [6, 7, 8], color: '#7b4fb0', winter: 'weg' },
+  kamperfoelie: { leaf: '#5f8f45', bloom: [6, 7, 8], color: '#e8c35a', winter: 'groen' },
+  herfst: { leaf: '#5f8f45', bloom: [], winter: 'weg', autumn: 'rood' },
+  haagbeuk: { leaf: '#3f6b2d', bloom: [], winter: 'bruin', autumn: 'geel' },
+};
+/** Begroeiing van een stencil: null (geen) of { full, role }. */
+export function climberRole(item, fallback = 'blauweregen') {
+  const grow = item.grow || 'geen';
+  if (grow === 'geen') return null;
+  return { full: grow === 'vol', role: { foliage: 'groen', ...(CLIMB_ROLES[item.growKind || fallback] || CLIMB_ROLES[fallback]) } };
+}
+
 function rng(seed) {
   let s = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
   return () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -20,6 +38,7 @@ const KINDS = {
   metal: { roughness: 0.38, metalness: 0.55 },
   fabric: { roughness: 0.97 },
   glass: { roughness: 0.05, transparent: true, opacity: 0.28, depthWrite: false, double: true },
+  opal: { roughness: 0.4, transparent: true, opacity: 0.5, depthWrite: false, double: true },
   water: { roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.88 },
 };
 
@@ -510,7 +529,7 @@ const MODELS = {
   },
 
   // ---- pergola's, rozenboog en klimplanten
-  rozenboog: (K, w, d, ctx) => {
+  rozenboog: (K, w, d, ctx, item) => {
     const R = w / 2 - 0.05, H = 1.9;
     for (const sz of [-1, 1]) {
       for (const sx of [-1, 1]) K.rod([sx * R, 0, sz * d * 0.4], [sx * R, H, sz * d * 0.4], 0.015, C.black);
@@ -520,12 +539,14 @@ const MODELS = {
     const pts = [];
     for (const sx of [-1, 1]) for (let y = 0.2; y < H; y += 0.25) pts.push([sx * R, y, 0]);
     for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI; pts.push([Math.cos(a) * R, H + Math.sin(a) * R, 0]); }
-    K.object(ctx.climber(pts, d * 0.9, { foliage: 'groen', bloom: [6, 7, 8, 9], color: '#d4587a', winter: 'weg' }, 71), 0, 0, 0);
+    const cr = climberRole(item, 'roos');
+    if (cr) K.object(ctx.climber(cr.full ? pts : pts.filter((_, i) => i % 2 === 0), d * 0.9, cr.role, 71), 0, 0, 0);
   },
-  klimplant: (K, w, d, ctx) => {
+  klimplant: (K, w, d, ctx, item) => {
+    const cr = climberRole({ grow: 'vol', ...item }, 'groen');
     const pts = [];
-    for (let x = -w / 2 + 0.2; x <= w / 2 - 0.1; x += 0.3) for (let y = 0.3; y < 2.3; y += 0.3) if (y < 2.3 - Math.abs(x) * 0.25) pts.push([x, y, 0]);
-    K.object(ctx.climber(pts, 0.25, { foliage: 'groen', bloom: [], color: '#4f7f36', autumn: 'rood', winter: 'weg' }, 81), 0, 0, 0);
+    for (let x = -w / 2 + 0.2; x <= w / 2 - 0.1; x += cr.full ? 0.28 : 0.45) for (let y = 0.3; y < 2.3; y += 0.3) if (y < 2.3 - Math.abs(x) * 0.25) pts.push([x, y, 0]);
+    K.object(ctx.climber(pts, 0.25, cr.role, 81), 0, 0, 0);
   },
   berceau: (K, w, d, ctx, item) => tunnel(K, w, d, ctx, item, C.black, 0.012),
   berceau_hout: (K, w, d, ctx, item) => tunnel(K, w, d, ctx, item, C.wood, 0.03),
@@ -704,16 +725,15 @@ function tunnel(K, w, d, ctx, item, col, t) {
     K.torus(R, t, x, H, 0, col, { kind: t > 0.02 ? 'wood' : 'metal', arc: Math.PI, rs: 20, ry: Math.PI / 2 });
   }
   for (let k = 0; k <= 6; k++) { const a = (k / 6) * Math.PI; K.rod([-w / 2, H + Math.sin(a) * R, Math.cos(a) * R], [w / 2, H + Math.sin(a) * R, Math.cos(a) * R], t * 0.6, col); }
-  if (!item.grow) return;
-  const full = item.grow === 'vol';
+  const cr = climberRole(item, 'roos');
+  if (!cr) return;
+  const full = cr.full;
   const pts = [];
   for (let x = -w / 2 + 0.1; x < w / 2; x += full ? 0.3 : 0.45) {
     for (let k = 0; k <= 12; k++) { const a = (k / 12) * Math.PI; if (full || k % 2 === 0) pts.push([x, H + Math.sin(a) * R, Math.cos(a) * R]); }
     for (const sz of [-1, 1]) for (let y = 0.3; y < H; y += full ? 0.25 : 0.45) pts.push([x, y, sz * R]);
   }
-  const kinds = { roos: { bloom: [6, 7, 8, 9], color: '#d4587a' }, blauweregen: { bloom: [5], color: '#9a86d1' }, haagbeuk: { bloom: [], color: '#4f7d3c', autumn: 'geel', winter: 'silhouet' } };
-  const kk = kinds[item.growKind] || kinds.roos;
-  K.object(ctx.climber(pts, 0.22, { foliage: 'groen', winter: 'weg', ...kk }, 131, full ? 0.34 : 0.28), 0, 0, 0);
+  K.object(ctx.climber(pts, 0.22, cr.role, 131, full ? 0.34 : 0.28), 0, 0, 0);
 }
 
 /** Leifruit: stam met horizontale etages langs draden (tegen een muur of aan een rek). */
@@ -773,3 +793,265 @@ export function openingModel(T, item, wallWidth) {
 }
 
 export { Geo, CELL, buildPlant, buildShrub, buildTree };
+
+// ------------------------------------------------------------------ huis en overkapping (wereldcoördinaten)
+
+let brickCanvas = null, tileCanvas = null;
+function brickTile() {
+  if (brickCanvas) return brickCanvas;
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#cfc8bb'; // voeg
+  g.fillRect(0, 0, 512, 512);
+  const r = rng(17), rows = 16, bw = 128; // 1 m: 16 lagen, 4 stenen
+  for (let i = 0; i < rows; i++) {
+    const y = i * 32, off = (i % 2) * 64;
+    for (let x = -64; x < 512; x += bw) {
+      const t = r();
+      g.fillStyle = `rgb(${150 + t * 40 | 0},${72 + t * 25 | 0},${52 + t * 18 | 0})`;
+      g.fillRect(x + off + 3, y + 3, bw - 6, 26);
+    }
+  }
+  brickCanvas = c;
+  return c;
+}
+function roofTile() {
+  if (tileCanvas) return tileCanvas;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#2f3033';
+  g.fillRect(0, 0, 256, 256);
+  const r = rng(29);
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const t = r();
+    const gr = g.createLinearGradient(0, i * 32, 0, i * 32 + 32);
+    gr.addColorStop(0, `rgb(${70 + t * 18 | 0},${72 + t * 18 | 0},${76 + t * 18 | 0})`);
+    gr.addColorStop(1, `rgb(${48 + t * 10 | 0},${50 + t * 10 | 0},${54 + t * 10 | 0})`);
+    g.fillStyle = gr;
+    g.fillRect(j * 32 + ((i % 2) * 16) + 1, i * 32 + 1, 30, 30);
+  }
+  tileCanvas = c;
+  return c;
+}
+function canvasTex(T, canvas) {
+  const t = new T.CanvasTexture(canvas);
+  t.colorSpace = T.SRGBColorSpace;
+  t.wrapS = t.wrapT = T.RepeatWrapping;
+  t.anisotropy = 8;
+  t.userData.mimeType = 'image/jpeg';
+  return t;
+}
+
+/** Georiënteerde omhullende rechthoek van een veelhoek. */
+export function orientedBox(ring) {
+  let best = null;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 1e-6) continue;
+    const u = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], v = [-u[1], u[0]];
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const p of ring) { const pu = p[0] * u[0] + p[1] * u[1], pv = p[0] * v[0] + p[1] * v[1]; u0 = Math.min(u0, pu); u1 = Math.max(u1, pu); v0 = Math.min(v0, pv); v1 = Math.max(v1, pv); }
+    const area = (u1 - u0) * (v1 - v0);
+    if (!best || area < best.area) best = { area, u, v, u0, u1, v0, v1 };
+  }
+  const { u, v, u0, u1, v0, v1 } = best;
+  // lange as = u
+  let hu = (u1 - u0) / 2, hv = (v1 - v0) / 2, U = u, V = v;
+  const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+  const c = [u[0] * cu + v[0] * cv, u[1] * cu + v[1] * cv];
+  if (hv > hu) { [hu, hv] = [hv, hu]; U = v; V = [-u[0], -u[1]]; }
+  return { c, u: U, v: V, hu, hv, area: best.area };
+}
+
+function ringArea(ring) {
+  let a = 0;
+  for (let i = 0; i < ring.length; i++) { const p = ring[i], q = ring[(i + 1) % ring.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return a / 2;
+}
+
+/**
+ * Huis: bakstenen gevels met ramen per verdieping (en een schuifpui naar de tuin), zadeldak met pannen bij een
+ * (bijna) rechthoekige plattegrond, anders een plat dak met dakrand.
+ * opts: { shared(a, b) → true als die gevel tegen een ander gebouw staat, garden: [x, y], name }
+ */
+export function buildHouse(T, ring, H, opts = {}) {
+  const K = new Kit(T);
+  const group = new T.Group();
+  group.name = opts.name || 'huis';
+  if (ringArea(ring) < 0) ring = [...ring].reverse(); // tegen de klok in: buitenkant links van a→b … in tekening-assen
+  const area = Math.abs(ringArea(ring));
+  const ob0 = orientedBox(ring);
+  // nok evenwijdig aan de gevel die naar de tuin kijkt (zoals bij de meeste rijtjes- en twee-onder-een-kapwoningen)
+  let ob = ob0;
+  {
+    const c0 = ring.reduce((acc, p) => [acc[0] + p[0] / ring.length, acc[1] + p[1] / ring.length], [0, 0]);
+    const gd = opts.garden || c0;
+    let best = null;
+    ring.forEach((a, i) => {
+      const b = ring[(i + 1) % ring.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 2) return;
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      let n = [(b[1] - a[1]) / L, -(b[0] - a[0]) / L];
+      if ((m[0] - c0[0]) * n[0] + (m[1] - c0[1]) * n[1] < 0) n = [-n[0], -n[1]];
+      const gl = Math.hypot(gd[0] - m[0], gd[1] - m[1]) || 1;
+      const dot = (n[0] * (gd[0] - m[0]) + n[1] * (gd[1] - m[1])) / gl;
+      if (!best || dot > best.dot) best = { dot, u: [(b[0] - a[0]) / L, (b[1] - a[1]) / L] };
+    });
+    if (best && best.dot > 0.3) {
+      const u = best.u, v = [-u[1], u[0]];
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+      for (const p of ring) { const pu = p[0] * u[0] + p[1] * u[1], pv = p[0] * v[0] + p[1] * v[1]; u0 = Math.min(u0, pu); u1 = Math.max(u1, pu); v0 = Math.min(v0, pv); v1 = Math.max(v1, pv); }
+      const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+      ob = { c: [u[0] * cu + v[0] * cv, u[1] * cu + v[1] * cv], u, v, hu: (u1 - u0) / 2, hv: (v1 - v0) / 2, area: (u1 - u0) * (v1 - v0) };
+    }
+  }
+  const rect = area / ob0.area > 0.9 && H >= 4.2 && ob.hv >= 1.5;
+  const rise = rect ? Math.min(H * 0.42, ob.hv * 0.9) : 0;
+  const eave = H - rise;
+  const brick = new T.MeshStandardMaterial({ map: canvasTex(T, brickTile()), roughness: 0.92, name: 'baksteen', side: T.DoubleSide });
+  // gevels
+  const shape = new T.Shape(ring.map((p) => new T.Vector2(p[0], p[1])));
+  const wallGeo = new T.ExtrudeGeometry(shape, { depth: eave, bevelEnabled: false });
+  wallGeo.rotateX(Math.PI / 2);
+  wallGeo.translate(0, eave, 0);
+  const flatTop = new T.MeshStandardMaterial({ color: '#3d3f42', roughness: 0.9, name: 'plat dak' });
+  const walls = new T.Mesh(wallGeo, [flatTop, brick]);
+  walls.name = 'gevels';
+  group.add(walls);
+
+  // ramen en pui
+  const cen = ring.reduce((a, p) => [a[0] + p[0] / ring.length, a[1] + p[1] / ring.length], [0, 0]);
+  const garden = opts.garden || cen;
+  let gardenEdge = -1, bestDot = -Infinity;
+  const edges = ring.map((a, i) => {
+    const b = ring[(i + 1) % ring.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let n = [(b[1] - a[1]) / (L || 1), -(b[0] - a[0]) / (L || 1)];
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if ((m[0] - cen[0]) * n[0] + (m[1] - cen[1]) * n[1] < 0) n = [-n[0], -n[1]];
+    return { a, b, L, n, m };
+  });
+  edges.forEach((e, i) => {
+    if (e.L < 2 || (opts.shared && opts.shared(e.a, e.b))) { e.blind = true; return; }
+    const gl = Math.hypot(garden[0] - e.m[0], garden[1] - e.m[1]) || 1;
+    const dot = (e.n[0] * (garden[0] - e.m[0]) + e.n[1] * (garden[1] - e.m[1])) / gl;
+    if (dot > bestDot) { bestDot = dot; gardenEdge = i; }
+  });
+  const storeys = Math.max(1, Math.floor((eave + 0.6) / 2.75));
+  edges.forEach((e, i) => {
+    if (e.blind) return;
+    const d = [(e.b[0] - e.a[0]) / e.L, (e.b[1] - e.a[1]) / e.L];
+    // lokale x langs de gevel, lokale +z naar buiten
+    const flip = d[0] * e.n[1] - d[1] * e.n[0] < 0; // n moet links (–dz, dx) liggen
+    const ux = flip ? -d[0] : d[0], uz = flip ? -d[1] : d[1];
+    const ry = Math.atan2(-uz, ux);
+    const n = Math.max(1, Math.floor((e.L - 0.6) / 1.9));
+    K.at(e.m[0], 0, e.m[1], ry, () => {
+      for (let f = 0; f < storeys; f++) {
+        const ground = f === 0;
+        for (let k = 0; k < n; k++) {
+          const x = -e.L / 2 + (e.L / n) * (k + 0.5);
+          if (ground && i === gardenEdge && n >= 2 && k === Math.floor(n / 2)) continue;
+          const y = ground ? 0.85 : f * 2.8 + 0.8, wh = ground ? 1.4 : 1.3, ww = 1.1;
+          if (y + wh > eave - 0.15) continue;
+          window(K, x, y, ww, wh);
+        }
+        if (ground && i === gardenEdge) {
+          // schuifpui naar de tuin
+          const pw = Math.min(3, e.L * 0.45), px = n >= 2 ? -e.L / 2 + (e.L / n) * (Math.floor(n / 2) + 0.5) : 0;
+          K.box(pw + 0.12, 2.36, 0.08, px, 0, 0.0, C.white);
+          for (let j = 0; j < 3; j++) K.box(pw / 3 - 0.06, 2.2, 0.03, px - pw / 2 + (pw / 3) * (j + 0.5), 0.06, 0.05, '#2c3a46', { kind: 'metal' });
+          K.box(pw + 0.3, 0.05, 0.4, px, 0, 0.2, C.concrete, { kind: 'stone' });
+        }
+      }
+    });
+  });
+
+  // dak
+  if (rect) {
+    const roofMat = new T.MeshStandardMaterial({ map: canvasTex(T, roofTile()), roughness: 0.85, name: 'dakpannen' });
+    const over = 0.35, ang = Math.atan2(rise, ob.hv), slopeL = ob.hv / Math.cos(ang) + over, L = ob.hu * 2 + 0.4;
+    // assenstelsel op de nok: x langs de nok (lange as), z dwars, y omhoog
+    const ridge = new T.Group();
+    ridge.position.set(ob.c[0], eave + rise + 0.04, ob.c[1]);
+    ridge.rotation.y = Math.atan2(-ob.u[1], ob.u[0]);
+    for (const s of [-1, 1]) {
+      const geo = new T.BoxGeometry(L, 0.06, slopeL);
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * L, uv.getY(i) * slopeL);
+      const m = new T.Mesh(geo, roofMat);
+      m.position.set(0, -Math.sin(ang) * slopeL / 2, s * Math.cos(ang) * slopeL / 2);
+      m.rotation.x = s * ang;
+      m.name = 'dak';
+      ridge.add(m);
+    }
+    const tri = new T.Shape([new T.Vector2(-ob.hv, 0), new T.Vector2(ob.hv, 0), new T.Vector2(0, rise)]);
+    for (const s of [-1, 1]) {
+      const m = new T.Mesh(new T.ShapeGeometry(tri), brick);
+      m.position.set(s * ob.hu, -rise - 0.04, 0);
+      m.rotation.y = Math.PI / 2;
+      m.name = 'gevelpunt';
+      ridge.add(m);
+    }
+    group.add(ridge);
+    // nok en schoorsteen
+    K.rod([ob.c[0] - ob.u[0] * (ob.hu + 0.2), eave + rise + 0.04, ob.c[1] - ob.u[1] * (ob.hu + 0.2)], [ob.c[0] + ob.u[0] * (ob.hu + 0.2), eave + rise + 0.04, ob.c[1] + ob.u[1] * (ob.hu + 0.2)], 0.07, '#2b2c2f', 'mat');
+    const ch = [ob.c[0] + ob.u[0] * ob.hu * 0.55 + ob.v[0] * ob.hv * 0.3, ob.c[1] + ob.u[1] * ob.hu * 0.55 + ob.v[1] * ob.hv * 0.3];
+    K.box(0.5, rise * 0.75 + 0.6, 0.5, ch[0], eave + rise * 0.55, ch[1], '#8e4a35', { kind: 'stone', ry: Math.atan2(-ob.u[1], ob.u[0]) });
+  } else {
+    // dakrand
+    for (const e of edges) {
+      const ry = Math.atan2(-(e.b[1] - e.a[1]), e.b[0] - e.a[0]);
+      K.box(e.L + 0.05, 0.18, 0.06, e.m[0], eave - 0.02, e.m[1], '#3a3c3f', { ry });
+    }
+  }
+  const parts = K.build('details');
+  for (const c of [...parts.children]) group.add(c);
+  return group;
+}
+
+/** Raam: kozijn, glas met roede, vensterbank. Lokale +z = buitenkant. */
+function window(K, x, y, w, h) {
+  K.box(w + 0.12, h + 0.12, 0.08, x, y - 0.06, 0.0, C.white);
+  K.box(w - 0.04, h - 0.04, 0.03, x, y + 0.02, 0.05, '#2c3a46', { kind: 'metal' });
+  K.box(0.04, h - 0.04, 0.035, x, y + 0.02, 0.055, C.white);
+  K.box(w + 0.2, 0.05, 0.14, x, y - 0.1, 0.06, C.concrete, { kind: 'stone' });
+}
+
+/**
+ * Overkapping (veranda, pergola, lamellendak) boven een vlak: staanders, liggers en een dak dat je ziet
+ * zitten maar waar je doorheen kijkt (glas, open balken of lamellen). type: 'veranda' | 'pergola' | 'lamellen' | 'dicht'.
+ */
+export function buildCanopy(T, ring, H, type, color) {
+  const K = new Kit(T);
+  const ob = orientedBox(ring);
+  const frame = type === 'pergola' ? (color || C.wood) : (color || C.anthracite);
+  const kind = type === 'pergola' ? 'wood' : 'metal';
+  const P = (a, b) => [ob.c[0] + ob.u[0] * a + ob.v[0] * b, ob.c[1] + ob.u[1] * a + ob.v[1] * b];
+  const ps = type === 'pergola' ? 0.12 : 0.09;
+  // staanders aan de voorkant (+v) en op de hoeken; liggers rondom
+  const n = Math.max(1, Math.round((ob.hu * 2) / 3));
+  for (let i = 0; i <= n; i++) for (const sv of [-1, 1]) {
+    const [x, z] = P(-ob.hu + ps / 2 + ((ob.hu * 2 - ps) / n) * i, sv * (ob.hv - ps / 2));
+    if (sv < 0 && i > 0 && i < n) continue;
+    K.box(ps, H, ps, x, 0, z, frame, { kind });
+  }
+  const ry = Math.atan2(-ob.u[1], ob.u[0]);
+  for (const sv of [-1, 1]) { const [x, z] = P(0, sv * (ob.hv - ps / 2)); K.box(ob.hu * 2, 0.18, ps, x, H - 0.18, z, frame, { kind, ry }); }
+  for (const su of [-1, 1]) { const [x, z] = P(su * (ob.hu - ps / 2), 0); K.box(ps, 0.18, ob.hv * 2, x, H - 0.18, z, frame, { kind, ry }); }
+  if (type === 'pergola') {
+    for (let a = -ob.hu + 0.25; a < ob.hu; a += 0.5) { const [x, z] = P(a, 0); K.box(0.06, 0.14, ob.hv * 2 + 0.3, x, H, z, frame, { kind, ry }); }
+  } else if (type === 'lamellen') {
+    for (let a = -ob.hu + 0.12; a < ob.hu; a += 0.22) { const [x, z] = P(a, 0); K.box(0.18, 0.02, ob.hv * 2 - 0.1, x, H - 0.1, z, '#c9cccf', { kind: 'metal', ry, rz: 0.6 }); }
+  } else {
+    // glazen (of opaal) dak met profielen en goot aan de voorkant
+    const glass = type === 'dicht' ? '#e9eef0' : '#d7ecf2';
+    const [x, z] = P(0, 0);
+    K.box(ob.hu * 2, 0.012, ob.hv * 2 + 0.1, x, H, z, glass, { kind: type === 'dicht' ? 'opal' : 'glass', ry, rx: 0 });
+    for (let a = -ob.hu; a <= ob.hu + 0.01; a += Math.max(0.6, (ob.hu * 2) / Math.round(ob.hu * 2 / 0.75))) { const [px, pz] = P(Math.min(a, ob.hu - 0.03), 0); K.box(0.05, 0.09, ob.hv * 2 + 0.1, px, H - 0.02, pz, frame, { kind, ry }); }
+    const [gx, gz] = P(0, ob.hv + 0.05);
+    K.box(ob.hu * 2 + 0.1, 0.12, 0.12, gx, H - 0.08, gz, frame, { kind, ry });
+  }
+  return K.build('overkapping');
+}

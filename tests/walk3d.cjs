@@ -126,6 +126,32 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(mdl.tuftsOnPath === 0, 'geen gras dat door het pad heen groeit');
   assert(!mdl.missing.length, 'elk stencil (behalve tegels en planten) heeft een 3D-model' + (mdl.missing.length ? ': zonder ' + mdl.missing.join(', ') : ''));
 
+  // huis met ramen en dak, veranda waar je onder kijkt, pergola met klimplant
+  const hv = await page.evaluate(async () => {
+    const { buildGarden } = await import('./js/scene3d.js'); const { newDoc } = await import('./js/model.js'); const { STENCIL_MAP: M } = await import('./js/stencils.js');
+    const d = newDoc('Huis'); const it = d.layers[0].items;
+    it.push({ type: 'shape', id: 'H', kind: 'polygon', points: [[0, -9], [6, -9], [6, 0], [0, 0]], color: '#333', width: 0.1, height: 9, source: '3dbag' });
+    it.push({ type: 'shape', id: 'H2', kind: 'polygon', points: [[6, -9], [12, -9], [12, 0], [6, 0]], color: '#333', width: 0.1, height: 9, source: '3dbag' });
+    it.push({ type: 'shape', id: 'V', kind: 'polygon', points: [[0.3, 0], [5.7, 0], [5.7, 3.5], [0.3, 3.5]], color: '#333', width: 0.05, hatch: 'veranda', height: 2.6 });
+    it.push({ type: 'stencil', id: 'P', symbol: 'overkapping', x: 9, y: 4, w: 4, h: 3, rot: 0, color: M.overkapping.color, grow: 'vol', growKind: 'blauweregen' });
+    it.push({ type: 'stencil', id: 'B', symbol: 'berceau', x: 3, y: 9, w: 6, h: 2.2, rot: 0, color: M.berceau.color });
+    const T = window.Tuin3D.THREE;
+    const g = buildGarden(T, d, { month: 5 });
+    const count = (root, fn) => { let n = 0; root.traverse((o) => { if (fn(o)) n++; }); return n; };
+    const house = g.group.children.find((c) => c.name === 'huis');
+    const roofs = house ? count(house, (o) => o.name === 'dak') : 0;
+    const glassPanes = house ? count(house, (o) => o.isMesh && o.material?.name === 'metal') : 0;
+    const shared = (() => { const hs = g.group.children.filter((c) => c.name === 'huis'); return hs.length; })();
+    const veranda = g.group.children.find((c) => c.name === 'Veranda / glazen dak met profielen');
+    const vGlass = veranda ? count(veranda, (o) => o.isMesh && o.material?.transparent) : 0;
+    const vSolid = count(g.group, (o) => o.isMesh && o.material?.name === 'Veranda / glazen dak met profielen');
+    const climbers = count(g.group, (o) => o.isMesh && o.name === 'klimplant' && o.geometry.attributes.position.count > 100);
+    return { roofs, glassPanes, shared, vGlass, vSolid, climbers };
+  });
+  assert(hv.shared === 2 && hv.roofs === 2 && hv.glassPanes >= 1, 'huis met zadeldak (twee dakvlakken), ramen en pui');
+  assert(hv.vGlass >= 1 && hv.vSolid === 0, 'veranda: glazen dak op staanders, geen dicht blok');
+  assert(hv.climbers >= 2, `pergola en berceau zijn begroeid met klimplanten (${hv.climbers})`);
+
   // het losse bestand werkt zonder de app (bijv. op een laptop, dubbelklikken)
   const p2 = await b.newPage({ viewport: { width: 1200, height: 760 } });
   const err2 = [];
