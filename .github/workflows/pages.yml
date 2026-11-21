@@ -27,7 +27,7 @@ jobs:
           mkdir _site
           cp -r index.html styles.css manifest.webmanifest sw.js js icons _site/
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
       - id: deployment
