@@ -105,17 +105,25 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     st('tafelrond', 0, 0); st('kruidenspiraal', 4, 0); st('regenton', 7, 0); st('kliko3', 9, 0); st('auto', 12, 0); st('hek_schutting', 0, 4); st('poort', 3, 4);
     it.push({ type: 'shape', id: 'W', kind: 'line', wall: true, points: [[-2, 8], [6, 8]], width: 0.25, color: '#555', height: 2.8 });
     st('buitendeur', 1, 8, { wallId: 'W', wallSeg: 0, rot: 0 });
+    it.push({ type: 'shape', id: 'G', kind: 'polygon', points: [[-3, 10], [8, 10], [8, 16], [-3, 16]], hatch: 'gras', color: '#5a8', width: 0.02 });
+    it.push({ type: 'shape', id: 'P', kind: 'polygon', points: [[0, 12], [6, 12], [6, 13.2], [0, 13.2]], hatch: 'klinkers', color: '#777', width: 0.02 });
+    st('flagstone', 2, 15);
     const g = buildGarden(window.Tuin3D.THREE, d, { month: 7 });
     const kids = (name) => { const o = g.group.children.find((c) => c.name === name); if (!o) return null; let m = 0, plants = 0; o.traverse((q) => { if (q.isMesh) { m++; if (q.material?.name === 'planten') plants++; } }); return { m, plants, h: new window.Tuin3D.THREE.Box3().setFromObject(o).getSize(new window.Tuin3D.THREE.Vector3()).y }; };
     // alles wat geen plat stencil (tegel, stapsteen) of plant is, heeft een model
     const flat = ['Stenen, tegels en klinkers', 'Stapstenen', 'Bomen', 'Hagen', 'Vaste planten'];
     const missing = STENCILS.filter((s) => !flat.includes(s.cat) && !hasModel(s.id) && !/^hek_/.test(s.id) && !['overkapping', 'pergolagang', 'pergolamuur', 'pergolalatten', 'lamellendak', 'veranda', 'verandaterras', 'heester', 'bloeiend', 'siergras', 'bodembedekker', 'deur', 'buitendeur', 'dubbeledeur', 'openslaand', 'schuifdeur', 'raam', 'schuifpui'].includes(s.id)).map((s) => s.id);
-    return { tafel: kids('Ronde tafel (4)'), spiraal: kids('Kruidenspiraal met vijvertje'), deur: kids('Buitendeur'), fences: g.stats.fences, models: g.stats.models, missing };
+    let tuftsOnPath = 0; const M4 = new window.Tuin3D.THREE.Matrix4(), V3 = new window.Tuin3D.THREE.Vector3();
+    g.group.traverse((o) => { if (o.isInstancedMesh && o.name === 'gazon') for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, M4); V3.setFromMatrixPosition(M4); if (V3.x > 0.05 && V3.x < 5.95 && V3.z > 12.05 && V3.z < 13.15) tuftsOnPath++; } });
+    const path = g.group.children.find((c) => /^Klinkers/.test(c.material?.name || ''));
+    return { surfaces: g.stats.surfaces, tuftsOnPath, pathTop: path ? new window.Tuin3D.THREE.Box3().setFromObject(path).max.y : 0, tafel: kids('Ronde tafel (4)'), spiraal: kids('Kruidenspiraal met vijvertje'), deur: kids('Buitendeur'), fences: g.stats.fences, models: g.stats.models, missing };
   });
   assert(mdl.tafel && mdl.tafel.m >= 1 && mdl.tafel.h > 0.7 && mdl.tafel.h < 1, `ronde tafel met stoelen (${mdl.tafel?.h.toFixed(2)} m hoog)`);
   assert(mdl.spiraal && mdl.spiraal.plants >= 6 && mdl.spiraal.h > 0.8, `kruidenspiraal: stapelmuur in een spiraal met ${mdl.spiraal?.plants} kruiden`);
   assert(mdl.deur && mdl.deur.h > 2, 'deur in een muur');
   assert(mdl.fences === 1 && mdl.models >= 7, 'losse schutting en poort, regenton, kliko\'s en auto als model');
+  assert(mdl.surfaces === 2 && mdl.pathTop > 0.02 && mdl.pathTop < 0.06, `klinkerpad en stapsteen liggen als echte verharding in 3D (pad ${(mdl.pathTop * 100).toFixed(1)} cm hoog)`);
+  assert(mdl.tuftsOnPath === 0, 'geen gras dat door het pad heen groeit');
   assert(!mdl.missing.length, 'elk stencil (behalve tegels en planten) heeft een 3D-model' + (mdl.missing.length ? ': zonder ' + mdl.missing.join(', ') : ''));
 
   // het losse bestand werkt zonder de app (bijv. op een laptop, dubbelklikken)

@@ -6,7 +6,8 @@
 //   hagen, bomen, heesters, pergola's, parasols, en de planten in de plantvakken (kleur van de gekozen maand).
 
 import { STENCIL_MAP } from './stencils.js';
-import { itemOutline } from './items.js';
+import { itemOutline, drawItem } from './items.js';
+import { HATCHES } from './patterns.js';
 import { stencilShadow, itemHeight } from './shadows.js';
 import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, monthState, HEIGHTS, BED_TYPES, FOLIAGE, AUTUMN } from './planting.js';
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
@@ -24,12 +25,27 @@ import { dist, distToSegment, pointInPolygon, polygonArea } from './geom.js';
 const FRAME = /pergola|berceau|overkapping|lamellendak|veranda/;
 const WALL_H = 2;
 
+const TILE_CATS = new Set(['Stenen, tegels en klinkers', 'Stapstenen']);
+
+/** Soort verharding van een vlak: 'paving' (klinkers, tegels), 'gravel' (grind, schors), 'wood' (vlonder), anders null. */
+export function surfaceKind(item) {
+  if (item.type !== 'shape' || item.wall || item.group || isBed(item) || !(item.kind === 'polygon' || item.kind === 'circle')) return null;
+  if (itemHeight(item) > 0) return null;
+  if (item.hatch === 'bond' && item.bond) return 'paving';
+  const g = HATCHES[item.hatch]?.group;
+  if (g === 'Bestrating') return 'paving';
+  if (g === 'Halfverharding') return 'gravel';
+  if (g === 'Hout') return 'wood';
+  return null;
+}
+
 /** Krijgt dit item een eigen 3D-vorm (en hoort het dus niet op de grondtekening)? */
 function in3d(item) {
   if (item.type === 'text' || item.type === 'dim' || item.type === 'plant') return true;
-  if (item.type === 'shape') return !!item.wall || isGroup(item) || itemHeight(item) > 0;
+  if (item.type === 'shape') return !!item.wall || isGroup(item) || itemHeight(item) > 0 || !!surfaceKind(item);
   if (item.type === 'stencil') {
     const def = STENCIL_MAP[item.symbol];
+    if (def && TILE_CATS.has(def.cat)) return true;
     return !!def?.opening || hasModel(item.symbol) || /^hek_/.test(item.symbol) || FRAME.test(item.symbol) || itemHeight(item) > 0;
   }
   return false;
@@ -87,7 +103,7 @@ export function buildGarden(T, doc, opts = {}) {
   const box = modelBox(doc);
   const group = new T.Group();
   group.name = doc.name || 'Tuinontwerp';
-  const stats = { prisms: 0, walls: 0, fences: 0, trees: 0, bushes: 0, plants: 0, frames: 0, models: 0 };
+  const stats = { prisms: 0, walls: 0, fences: 0, trees: 0, bushes: 0, plants: 0, frames: 0, models: 0, surfaces: 0 };
 
   const mats = new Map();
   const mat = (color, o = {}) => {
@@ -232,6 +248,9 @@ export function buildGarden(T, doc, opts = {}) {
 
   // ------------------------------------------------------------ elementen
   const pc = plantContext(doc);
+  const rcFlat = { doc, scale: doc.scale || 50, zoom: 1, dpr: 1, minPx: 0, month, plantView: 'grond', paper: '#e6e1d3', ...pc };
+  let texBudget = opts.textureBudget || 14e6, surfIdx = 0;
+  const tileCache = new Map();
   const roles = rolesMap(doc);
   const houses = [];
   const wallsById = {};
@@ -324,6 +343,7 @@ export function buildGarden(T, doc, opts = {}) {
         }
         continue;
       }
+      if (item.type === 'shape' && surfaceKind(item)) { surface(item, surfaceKind(item)); continue; }
       if (item.type === 'stencil') stencil(item, h);
       else if (item.type === 'plant') solitair(item);
     }
@@ -389,6 +409,70 @@ export function buildGarden(T, doc, opts = {}) {
     stats.fences++;
   }
 
+  // ---------------------------------------------------------- verharding: tegels, klinkers, grind, hout
+  /** Het item zelf, scherp getekend, als textuur (met reliëf uit dezelfde tekening: voegen liggen lager). */
+  function surfaceTexture(item, bb, ppmMax, transparent, centered) {
+    const bw = bb.maxX - bb.minX, bh = bb.maxY - bb.minY;
+    let ppm = Math.min(ppmMax, 2048 / Math.max(bw, bh));
+    while (bw * bh * ppm * ppm > texBudget && ppm > 10) ppm *= 0.8;
+    texBudget -= bw * bh * ppm * ppm;
+    const c = document.createElement('canvas');
+    c.width = Math.max(2, Math.round(bw * ppm));
+    c.height = Math.max(2, Math.round(bh * ppm));
+    const g = c.getContext('2d');
+    if (!transparent) { g.fillStyle = HATCHES[item.hatch]?.bg || '#9a958b'; g.fillRect(0, 0, c.width, c.height); }
+    g.setTransform(ppm, 0, 0, ppm, centered ? c.width / 2 : -bb.minX * ppm, centered ? c.height / 2 : -bb.minY * ppm);
+    drawItem(g, centered ? { ...item, x: 0, y: 0, rot: 0 } : { ...item, dims: false, name: '', stroke: false, opacity: 1 }, { ...rcFlat, zoom: ppm });
+    const t = new T.CanvasTexture(c);
+    t.colorSpace = T.SRGBColorSpace;
+    t.anisotropy = 8;
+    t.userData.mimeType = transparent ? 'image/png' : 'image/jpeg';
+    return t;
+  }
+  function surface(item, kind) {
+    const ring = shapePolygon(item);
+    if (ring.length < 3) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of ring) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+    const bb = { minX, minY, maxX, maxY }, bw = maxX - minX || 1, bh = maxY - minY || 1;
+    const tex = surfaceTexture(item, bb, kind === 'gravel' ? 120 : 180, false, false);
+    const thick = { paving: 0.03, gravel: 0.012, wood: 0.09 }[kind];
+    const y0 = 0.004 + (surfIdx++ % 40) * 0.0012;
+    const geo = new T.ExtrudeGeometry(toShape(ring), { depth: thick, bevelEnabled: false, curveSegments: 8 });
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, thick + y0, 0);
+    const pos = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) - minX) / bw, 1 - (pos.getZ(i) - minY) / bh);
+    const m = new T.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: kind === 'gravel' ? 4 : 2, roughness: kind === 'wood' ? 0.75 : 0.95, name: HATCHES[item.hatch]?.name || 'verharding' });
+    const mesh = new T.Mesh(geo, m);
+    mesh.userData.ground = kind !== 'wood';
+    add(mesh, item.name || HATCHES[item.hatch]?.name || 'bestrating');
+    if (kind === 'wood') {
+      // vlonder: balken eronder zichtbaar aan de rand
+      const side = mat('#6e5137', { name: 'vlonderbalk' });
+      const rim = prism(ring, y0 + 0.001, [side, side]);
+      if (rim) add(rim, 'onderbouw');
+    }
+    stats.surfaces++;
+  }
+  /** Losse tegel, klinker of stapsteen: een plat stuk steen met de tekening van het stencil. */
+  function tile(item, def) {
+    const key = `${item.symbol}|${item.w}|${item.h}|${item.color || ''}`;
+    if (!tileCache.has(key)) {
+      const bb = { minX: -item.w / 2, minY: -item.h / 2, maxX: item.w / 2, maxY: item.h / 2 };
+      const tex = surfaceTexture(item, bb, 300, true, true);
+      tileCache.set(key, new T.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 1.5, alphaTest: 0.5, roughness: 0.92, name: def.name }));
+    }
+    const geo = new T.PlaneGeometry(item.w, item.h);
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new T.Mesh(geo, tileCache.get(key));
+    mesh.position.set(item.x, 0.03 + (surfIdx++ % 40) * 0.0008, item.y);
+    mesh.rotation.y = -(item.rot || 0);
+    mesh.userData.ground = true;
+    add(mesh, def.name);
+    stats.surfaces++;
+  }
+
   function placeModel(g, item, name) {
     if (!g) return;
     g.position.set(item.x, 0, item.y);
@@ -400,6 +484,7 @@ export function buildGarden(T, doc, opts = {}) {
   function stencil(item, h) {
     const def = STENCIL_MAP[item.symbol];
     if (!def) return;
+    if (TILE_CATS.has(def.cat)) return tile(item, def);
     if (def.opening) {
       // deur of raam in een muur; poort of hekje in een hek (of los)
       const wall = item.wallId && wallsById[item.wallId];
@@ -574,6 +659,11 @@ export function buildGarden(T, doc, opts = {}) {
     };
   }
   let lawnLeft = 12000;
+  const pavedPolys = [];
+  for (const layer of doc.layers) if (layer.visible) for (const it of layer.items) {
+    if (surfaceKind(it)) pavedPolys.push(shapePolygon(it));
+    else if (it.type === 'stencil' && (TILE_CATS.has(STENCIL_MAP[it.symbol]?.cat) || hasModel(it.symbol))) pavedPolys.push(itemOutline(it));
+  }
   const lawnSpecs = ['#6e9a45', '#5d8a3b', '#7fa653'].map((c, i) => ({ lawn: true, leaf: winter ? '#7d8f55' : c, key: `gazon|${i}` }));
   const placed = new Map(); // soort → { spec, list: [{ x, z, s, sy, rot, seed }] }
   const place = (spec, x, z, s, seed) => {
@@ -644,7 +734,7 @@ export function buildGarden(T, doc, opts = {}) {
     const n = Math.min(lawnLeft, Math.round(Math.abs(polygonArea(poly)) * 40));
     for (let i = 0; i < n; i++) {
       const x = minX + rnd() * (maxX - minX), y = minY + rnd() * (maxY - minY);
-      if (!pointInPolygon([x, y], poly)) continue;
+      if (!pointInPolygon([x, y], poly) || pavedPolys.some((q) => pointInPolygon([x, y], q))) continue;
       const spec = lawnSpecs[Math.floor(rnd() * 3)];
       if (!placed.has(spec.key)) placed.set(spec.key, { spec, list: [] });
       const s = 0.8 + rnd() * 0.6;
