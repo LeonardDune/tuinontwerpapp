@@ -12,6 +12,7 @@ import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, mon
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
 import { plantForStencil } from './planting.js';
 import { plantShape } from './plantdraw.js';
+import { Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
 import { wallShape } from './walls.js';
 import { FENCES } from './fences.js';
 import { contentBox } from './export.js';
@@ -142,18 +143,16 @@ export function buildGarden(T, doc, opts = {}) {
     return mesh;
   };
 
-  // gedeelde, wat onregelmatige bol voor kronen en struiken
-  const blobGeo = new T.IcosahedronGeometry(1, 3);
-  {
-    const pos = blobGeo.attributes.position, v = new T.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i);
-      const n = 1 + 0.07 * Math.sin(v.x * 5.1 + v.y * 2.3) * Math.cos(v.z * 4.7 - v.y * 1.9) + 0.04 * Math.sin(v.x * 11 + v.z * 9);
-      v.multiplyScalar(n);
-      pos.setXYZ(i, v.x, v.y, v.z);
+  // bladeren, bloemen en takken: één doorzichtige textuur voor alle planten
+  const leafMat = foliageMaterial(T);
+  const hedgeMat = (color) => {
+    const key = 'haag' + color;
+    if (!mats.has(key)) {
+      const m = new T.MeshStandardMaterial({ map: hedgeTexture(T), color, roughness: 0.95, name: 'haag' });
+      mats.set(key, m);
     }
-    blobGeo.computeVertexNormals();
-  }
+    return mats.get(key);
+  };
 
   /** Kleur van blad/kroon in deze maand voor een plant uit de database (of een algemene boom). */
   const leafColor = (spec, base = '#5d8a46') => {
@@ -166,60 +165,68 @@ export function buildGarden(T, doc, opts = {}) {
   };
 
   const tree = ({ x, y, rx, rz, rot = 0, h, crown = 0.62, spec, conifer, id }) => {
-    const rnd = rng(hashId(id) + x * 7 + y * 13);
-    const cr = Math.min(0.9, crown);
-    const ch = h * cr;
-    const trunkR = Math.max(0.05, Math.min(0.35, h * 0.018 + Math.min(rx, rz) * 0.02));
-    const trunk = new T.Mesh(new T.CylinderGeometry(trunkR * 0.75, trunkR, h - ch * 0.6, 10), mat('#6b5440', { name: 'stam' }));
-    trunk.position.set(x, (h - ch * 0.6) / 2, y);
-    add(trunk, 'stam');
     const lc = conifer ? { color: '#3f6b3a' } : leafColor(spec);
-    let crownMesh;
-    if (conifer) {
-      crownMesh = new T.Mesh(new T.ConeGeometry(1, 1, 14), mat(lc.color, { name: 'kroon' }));
-      crownMesh.scale.set(rx, ch, rz);
-      crownMesh.position.set(x, h - ch / 2, y);
-    } else if (!lc.bare) {
-      crownMesh = new T.Mesh(blobGeo, mat(lc.color, { name: 'kroon' }));
-      crownMesh.scale.set(rx * (0.95 + rnd() * 0.1), ch / 2, rz * (0.95 + rnd() * 0.1));
-      crownMesh.position.set(x, h - ch / 2, y);
-      crownMesh.rotation.y = -rot + rnd() * 6;
-    }
-    if (crownMesh) add(crownMesh, 'kroon');
-    if (lc.bare && !conifer) {
-      // kaal in de winter: takken en twijgen in plaats van een kroon
-      const tm = mat('#5e4a39', { name: 'kale takken' });
-      const limb = (from, dir, len, r0) => {
-        const to = from.clone().addScaledVector(dir, len);
-        const m = new T.Mesh(new T.CylinderGeometry(r0 * 0.55, r0, len, 5), tm);
-        m.position.copy(from).add(to).multiplyScalar(0.5);
-        m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir);
-        add(m, 'tak');
-        return to;
-      };
-      const base = new T.Vector3(x, h - ch * 0.75, y);
-      const n = 6 + Math.floor(rnd() * 3);
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
-        const out = 0.55 + rnd() * 0.35;
-        const dir = new T.Vector3(Math.cos(a) * out * rx / Math.max(rx, rz), 1, Math.sin(a) * out * rz / Math.max(rx, rz)).normalize();
-        const end = limb(base, dir, ch * (0.45 + rnd() * 0.15), trunkR * 0.45);
-        for (let j = 0; j < 2; j++) {
-          const b = a + (j ? 0.5 : -0.5);
-          limb(end, new T.Vector3(Math.cos(b) * 0.6, 1, Math.sin(b) * 0.6).normalize(), ch * 0.25, trunkR * 0.2);
-        }
-      }
-    }
+    const bare = !conifer && lc.bare;
+    const G = buildTree(T, { h, rx, rz, crown, conifer, bare, leaf: lc.bloom ? lc.leaf : lc.color, flower: lc.bloom ? lc.color : null }, hashId(id) + Math.round(x * 7 + y * 13));
+    const m = new T.Mesh(G.geometry(), leafMat);
+    m.position.set(x, 0, y);
+    m.rotation.y = -rot;
+    add(m, bare ? 'boom (kaal)' : 'boom');
     stats.trees++;
   };
 
-  const bush = ({ x, y, rx, rz, rot = 0, h, color }) => {
-    const m = new T.Mesh(blobGeo, mat(color, { name: 'struik' }));
-    m.scale.set(rx, h / 2, rz);
-    m.position.set(x, h / 2, y);
+  /** Struik of heester als los model (stencils, solitairen). */
+  const shrub = ({ x, y, rx, rz, rot = 0, h, spec, seed }) => {
+    const R = Math.max(rx, rz);
+    const G = spec.shape && spec.shape !== 'heester' ? buildPlant(T, { ...spec, h, d: R * 2 }, seed) : buildShrub(T, { ...spec, h, d: R * 2 }, seed);
+    const m = new T.Mesh(G.geometry(), leafMat);
+    m.position.set(x, 0, y);
+    m.scale.set(rx / R, 1, rz / R);
     m.rotation.y = -rot;
     add(m, 'struik');
     stats.bushes++;
+  };
+
+  /** Haag: blokvorm met bladtextuur, en losse bladtrossen aan de buitenkant voor een levendige rand. */
+  const hedge = (ring, h, color, name, seed) => {
+    const mesh = prism(ring, h * 0.94, [hedgeMat(color), hedgeMat(color)]);
+    if (!mesh) return;
+    const uv = mesh.geometry.attributes.uv;
+    for (let i = 0; i < uv.array.length; i++) uv.array[i] /= 0.55;
+    uv.needsUpdate = true;
+    add(mesh, name);
+    const G = new Geo(T, h);
+    G.aoMin = 0.6;
+    const r = rng(seed);
+    const cen = ring.reduce((a, p) => [a[0] + p[0] / ring.length, a[1] + p[1] / ring.length], [0, 0]);
+    const leafC = () => G.col(color, (r() - 0.5) * 0.14);
+    const sz = 0.32;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length], L = dist(a, b);
+      if (L < 0.05) continue;
+      let nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
+      const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+      if ((mx - cen[0]) * nx + (mz - cen[1]) * nz < 0) { nx = -nx; nz = -nz; }
+      const n = Math.round(L * h * 9);
+      for (let k = 0; k < n; k++) {
+        const t = r(), y = 0.1 + r() * (h - 0.15);
+        const p = [a[0] + (b[0] - a[0]) * t + nx * 0.03, y, a[1] + (b[1] - a[1]) * t + nz * 0.03];
+        const up = [nx * 0.9 + (r() - 0.5) * 0.6, 0.6 + r() * 0.6, nz * 0.9 + (r() - 0.5) * 0.6];
+        G.card([p[0] - up[0] * sz * 0.3, p[1] - up[1] * sz * 0.3, p[2] - up[2] * sz * 0.3], up, [-nz + (r() - 0.5) * 0.4, (r() - 0.5) * 0.4, nx], sz, sz, CELL.cluster, leafC(), { flatNormal: true, n: [nx * 0.6, 0.8, nz * 0.6] });
+      }
+    }
+    // bovenkant
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [px, py] of ring) { minX = Math.min(minX, px); minY = Math.min(minY, py); maxX = Math.max(maxX, px); maxY = Math.max(maxY, py); }
+    const nTop = Math.min(3000, Math.round(Math.abs(polygonArea(ring)) * 14));
+    for (let k = 0; k < nTop; k++) {
+      const px = minX + r() * (maxX - minX), pz = minY + r() * (maxY - minY);
+      if (!pointInPolygon([px, pz], ring)) continue;
+      const up = [(r() - 0.5) * 0.8, 1, (r() - 0.5) * 0.8];
+      G.card([px, h * 0.9, pz], up, [1, 0, (r() - 0.5)], sz, sz, CELL.cluster, leafC(), { flatNormal: true, n: [0, 1, 0] });
+    }
+    const fr = new T.Mesh(G.geometry(), leafMat);
+    add(fr, name + ' (blad)');
   };
 
   // ------------------------------------------------------------ elementen
@@ -331,7 +338,7 @@ export function buildGarden(T, doc, opts = {}) {
       const conifer = item.symbol === 'naaldboom' || (dbTree && (dbTree.habit === 'zuil' && dbTree.ev));
       return tree({ x: item.x, y: item.y, rx, rz, rot, h, crown: sh.crown || 0.62, spec, conifer, id: item.id });
     }
-    if (sh.type === 'bush') return bush({ x: item.x, y: item.y, rx, rz, rot, h, color: stencilGreen(item.symbol) });
+    if (sh.type === 'bush') return shrub({ x: item.x, y: item.y, rx, rz, rot, h, spec: stencilSpec(item.symbol, h), seed: hashId(item.id) });
     if (sh.type === 'canopy') {
       const pole = new T.Mesh(new T.CylinderGeometry(0.025, 0.03, h, 8), mat('#8d8a85', { name: 'stok' }));
       pole.position.set(item.x, h / 2, item.y);
@@ -342,9 +349,14 @@ export function buildGarden(T, doc, opts = {}) {
       return add(top, 'parasol');
     }
     // blok: haag, schuur, regenton, bak …
-    const hedge = /^haag|bamboe/.test(item.symbol) || dbTree?.type === 'haag';
-    const color = hedge ? stencilGreen(item.symbol) : item.symbol === 'kas' ? '#d6ebef' : def.color || '#9a8f80';
-    const m = mat(color, { name: hedge ? 'haag' : def.name || item.symbol, opacity: item.symbol === 'kas' ? 0.4 : 1 });
+    const isHedge = /^haag|bamboe/.test(item.symbol) || dbTree?.type === 'haag';
+    if (isHedge) {
+      hedge(itemOutline(item), h, stencilGreen(item.symbol), 'haag', hashId(item.id));
+      stats.prisms++;
+      return;
+    }
+    const color = item.symbol === 'kas' ? '#d6ebef' : def.color || '#9a8f80';
+    const m = mat(color, { name: def.name || item.symbol, opacity: item.symbol === 'kas' ? 0.4 : 1 });
     if (def.round) {
       const c = new T.Mesh(new T.CylinderGeometry(1, 1, h, 24), m);
       c.scale.set(rx, 1, rz);
@@ -353,7 +365,7 @@ export function buildGarden(T, doc, opts = {}) {
       add(c, def.name || item.symbol);
     } else {
       const mesh = prism(itemOutline(item), h, [m, m]);
-      if (mesh) add(mesh, hedge ? 'haag' : def.name || item.symbol);
+      if (mesh) add(mesh, def.name || item.symbol);
     }
     stats.prisms++;
   }
@@ -403,43 +415,48 @@ export function buildGarden(T, doc, opts = {}) {
     if (!r) return;
     const h = roleHeight(r);
     if (r.kind === 'boom') return tree({ x: item.x, y: item.y, rx: item.d / 2, rz: item.d / 2, h, spec: r, id: item.id });
-    const lc = leafColor(r, (FOLIAGE[r.foliage] || FOLIAGE.groen).color);
-    if (lc.bare) return;
-    bush({ x: item.x, y: item.y, rx: item.d / 2, rz: item.d / 2, h, color: lc.bloom ? lc.leaf : lc.color });
-    if (lc.bloom) flowersOn(item.x, item.y, item.d, h, lc.color, hashId(item.id));
+    const spec = specFor(r);
+    if (!spec) return;
+    shrub({ x: item.x, y: item.y, rx: item.d / 2, rz: item.d / 2, h, spec, seed: hashId(item.id) });
   }
 
-  // ------------------------------------------------------------ planten in de vakken (instanced)
-  const inst = { blob: [], tuft: [], mat: [], flower: [] };
-  const M = new T.Matrix4(), Q = new T.Quaternion(), S = new T.Vector3(), V = new T.Vector3(), up = new T.Vector3(0, 1, 0);
-  const put = (kind, x, y0, z, sx, sy, sz, color, turn = 0) => {
-    Q.setFromAxisAngle(up, turn);
-    M.compose(V.set(x, y0, z), Q, S.set(sx, sy, sz));
-    inst[kind].push({ m: M.clone(), c: color });
-  };
-  function flowersOn(x, z, d, h, color, seed) {
-    const rnd = rng(seed);
-    const n = Math.max(3, Math.min(16, Math.round(d * d * 30)));
-    for (let i = 0; i < n; i++) {
-      const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * d * 0.36;
-      const fr = Math.max(0.018, d * 0.055);
-      put('flower', x + Math.cos(a) * rr, h * (0.78 + rnd() * 0.22), z + Math.sin(a) * rr, fr, fr, fr, color);
-    }
+  /** Model-gegevens van een stencil-struik uit de plantendatabase (bloei in deze maand), anders groen blad. */
+  function stencilSpec(symbol, h) {
+    const p = plantsWithStencil(symbol)[0];
+    if (!p) return { shape: /gras/.test(symbol) ? 'gras' : /vaste|vp_/.test(symbol) ? 'kussen' : 'heester', leaf: '#4f7d3c', form: 'blad' };
+    return specFor(roleFromPlant(p)) || { shape: 'heester', leaf: '#8c7b63', bare: true };
   }
-  function plantAt(r, x, z, d, seed) {
+
+
+  // ------------------------------------------------------------ planten in de vakken (instanced)
+  /** Model-gegevens van een bouwsteen in deze maand (null = bovengronds niets te zien). */
+  function specFor(r) {
     const st = monthState(r, month);
-    if (st.kind === 'weg') return;
-    const h = Math.max(0.05, roleHeight(r) * (0.88 + ((seed % 97) / 97) * 0.24));
-    const shape = plantShape(r);
-    const leaf = st.kind === 'bloei' ? (FOLIAGE[r.foliage] || FOLIAGE.groen).color : st.color;
-    const turn = (seed % 628) / 100;
-    if (r.kind === 'boom') return tree({ x, y: z, rx: d / 2, rz: d / 2, h, spec: r, id: seed });
-    if (shape === 'gras' || shape === 'zwaard') put('tuft', x, 0, z, d * 0.5, h, d * 0.5, leaf, turn);
-    else if (shape === 'rechtop' || shape === 'ijl') put('blob', x, h * 0.5, z, d * 0.44, h * 0.5, d * 0.44, leaf, turn);
-    else if (shape === 'mat') put('mat', x, 0, z, d * 0.55, Math.min(h, 0.2), d * 0.55, leaf, turn);
-    else put('blob', x, h * 0.45, z, d * 0.5, h * 0.55, d * 0.5, leaf, turn);
-    if (st.kind === 'bloei' && st.color) flowersOn(x, z, d, h, st.color, seed);
+    const woody = r.kind === 'heester' || r.kind === 'haag' || r.kind === 'klimmer';
+    const foliage = (FOLIAGE[r.foliage] || FOLIAGE.groen).color;
+    if ((st.kind === 'weg' || st.kind === 'silhouet') && woody) return { shape: 'heester', form: r.form, leaf: '#8c7b63', bare: true, key: `${r.id}|kaal` };
+    if (st.kind === 'weg') return null;
+    const straw = st.kind === 'silhouet';
+    return {
+      shape: plantShape(r), form: r.form, h: roleHeight(r), d: roleDiameter(r), straw,
+      leaf: st.kind === 'bloei' ? foliage : straw ? '#9c8763' : st.color || foliage,
+      flower: st.kind === 'bloei' ? r.color : null,
+      key: `${r.id}|${st.kind}|${st.color}`,
+    };
+  }
+  let lawnLeft = 12000;
+  const lawnSpecs = ['#6e9a45', '#5d8a3b', '#7fa653'].map((c, i) => ({ lawn: true, leaf: winter ? '#7d8f55' : c, key: `gazon|${i}` }));
+  const placed = new Map(); // soort → { spec, list: [{ x, z, s, sy, rot, seed }] }
+  const place = (spec, x, z, s, seed) => {
+    if (!placed.has(spec.key)) placed.set(spec.key, { spec, list: [] });
+    placed.get(spec.key).list.push({ x, z, s, sy: s * (0.9 + ((seed >> 5) % 100) / 500), rot: (seed % 628) / 100, seed });
     stats.plants++;
+  };
+  function plantAt(r, x, z, d, seed) {
+    if (r.kind === 'boom') return tree({ x, y: z, rx: d / 2, rz: d / 2, h: roleHeight(r), spec: r, id: seed });
+    const spec = specFor(r);
+    if (!spec) return;
+    place(spec, x, z, d / roleDiameter(r), seed);
   }
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
@@ -458,7 +475,7 @@ export function buildGarden(T, doc, opts = {}) {
         let pts = layoutPoints(shapePolygon(it), it.planting?.mix, roles, it.id, exclude);
         if (bed) { const bp = shapePolygon(bed); pts = pts.filter((p) => pointInPolygon([p.x, p.y], bp)); }
         placeAll(pts);
-      }
+      } else if (it.type === 'shape' && it.hatch === 'gras' && (it.kind === 'polygon' || it.kind === 'circle') && !in3d(it)) lawn(shapePolygon(it), hashId(it.id));
     }
   }
   function placeAll(pts) {
@@ -479,56 +496,75 @@ export function buildGarden(T, doc, opts = {}) {
     const sp = bt.spacing;
     if (((maxX - minX) / sp) * ((maxY - minY) / sp) > 8000) return;
     const tints = [bt.color, '#6f9f52', '#4f7d3c'];
+    const shape = { bodem: 'mat', heesters: 'heester' }[it.btype] || 'kussen';
+    const specs = tints.map((c, i) => ({ shape, form: 'blad', h: bt.h, d: bt.r * 2.1, leaf: c, key: `schets|${it.btype}|${i}` }));
     let row = 0;
     for (let y = minY + sp * 0.4; y <= maxY; y += sp * 0.87, row++) {
       for (let x = minX + sp * 0.4 + (row % 2) * sp * 0.5; x <= maxX; x += sp) {
         const px = x + (rnd() - 0.5) * sp * 0.35, py = y + (rnd() - 0.5) * sp * 0.35;
         if (!pointInPolygon([px, py], poly) || groups.some((q) => pointInPolygon([px, py], q))) continue;
-        const d = bt.r * 2.1 * (0.85 + rnd() * 0.35), h = bt.h * (0.8 + rnd() * 0.35), c = tints[Math.floor(rnd() * 3)];
-        if (it.btype === 'bodem') put('mat', px, 0, py, d * 0.55, h, d * 0.55, c);
-        else put('blob', px, h * 0.45, py, d * 0.5, h * 0.55, d * 0.5, c, rnd() * 6);
-        stats.plants++;
+        place(specs[Math.floor(rnd() * 3)], px, py, 0.85 + rnd() * 0.35, Math.floor(rnd() * 1e6));
       }
     }
   }
-  const geos = {
-    blob: new T.IcosahedronGeometry(1, 1),
-    tuft: tuftGeometry(T),
-    mat: (() => { const g = new T.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2); return g; })(),
-    flower: new T.IcosahedronGeometry(1, 0),
-  };
-  for (const [kind, list] of Object.entries(inst)) {
-    if (!list.length) { geos[kind].dispose(); continue; }
-    const im = new T.InstancedMesh(geos[kind], new T.MeshStandardMaterial({ color: '#ffffff', roughness: kind === 'flower' ? 0.7 : 0.95, name: kind === 'flower' ? 'bloemen' : kind === 'tuft' ? 'grassen' : 'planten', side: kind === 'tuft' ? T.DoubleSide : T.FrontSide }), list.length);
-    const col = new T.Color();
-    list.forEach((e, i) => { im.setMatrixAt(i, e.m); im.setColorAt(i, col.set(e.c)); });
-    im.instanceMatrix.needsUpdate = true;
-    if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    im.computeBoundingSphere();
-    add(im, kind === 'flower' ? 'bloemen' : `planten (${kind})`);
+  /** Gazon: losse plukjes gras over het grasveld (tot een maximum, voor de snelheid). */
+  function lawn(poly, seed) {
+    const rnd = rng(seed);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of poly) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+    const n = Math.min(lawnLeft, Math.round(Math.abs(polygonArea(poly)) * 40));
+    for (let i = 0; i < n; i++) {
+      const x = minX + rnd() * (maxX - minX), y = minY + rnd() * (maxY - minY);
+      if (!pointInPolygon([x, y], poly)) continue;
+      const spec = lawnSpecs[Math.floor(rnd() * 3)];
+      if (!placed.has(spec.key)) placed.set(spec.key, { spec, list: [] });
+      const s = 0.8 + rnd() * 0.6;
+      placed.get(spec.key).list.push({ x, z: y, s, sy: s * (0.8 + rnd() * 0.5), rot: rnd() * 6.28, seed: i });
+      lawnLeft--;
+    }
+  }
+  // per soort een paar varianten, elk vaak herhaald
+  const M = new T.Matrix4(), Q = new T.Quaternion(), SV = new T.Vector3(), V = new T.Vector3(), Y = new T.Vector3(0, 1, 0);
+  for (const { spec, list } of placed.values()) {
+    const nv = spec.lawn ? 2 : Math.min(3, Math.max(1, Math.ceil(list.length / 4)));
+    for (let v = 0; v < nv; v++) {
+      const sub = list.filter((_, i) => i % nv === v);
+      if (!sub.length) continue;
+      const G = spec.lawn ? buildLawnTuft(T, v + 1, spec.leaf) : spec.shape === 'heester' ? buildShrub(T, spec, hashId(spec.key) + v) : buildPlant(T, spec, hashId(spec.key) + v);
+      const im = new T.InstancedMesh(G.geometry(), leafMat, sub.length);
+      sub.forEach((e, i) => {
+        Q.setFromAxisAngle(Y, e.rot);
+        M.compose(V.set(e.x, 0, e.z), Q, SV.set(e.s, e.sy, e.s));
+        im.setMatrixAt(i, M);
+      });
+      im.instanceMatrix.needsUpdate = true;
+      im.computeBoundingSphere();
+      add(im, spec.lawn ? 'gazon' : `planten ${spec.key.split('|')[0]}`);
+    }
   }
 
   return { group, box, start: startPoint(box, houses), stats, month };
 }
 
-/** Pol siergras: smalle, overhangende sprieten vanuit één punt (hoogte 0..1, straal 1). */
-function tuftGeometry(T) {
-  const P = [];
-  const n = 16;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + (i % 3) * 0.4;
-    const lean = 0.35 + (i % 4) * 0.2, top = 0.75 + (i % 5) * 0.06, w = 0.07;
-    const ca = Math.cos(a), sa = Math.sin(a), px = -sa * w, pz = ca * w;
-    // spriet in twee delen: recht omhoog en dan naar buiten buigend
-    const mid = [ca * lean * 0.45, top * 0.7, sa * lean * 0.45], tip = [ca * lean, top, sa * lean];
-    P.push(px, 0, pz, -px, 0, -pz, mid[0] + px * 0.6, mid[1], mid[2] + pz * 0.6);
-    P.push(-px, 0, -pz, mid[0] - px * 0.6, mid[1], mid[2] - pz * 0.6, mid[0] + px * 0.6, mid[1], mid[2] + pz * 0.6);
-    P.push(mid[0] + px * 0.6, mid[1], mid[2] + pz * 0.6, mid[0] - px * 0.6, mid[1], mid[2] - pz * 0.6, tip[0], tip[1], tip[2]);
-  }
-  const g = new T.BufferGeometry();
-  g.setAttribute('position', new T.Float32BufferAttribute(P, 3));
-  g.computeVertexNormals();
-  return g;
+let atlasCanvas = null, hedgeCanvas = null;
+/** Gedeeld materiaal voor alle bladeren, sprieten, bloemen en takken. */
+function foliageMaterial(T) {
+  atlasCanvas ||= drawAtlas();
+  const tex = new T.CanvasTexture(atlasCanvas);
+  tex.colorSpace = T.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.userData.mimeType = 'image/png';
+  const leaf = new T.MeshStandardMaterial({ map: tex, alphaTest: 0.5, vertexColors: true, roughness: 0.82, name: 'planten', alphaToCoverage: true });
+  return leaf;
+}
+function hedgeTexture(T) {
+  hedgeCanvas ||= drawHedgeTile();
+  const tex = new T.CanvasTexture(hedgeCanvas);
+  tex.colorSpace = T.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = T.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.userData.mimeType = 'image/jpeg';
+  return tex;
 }
 
 const stencilPlants = new Map();

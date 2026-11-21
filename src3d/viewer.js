@@ -85,6 +85,8 @@ export function createViewer(opts) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
 
   const box = info.box || { minX: -10, minY: -10, maxX: 10, maxY: 10 };
   const cx = (box.minX + box.maxX) / 2, cz = (box.minY + box.maxY) / 2;
@@ -96,6 +98,17 @@ export function createViewer(opts) {
   scene.fog = new THREE.Fog(sky, size * 2.5, size * 9 + 150);
   const hemi = new THREE.HemisphereLight('#e4f0ff', '#6d7a52', 1.1);
   scene.add(hemi);
+  // lucht: van licht aan de horizon naar blauw boven
+  const domeGeo = new THREE.SphereGeometry(size * 10 + 300, 32, 16);
+  const dc = [], dp = domeGeo.attributes.position, horizon = new THREE.Color('#e3ecef'), zenith = new THREE.Color('#6f9fd6'), tmp = new THREE.Color();
+  for (let i = 0; i < dp.count; i++) { const t = Math.max(0, dp.getY(i) / (size * 10 + 300)); tmp.copy(horizon).lerp(zenith, Math.pow(t, 0.6)); dc.push(tmp.r, tmp.g, tmp.b); }
+  domeGeo.setAttribute('color', new THREE.Float32BufferAttribute(dc, 3));
+  const domeMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false });
+  const dome = new THREE.Mesh(domeGeo, domeMat);
+  dome.name = 'lucht';
+  dome.position.set(cx, 0, cz);
+  dome.renderOrder = -1;
+  scene.add(dome);
   const sunLight = new THREE.DirectionalLight('#fff4e2', 2.6);
   sunLight.castShadow = true;
   const sr = size * 0.75 + 6;
@@ -315,8 +328,9 @@ export function createViewer(opts) {
       sunLight.visible = true;
     } else sunLight.visible = false;
     hemi.intensity = 0.45 + 0.7 * up;
-    sky.set('#bcd7ea').lerp(new THREE.Color('#e9c9a6'), (1 - up) * 0.55);
+    sky.set('#cfdde6').lerp(new THREE.Color('#e9c9a6'), (1 - up) * 0.55);
     if (sun.altitude <= 0) sky.set('#6f7f99');
+    domeMat.color.setScalar(sun.altitude <= 0 ? 0.45 : 0.75 + 0.25 * up);
     scene.fog.color.copy(sky);
     dirty = true;
   }
@@ -466,6 +480,7 @@ export function createViewer(opts) {
     ro?.disconnect();
     if (content) disposeTree(content);
     disposeTree(outer);
+    disposeTree(dome);
     renderer.dispose();
     renderer.forceContextLoss?.();
     root.remove();

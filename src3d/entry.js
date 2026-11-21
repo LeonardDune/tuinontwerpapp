@@ -27,13 +27,18 @@ export function flattenInstances(root) {
         const k = (i * n + j) * 3;
         v.fromBufferAttribute(pos, j).applyMatrix4(m); P[k] = v.x; P[k + 1] = v.y; P[k + 2] = v.z;
         v.fromBufferAttribute(nor, j).applyMatrix3(nm).normalize(); N[k] = v.x; N[k + 1] = v.y; N[k + 2] = v.z;
-        C[k] = col.r; C[k + 1] = col.g; C[k + 2] = col.b;
+        if (g.attributes.color) { C[k] = g.attributes.color.getX(j) * col.r; C[k + 1] = g.attributes.color.getY(j) * col.g; C[k + 2] = g.attributes.color.getZ(j) * col.b; } else { C[k] = col.r; C[k + 1] = col.g; C[k + 2] = col.b; }
       }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    if (g.attributes.uv) {
+      const uv = g.attributes.uv, U = new Float32Array(n * 2 * im.count);
+      for (let i = 0; i < im.count; i++) for (let j = 0; j < n; j++) { U[(i * n + j) * 2] = uv.getX(j); U[(i * n + j) * 2 + 1] = uv.getY(j); }
+      geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+    }
     const mat = im.material.clone();
     mat.vertexColors = true;
     const mesh = new THREE.Mesh(geo, mat);
@@ -45,11 +50,15 @@ export function flattenInstances(root) {
   return out;
 }
 
-/** Het model als .glb (ArrayBuffer). */
-export async function exportGlb(root) {
-  const flat = flattenInstances(root);
-  flat.updateMatrixWorld(true);
-  return new GLTFExporter().parseAsync(flat, { binary: true, onlyVisible: true });
+/**
+ * Het model als .glb (ArrayBuffer). Planten die vaak herhaald worden blijven één model met posities
+ * (EXT_mesh_gpu_instancing: Blender 3.6+, three.js, Babylon); zo blijft het bestand klein.
+ * flat = true: alles uitgeschreven (groter bestand, voor oudere programma's).
+ */
+export async function exportGlb(root, flat = false) {
+  const out = flat ? flattenInstances(root) : root;
+  out.updateMatrixWorld(true);
+  return new GLTFExporter().parseAsync(out, { binary: true, onlyVisible: true });
 }
 
 function fromBase64(b64) {

@@ -61,11 +61,11 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   // lopen met toetsen en rondkijken met slepen
   const before = await page.evaluate(() => window.app.walk.viewer.state.walk);
   await page.locator('.walk3d canvas').click({ position: { x: 640, y: 400 } });
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(700); await page.keyboard.up('KeyW');
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
   await page.mouse.move(640, 400); await page.mouse.down(); await page.mouse.move(760, 400, { steps: 5 }); await page.mouse.up();
   const after = await page.evaluate(() => window.app.walk.viewer.state.walk);
   const moved = Math.hypot(after.x - before.x, after.z - before.z);
-  assert(moved > 0.25 && moved < 2.5, `W: vooruit gelopen (${moved.toFixed(2)} m)`);
+  assert(moved > 0.25 && moved < 5, `W: vooruit gelopen (${moved.toFixed(2)} m)`);
   assert(Math.abs(after.yaw - before.yaw) > 0.3, 'slepen: rondgekeken');
   await page.click('.w3d [data-m="orbit"]');
   await page.waitForTimeout(200);
@@ -76,10 +76,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   // andere maand: winter, de lijsterbes is kaal, minder planten
   const win = await page.evaluate(async () => {
     const inp = document.querySelector('.w3d input[type=date]'); inp.value = '2026-01-15'; inp.dispatchEvent(new Event('change'));
-    const w = window.app.walk; let bare = 0, crowns = 0; w.built.group.traverse((o) => { if (o.isMesh && o.material?.name === 'kale takken') bare++; if (o.name === 'kroon') crowns++; });
+    const w = window.app.walk; let bare = 0, crowns = 0; w.built.group.traverse((o) => { if (o.name === 'boom (kaal)') bare++; if (o.name === 'boom') crowns++; });
     return { month: w.built.month, bare, crowns, plants: w.built.stats.plants };
   });
-  assert(win.month === 1 && win.crowns === 0 && win.bare > 20, `januari: bomen kaal, alleen takken (${win.bare})`);
+  assert(win.month === 1 && win.crowns === 0 && win.bare === 2, 'januari: bomen kaal, alleen takken');
   assert(win.plants < st.s.plants, `januari: minder te zien van de vaste planten (${win.plants} i.p.v. ${st.s.plants})`);
 
   // downloads
@@ -88,7 +88,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const glb = fs.readFileSync(glbPath);
   assert(glb.slice(0, 4).toString() === 'glTF' && glb.length > 50000, `.glb (glTF binair, ${(glb.length / 1e6).toFixed(1)} MB) voor Blender en andere viewers`);
   const json = JSON.parse(glb.slice(20, 20 + glb.readUInt32LE(12)).toString());
-  assert(!(json.extensionsUsed || []).length && json.meshes.length > 10 && json.images?.length === 1, 'zonder extensies, met de tekening als grondtextuur');
+  assert((json.extensionsUsed || []).every((e) => e === 'EXT_mesh_gpu_instancing') && json.meshes.length > 10 && json.images?.length >= 3, `planten als herhaalde modellen (instancing), met textuur voor grond, blad en haag (${json.images.length} afbeeldingen)`);
   const [dl2] = await Promise.all([page.waitForEvent('download'), page.click('.w3d button:has-text("Wandeling")')]);
   const htmlPath = path.join(OUT, 'walk3d.html'); await dl2.saveAs(htmlPath);
   assert(dl2.suggestedFilename().endsWith('.html'), `wandeling als los bestand: ${dl2.suggestedFilename()}`);

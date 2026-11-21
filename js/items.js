@@ -400,6 +400,30 @@ function drawShape(g, item, rc) {
   g.save();
   tracePath(g, item);
   const closed = item.kind === 'polygon' || item.kind === 'circle';
+  if (closed && rc.plantView === 'grond' && item.hatch === 'gras') {
+    // 3D: gazon als groene, wat vlekkerige grond (de grassprieten staan er in 3D op)
+    g.fillStyle = '#6f8f48';
+    g.fill();
+    g.save();
+    g.clip();
+    let seed = 1 + Math.abs(Math.round(item.points[0][0] * 131 + item.points[0][1] * 977));
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const pts = item.kind === 'circle' ? [item.points[0]] : item.points;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of pts) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+    if (item.kind === 'circle') { const r = Math.hypot(item.points[1][0] - item.points[0][0], item.points[1][1] - item.points[0][1]); minX -= r; minY -= r; maxX += r; maxY += r; }
+    const n = Math.min(20000, (maxX - minX) * (maxY - minY) * 25);
+    for (let i = 0; i < n; i++) {
+      g.fillStyle = ['#5e7f3a', '#7f9f52', '#68893f', '#86a35a'][i % 4];
+      g.globalAlpha = 0.35;
+      g.beginPath();
+      g.arc(minX + rnd() * (maxX - minX), minY + rnd() * (maxY - minY), 0.05 + rnd() * 0.12, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+    g.restore();
+    return;
+  }
   if (closed && item.fill) {
     g.fillStyle = hexA(item.fill, item.fillAlpha ?? 0.35);
     g.fill();
