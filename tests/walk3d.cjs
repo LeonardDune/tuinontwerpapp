@@ -96,6 +96,28 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.keyboard.press('Escape');
   assert(await page.evaluate(() => !document.querySelector('.walk3d') && !window.app.walk), 'Esc: terug naar de tekening');
 
+  // stencils krijgen een eigen 3D-model
+  const mdl = await page.evaluate(async () => {
+    const { buildGarden } = await import('./js/scene3d.js'); const { newDoc } = await import('./js/model.js'); const { STENCILS, STENCIL_MAP: M } = await import('./js/stencils.js');
+    const { hasModel } = await import('./js/models3d.js');
+    const d = newDoc('Modellen'); const it = d.layers[0].items;
+    const st = (id, x, y, extra = {}) => it.push({ type: 'stencil', id: 'm_' + id, symbol: id, x, y, w: M[id].w, h: M[id].h, rot: 0.3, color: M[id].color, ...extra });
+    st('tafelrond', 0, 0); st('kruidenspiraal', 4, 0); st('regenton', 7, 0); st('kliko3', 9, 0); st('auto', 12, 0); st('hek_schutting', 0, 4); st('poort', 3, 4);
+    it.push({ type: 'shape', id: 'W', kind: 'line', wall: true, points: [[-2, 8], [6, 8]], width: 0.25, color: '#555', height: 2.8 });
+    st('buitendeur', 1, 8, { wallId: 'W', wallSeg: 0, rot: 0 });
+    const g = buildGarden(window.Tuin3D.THREE, d, { month: 7 });
+    const kids = (name) => { const o = g.group.children.find((c) => c.name === name); if (!o) return null; let m = 0, plants = 0; o.traverse((q) => { if (q.isMesh) { m++; if (q.material?.name === 'planten') plants++; } }); return { m, plants, h: new window.Tuin3D.THREE.Box3().setFromObject(o).getSize(new window.Tuin3D.THREE.Vector3()).y }; };
+    // alles wat geen plat stencil (tegel, stapsteen) of plant is, heeft een model
+    const flat = ['Stenen, tegels en klinkers', 'Stapstenen', 'Bomen', 'Hagen', 'Vaste planten'];
+    const missing = STENCILS.filter((s) => !flat.includes(s.cat) && !hasModel(s.id) && !/^hek_/.test(s.id) && !['overkapping', 'pergolagang', 'pergolamuur', 'pergolalatten', 'lamellendak', 'veranda', 'verandaterras', 'heester', 'bloeiend', 'siergras', 'bodembedekker', 'deur', 'buitendeur', 'dubbeledeur', 'openslaand', 'schuifdeur', 'raam', 'schuifpui'].includes(s.id)).map((s) => s.id);
+    return { tafel: kids('Ronde tafel (4)'), spiraal: kids('Kruidenspiraal met vijvertje'), deur: kids('Buitendeur'), fences: g.stats.fences, models: g.stats.models, missing };
+  });
+  assert(mdl.tafel && mdl.tafel.m >= 1 && mdl.tafel.h > 0.7 && mdl.tafel.h < 1, `ronde tafel met stoelen (${mdl.tafel?.h.toFixed(2)} m hoog)`);
+  assert(mdl.spiraal && mdl.spiraal.plants >= 6 && mdl.spiraal.h > 0.8, `kruidenspiraal: stapelmuur in een spiraal met ${mdl.spiraal?.plants} kruiden`);
+  assert(mdl.deur && mdl.deur.h > 2, 'deur in een muur');
+  assert(mdl.fences === 1 && mdl.models >= 7, 'losse schutting en poort, regenton, kliko\'s en auto als model');
+  assert(!mdl.missing.length, 'elk stencil (behalve tegels en planten) heeft een 3D-model' + (mdl.missing.length ? ': zonder ' + mdl.missing.join(', ') : ''));
+
   // het losse bestand werkt zonder de app (bijv. op een laptop, dubbelklikken)
   const p2 = await b.newPage({ viewport: { width: 1200, height: 760 } });
   const err2 = [];

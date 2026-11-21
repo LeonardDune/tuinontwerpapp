@@ -10,8 +10,9 @@ import { itemOutline } from './items.js';
 import { stencilShadow, itemHeight } from './shadows.js';
 import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, monthState, HEIGHTS, BED_TYPES, FOLIAGE, AUTUMN } from './planting.js';
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
-import { plantForStencil } from './planting.js';
+import { plantForStencil, stencilPlantSpec } from './planting.js';
 import { plantShape } from './plantdraw.js';
+import { stencilModel, openingModel, hasModel } from './models3d.js';
 import { Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
 import { wallShape } from './walls.js';
 import { FENCES } from './fences.js';
@@ -29,7 +30,7 @@ function in3d(item) {
   if (item.type === 'shape') return !!item.wall || isGroup(item) || itemHeight(item) > 0;
   if (item.type === 'stencil') {
     const def = STENCIL_MAP[item.symbol];
-    return !!def?.opening || FRAME.test(item.symbol) || itemHeight(item) > 0;
+    return !!def?.opening || hasModel(item.symbol) || /^hek_/.test(item.symbol) || FRAME.test(item.symbol) || itemHeight(item) > 0;
   }
   return false;
 }
@@ -86,7 +87,7 @@ export function buildGarden(T, doc, opts = {}) {
   const box = modelBox(doc);
   const group = new T.Group();
   group.name = doc.name || 'Tuinontwerp';
-  const stats = { prisms: 0, walls: 0, fences: 0, trees: 0, bushes: 0, plants: 0, frames: 0 };
+  const stats = { prisms: 0, walls: 0, fences: 0, trees: 0, bushes: 0, plants: 0, frames: 0, models: 0 };
 
   const mats = new Map();
   const mat = (color, o = {}) => {
@@ -188,7 +189,7 @@ export function buildGarden(T, doc, opts = {}) {
   };
 
   /** Haag: blokvorm met bladtextuur, en losse bladtrossen aan de buitenkant voor een levendige rand. */
-  const hedge = (ring, h, color, name, seed) => {
+  const hedge = (ring, h, color, name, seed, fringe = 1) => {
     const mesh = prism(ring, h * 0.94, [hedgeMat(color), hedgeMat(color)]);
     if (!mesh) return;
     const uv = mesh.geometry.attributes.uv;
@@ -200,14 +201,14 @@ export function buildGarden(T, doc, opts = {}) {
     const r = rng(seed);
     const cen = ring.reduce((a, p) => [a[0] + p[0] / ring.length, a[1] + p[1] / ring.length], [0, 0]);
     const leafC = () => G.col(color, (r() - 0.5) * 0.14);
-    const sz = 0.32;
+    const sz = 0.2;
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i], b = ring[(i + 1) % ring.length], L = dist(a, b);
       if (L < 0.05) continue;
       let nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
       const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
       if ((mx - cen[0]) * nx + (mz - cen[1]) * nz < 0) { nx = -nx; nz = -nz; }
-      const n = Math.round(L * h * 9);
+      const n = Math.round(L * h * 22 * fringe);
       for (let k = 0; k < n; k++) {
         const t = r(), y = 0.1 + r() * (h - 0.15);
         const p = [a[0] + (b[0] - a[0]) * t + nx * 0.03, y, a[1] + (b[1] - a[1]) * t + nz * 0.03];
@@ -218,12 +219,12 @@ export function buildGarden(T, doc, opts = {}) {
     // bovenkant
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const [px, py] of ring) { minX = Math.min(minX, px); minY = Math.min(minY, py); maxX = Math.max(maxX, px); maxY = Math.max(maxY, py); }
-    const nTop = Math.min(3000, Math.round(Math.abs(polygonArea(ring)) * 14));
+    const nTop = Math.min(3000, Math.round(Math.abs(polygonArea(ring)) * 30 * fringe));
     for (let k = 0; k < nTop; k++) {
       const px = minX + r() * (maxX - minX), pz = minY + r() * (maxY - minY);
       if (!pointInPolygon([px, pz], ring)) continue;
       const up = [(r() - 0.5) * 0.8, 1, (r() - 0.5) * 0.8];
-      G.card([px, h * 0.9, pz], up, [1, 0, (r() - 0.5)], sz, sz, CELL.cluster, leafC(), { flatNormal: true, n: [0, 1, 0] });
+      G.card([px, h * 0.93, pz], up, [1, 0, (r() - 0.5)], sz, sz, CELL.cluster, leafC(), { flatNormal: true, n: [0, 1, 0] });
     }
     const fr = new T.Mesh(G.geometry(), leafMat);
     add(fr, name + ' (blad)');
@@ -233,6 +234,69 @@ export function buildGarden(T, doc, opts = {}) {
   const pc = plantContext(doc);
   const roles = rolesMap(doc);
   const houses = [];
+  const wallsById = {};
+  for (const layer of doc.layers) for (const it of layer.items) if (it.type === 'shape' && it.wall) wallsById[it.id] = it;
+
+  /** Blad, bloei of kaal in deze maand voor een eenvoudige plantbeschrijving. */
+  const season = (role) => {
+    const st = monthState({ autumn: 'geen', ...role }, month);
+    const foliage = (FOLIAGE[role.foliage] || FOLIAGE.groen).color;
+    if (st.kind === 'weg') return { leaf: foliage, bare: true };
+    if (st.kind === 'silhouet') return { leaf: '#9c8763', straw: true };
+    return { leaf: st.kind === 'bloei' ? foliage : st.color || foliage, flower: st.kind === 'bloei' ? role.color : null };
+  };
+  const mctx = {
+    month, leafMat, hedgeMat, season,
+    plant(spec, seed) {
+      if (spec.bare && spec.shape !== 'heester') return new T.Group();
+      const G = spec.shape === 'heester' ? buildShrub(T, spec, seed) : buildPlant(T, spec, seed);
+      const m = new T.Mesh(G.geometry(), leafMat);
+      m.name = 'plant';
+      return m;
+    },
+    tree(spec, seed) {
+      const m = new T.Mesh(buildTree(T, { leaf: '#5d8a46', ...spec }, seed).geometry(), leafMat);
+      m.name = 'boompje';
+      return m;
+    },
+    /** Klimplant: bladtrossen (en bloemen) rond de gegeven punten. */
+    climber(pts, spread, role, seed, size = 0.3) {
+      const st = season(role);
+      if (st.bare || st.straw || !pts.length) return new T.Group();
+      const G = new Geo(T, 3);
+      G.aoMin = 0.75;
+      G.center = pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length, a[2] + p[2] / pts.length], [0, 0, 0]);
+      const r = rng(seed);
+      for (const p of pts) for (let k = 0; k < 3; k++) {
+        const up = [r() - 0.5, 0.8, r() - 0.5], right = [r() - 0.5 + 0.8, r() - 0.5, r() - 0.5];
+        const q = [p[0] + (r() - 0.5) * spread - up[0] * size / 2, p[1] + (r() - 0.5) * spread * 0.8 - up[1] * size / 2, p[2] + (r() - 0.5) * spread - up[2] * size / 2];
+        const fl = st.flower && r() < 0.35;
+        G.card(q, up, right, size, size, fl ? CELL.florets : CELL.cluster, G.col(fl ? st.flower : st.leaf, (r() - 0.5) * 0.14));
+      }
+      const m = new T.Mesh(G.geometry(), leafMat);
+      m.name = 'klimplant';
+      return m;
+    },
+    /** Blok vol blad (leiboom, dakboom). */
+    leafBlock(x0, x1, y0, y1, z0, z1, role, seed) {
+      const st = season(role);
+      if (st.bare || st.straw) return new T.Group();
+      const G = new Geo(T, y1);
+      G.center = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2];
+      G.aoMin = 0.8;
+      const r = rng(seed), size = 0.4;
+      const n = Math.min(1600, Math.round((x1 - x0) * (y1 - y0) * (z1 - z0) * 110) + 60);
+      for (let i = 0; i < n; i++) {
+        const p = [x0 + r() * (x1 - x0), y0 + r() * (y1 - y0), z0 + r() * (z1 - z0)];
+        const up = [r() - 0.5, 0.7, r() - 0.5];
+        G.card([p[0] - up[0] * size / 2, p[1] - up[1] * size / 2, p[2] - up[2] * size / 2], up, [r() - 0.5 + 0.6, r() - 0.5, r() - 0.5], size, size, CELL.cluster, G.col(st.leaf, (r() - 0.5) * 0.14));
+      }
+      const m = new T.Mesh(G.geometry(), leafMat);
+      m.name = 'leiboom';
+      return m;
+    },
+  };
+
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
     for (const item of layer.items) {
@@ -325,9 +389,29 @@ export function buildGarden(T, doc, opts = {}) {
     stats.fences++;
   }
 
+  function placeModel(g, item, name) {
+    if (!g) return;
+    g.position.set(item.x, 0, item.y);
+    g.rotation.y = -(item.rot || 0);
+    add(g, name);
+    stats.models++;
+  }
+
   function stencil(item, h) {
     const def = STENCIL_MAP[item.symbol];
-    if (!def || def.opening) return;
+    if (!def) return;
+    if (def.opening) {
+      // deur of raam in een muur; poort of hekje in een hek (of los)
+      const wall = item.wallId && wallsById[item.wallId];
+      if (wall && !wall.fence) return placeModel(openingModel(T, item, wall.width), item, def.name);
+      if (hasModel(item.symbol)) placeModel(stencilModel(T, item, mctx), item, def.name);
+      return;
+    }
+    if (/^hek_/.test(item.symbol) && FENCES[item.symbol.slice(4)]) {
+      const c = Math.cos(item.rot || 0), sn = Math.sin(item.rot || 0), hw = item.w / 2;
+      return fence({ id: item.id, kind: 'line', fence: item.symbol.slice(4), height: item.height, points: [[item.x - c * hw, item.y - sn * hw], [item.x + c * hw, item.y + sn * hw]] });
+    }
+    if (hasModel(item.symbol)) return placeModel(stencilModel(T, item, mctx), item, def.name);
     if (FRAME.test(item.symbol)) return frame(item, def, h > 0 ? h : item.symbol.startsWith('berceau') ? 2.3 : 2.5);
     if (!(h > 0)) return;
     const sh = stencilShadow(item.symbol) || { type: 'prism' };
@@ -351,7 +435,41 @@ export function buildGarden(T, doc, opts = {}) {
     // blok: haag, schuur, regenton, bak …
     const isHedge = /^haag|bamboe/.test(item.symbol) || dbTree?.type === 'haag';
     if (isHedge) {
-      hedge(itemOutline(item), h, stencilGreen(item.symbol), 'haag', hashId(item.id));
+      const color = stencilGreen(item.symbol);
+      const c = Math.cos(rot), sn = Math.sin(rot);
+      const P = (u, v) => [item.x + u * c - v * sn, item.y + u * sn + v * c];
+      const r = rng(hashId(item.id));
+      if (/^haag_(vrij|bloei|inheems)$|^bamboe$/.test(item.symbol)) {
+        // losse haag: een rij struiken die in elkaar groeien
+        const n = Math.max(2, Math.round(item.w / (rz * 1.4)));
+        const spec = stencilSpec(item.symbol, h);
+        for (let i = 0; i < n; i++) {
+          const [x, y] = P(-item.w / 2 + (item.w / n) * (i + 0.5), (r() - 0.5) * rz * 0.3);
+          const R = Math.max(rz * 1.15, item.w / n * 0.75);
+          if (item.symbol === 'bamboe') shrub({ x, y, rx: R, rz: rz, rot, h: h * (0.85 + r() * 0.2), spec: { shape: 'gras', form: 'blad', leaf: '#6f8f3c', blades: 60 }, seed: hashId(item.id) + i });
+          else shrub({ x, y, rx: R, rz: rz * 1.1, rot, h: h * (0.85 + r() * 0.25), spec: { ...spec, shape: 'heester', flower: item.symbol === 'haag_bloei' && !spec.bare ? spec.flower || (month >= 5 && month <= 7 ? '#f0f0f0' : null) : spec.flower }, seed: hashId(item.id) + i });
+        }
+      } else if (item.symbol === 'haag_wolk') {
+        // wolkenhaag: in bollen geschoren
+        let u = -item.w / 2;
+        while (u < item.w / 2 - 0.2) {
+          const R = rz * (0.8 + r() * 0.5);
+          const [x, y] = P(u + R, (r() - 0.5) * rz * 0.4);
+          const ball = new T.Mesh(new T.SphereGeometry(1, 20, 14), hedgeMat(color));
+          ball.scale.set(R, Math.min(h, R * 1.6) / 2 * (0.9 + r() * 0.3), R);
+          ball.position.set(x, ball.scale.y * 0.95, y);
+          add(ball, 'wolkenhaag');
+          u += R * 1.4;
+        }
+      } else if (item.symbol === 'haag_golf') {
+        // golvende bovenkant: plakken met wisselende hoogte
+        const n = Math.max(6, Math.round(item.w / 0.25));
+        for (let i = 0; i < n; i++) {
+          const u0 = -item.w / 2 + (item.w / n) * i, u1 = u0 + item.w / n;
+          const hh = h * (0.72 + 0.28 * (0.5 + 0.5 * Math.sin(((u0 + u1) / 2 / item.w) * Math.PI * 4)));
+          hedge([P(u0, -rz), P(u1, -rz), P(u1, rz), P(u0, rz)], hh, color, 'golvende haag', hashId(item.id) + i, 0.6);
+        }
+      } else hedge(itemOutline(item), h, color, 'haag', hashId(item.id));
       stats.prisms++;
       return;
     }
@@ -391,9 +509,18 @@ export function buildGarden(T, doc, opts = {}) {
     for (const p of posts) add(post(p, ps, h, wood), 'paal');
     // liggers in de lengte, dwarsbalken of een dak
     for (const v of [-d / 2 + ps, d / 2 - ps]) { const b = beam(P(-w / 2, v), P(w / 2, v), ps, h - 0.2, h, wood); if (b) add(b, 'ligger'); }
-    if (/lamellendak|veranda/.test(item.symbol)) {
-      const roof = prism(itemOutline(item), 0.08, [mat('#4a4f55', { name: 'dak' }), mat('#4a4f55', { name: 'dak' })], h);
+    if (item.symbol === 'lamellendak') {
+      // aluminium lamellen, half open
+      const alu = mat('#c9cccf', { name: 'lamellen', metalness: 0.4, roughness: 0.4 });
+      for (let u = -w / 2 + 0.1; u < w / 2; u += 0.2) {
+        const b = beam(P(u, -d / 2 + ps), P(u, d / 2 - ps), 0.16, h - 0.1, h - 0.08, alu);
+        if (b) { b.rotation.x = 0.6; add(b, 'lamel'); }
+      }
+      for (const u of [-w / 2 + ps, w / 2 - ps]) { const b = beam(P(u, -d / 2), P(u, d / 2), ps, h - 0.2, h, wood); if (b) add(b, 'ligger'); }
+    } else if (/veranda/.test(item.symbol)) {
+      const roof = prism(itemOutline(item), 0.08, [mat('#5a5f65', { name: 'dak' }), mat('#5a5f65', { name: 'dak' })], h);
       if (roof) add(roof, 'dak');
+      if (item.symbol === 'verandaterras') { const deck = prism(itemOutline(item), 0.12, [mat('#a07850', { name: 'vlonder' }), mat('#8a6643', { name: 'vlonder' })], 0); if (deck) add(deck, 'vlonder'); }
     } else {
       const green = item.symbol === 'berceau_groen' || item.grow === 'vol';
       const step = item.symbol === 'pergolalatten' ? 0.3 : 0.55;
@@ -422,6 +549,8 @@ export function buildGarden(T, doc, opts = {}) {
 
   /** Model-gegevens van een stencil-struik uit de plantendatabase (bloei in deze maand), anders groen blad. */
   function stencilSpec(symbol, h) {
+    const sp = stencilPlantSpec(symbol);
+    if (sp && !plantsWithStencil(symbol)[0]) return specFor({ id: symbol, d: 0.6, ...sp, kind: sp.kind || (symbol === 'varen' ? 'varen' : symbol === 'vp_zwaard' ? 'zwaard' : symbol === 'bolgewas' ? 'bol' : undefined) }) || { shape: 'kussen', leaf: '#8c7b63', bare: true };
     const p = plantsWithStencil(symbol)[0];
     if (!p) return { shape: /gras/.test(symbol) ? 'gras' : /vaste|vp_/.test(symbol) ? 'kussen' : 'heester', leaf: '#4f7d3c', form: 'blad' };
     return specFor(roleFromPlant(p)) || { shape: 'heester', leaf: '#8c7b63', bare: true };

@@ -493,6 +493,12 @@ export function createViewer(opts) {
     get date() { return ymd; },
     get state() { return { mode, walk: { ...walk }, orbit: { ...orbit, target: orbit.target.toArray() }, ymd, minutes }; },
     render() { dirty = true; },
+    /** Camera instellen (vogelvlucht: target [x, z], dist, theta, phi; lopen: x, z, yaw, pitch). */
+    view(v) {
+      if (v.target) { setMode('orbit'); orbit.target.set(v.target[0], 0, v.target[1]); if (v.dist) orbit.dist = v.dist; if (v.theta != null) orbit.theta = v.theta; if (v.phi != null) orbit.phi = v.phi; }
+      else { setMode('walk'); Object.assign(walk, v); }
+      dirty = true;
+    },
   };
 }
 

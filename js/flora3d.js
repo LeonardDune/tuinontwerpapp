@@ -207,11 +207,11 @@ export function drawHedgeTile() {
   const c = document.createElement('canvas');
   c.width = c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = shade(70);
+  g.fillStyle = shade(105);
   g.fillRect(0, 0, 512, 512);
   const r = rng(77);
-  for (let i = 0; i < 900; i++) {
-    const x = r() * 512, y = r() * 512, l = 16 + r() * 16, a = r() * 6.28, t = 120 + r() * 135;
+  for (let i = 0; i < 1400; i++) {
+    const x = r() * 512, y = r() * 512, l = 12 + r() * 12, a = r() * 6.28, t = 150 + r() * 105;
     for (const dx of [-512, 0, 512]) for (const dy of [-512, 0, 512]) {
       if (x + dx < -40 || x + dx > 552 || y + dy < -40 || y + dy > 552) continue;
       g.save(); g.translate(x + dx, y + dy); g.rotate(a); fillLeaf(g, l * 0.4, l, 0.6, t); g.restore();
@@ -491,13 +491,13 @@ export function buildPlant(T, spec, seed = 1) {
       break;
     }
     case 'mat': {
-      const n = Math.round(Math.min(240, Math.max(30, R * R * 520)));
+      const n = Math.round(Math.min(320, Math.max(40, R * R * 900)));
       G.aoMin = 0.6;
       for (let i = 0; i < n; i++) {
         const p = around(R * 0.95);
         const y = H * (0.25 + 0.75 * (1 - Math.hypot(p[0], p[2]) / R) * r());
         const out = outOf(p);
-        G.card([p[0], y * 0.4, p[2]], norm(add(out, [0, 1.6 + r(), 0])), norm(cross(UP, out)), Math.max(0.05, R * 0.25), Math.max(0.06, R * 0.28), CELL.cluster, leafCol(), { k: 0.4 });
+        G.card([p[0], y * 0.4, p[2]], norm(add(out, [0, 1.6 + r(), 0])), norm(cross(UP, out)), Math.max(0.07, R * 0.32), Math.max(0.08, R * 0.36), CELL.cluster, leafCol(), { k: 0.4 });
       }
       if (fl) for (let i = 0, n2 = Math.round(Math.min(40, Math.max(4, R * R * 70))); i < n2; i++) {
         const p = around(R * 0.85);
@@ -519,7 +519,7 @@ export function buildPlant(T, spec, seed = 1) {
     case 'rechtop':
     case 'ijl': {
       const airy = shape === 'ijl';
-      const n = Math.round(Math.min(airy ? 14 : 22, Math.max(4, R * R * (airy ? 40 : 70))));
+      const n = Math.round(Math.min(airy ? 14 : 24, Math.max(airy ? 5 : 7, R * R * (airy ? 60 : 120))));
       for (let i = 0; i < n; i++) {
         const base = around(R * 0.4);
         const tip = stemWithFlower(base, H * (0.78 + r() * 0.25), R * (airy ? 0.6 : 0.3) * r());
@@ -537,13 +537,13 @@ export function buildPlant(T, spec, seed = 1) {
       break;
     }
     default: { // kussen: een pol bladeren met bloemen erboven
-      const n = Math.round(Math.min(220, Math.max(40, R * R * 380)));
+      const n = Math.round(Math.min(260, Math.max(80, R * R * 700)));
       for (let i = 0; i < n; i++) {
         const th = r() * Math.PI * 2, ph = Math.acos(1 - r() * 0.95);
         const k = 0.7 + r() * 0.35;
         const out = [Math.sin(ph) * Math.cos(th), Math.cos(ph), Math.sin(ph) * Math.sin(th)];
         const p = [out[0] * R * k, Math.max(0.01, out[1] * H * 0.82 * k), out[2] * R * k];
-        const len = Math.max(0.05, Math.min(0.17, Math.min(R, H) * 0.42));
+        const len = Math.max(0.06, Math.min(0.18, Math.min(R, H) * 0.5));
         const horiz = norm([out[0], 0.0001, out[2]]);
         const up = norm(add(horiz, [0, 0.5 + out[1] * 1.2 + (r() - 0.5) * 0.5, 0]));
         G.card(sub(p, mul(up, len * 0.4)), up, norm(cross(UP, horiz)), len * 0.6, len, r() < 0.5 ? CELL.leaf : CELL.leafRound, leafCol());
@@ -576,8 +576,13 @@ export function buildShrub(T, spec, seed = 1) {
     }
     return G;
   }
-  const n = Math.round(Math.min(380, Math.max(50, R * R * H * 110)));
-  const size = Math.max(0.16, Math.min(0.42, R * 0.32));
+  const n = Math.round(Math.min(700, Math.max(160, R * R * H * 260)));
+  const size = Math.max(0.2, Math.min(0.5, R * 0.42));
+  // donkere kern, zodat je niet dwars door de struik kijkt
+  for (let i = 0; i < 24; i++) {
+    const th = r() * Math.PI * 2, up = [Math.cos(th) * 0.3, 1, Math.sin(th) * 0.3];
+    G.card([Math.cos(th) * R * 0.2, H * 0.2, Math.sin(th) * R * 0.2], up, [Math.sin(th), 0, -Math.cos(th)], R * 1.1, H * 0.65, CELL.cluster, G.col(spec.leaf, -0.18));
+  }
   for (let i = 0; i < n; i++) {
     // meer blad aan de buitenkant
     const th = r() * Math.PI * 2, ph = Math.acos(1 - 2 * r());
