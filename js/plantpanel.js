@@ -9,6 +9,9 @@ import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from
 import { combosFor } from './combos.js';
 import { drawPlant } from './plantdraw.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
+import { checkPlanting, compose, adaptItems, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
+import { collectCasters, computeSunHours } from './shadows.js';
+import { pointInPolygon } from './geom.js';
 import { polygonArea } from './geom.js';
 import { icon } from './icons.js';
 
@@ -173,11 +176,22 @@ export class PlantPanel {
         <label class="row">Type
           <select data-k="bedtype">${[['', 'nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(bed.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
         </label>
+        <label class="row">Zon
+          <select data-k="bedlight">${[['', 'nog onbekend'], ...Object.entries(LIGHTS)].map(([k, n]) => `<option value="${k}" ${(bed.light || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <button type="button" data-act="measure" title="Meet de zonuren in dit vak met de zonnestudie (gemiddeld per dag, april t/m september)">☀ Meet</button>
+        </label>
+        ${bed.sunHours != null ? `<p class="hint sunh">Zonnestudie: gemiddeld <b>${String(bed.sunHours).replace('.', ',')} uur</b> zon per dag (apr–sep).</p>` : ''}
+        <label class="row">Grond
+          <select data-k="bedmoist">${[['', 'nog onbekend'], ...Object.entries(MOISTURES)].map(([k, n]) => `<option value="${k}" ${(bed.moisture || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+        <ul class="checks"></ul>
         <ul class="roles mixlist"></ul>
         <div class="row add">
+          <button type="button" class="primary" data-act="compose" title="Laat de app planten kiezen die passen bij hoogte, zon, grond en kleurenschema, met bloei door het jaar en afwisseling in vorm">Stel een beplanting samen</button>
           <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in dit vak">+ Plant toevoegen</button>
-          <button type="button" data-act="combos" title="Vul het vak met een kant-en-klare plantcombinatie">Vul met een combinatie</button>
+          <button type="button" data-act="combos" title="Vul het vak met een kant-en-klare plantcombinatie (aangepast aan dit vak)">Vul met een combinatie</button>
         </div>
+        <div class="proposal" hidden></div>
         <div class="combos" hidden></div>
       </section>` : `<section class="bedsec"><p class="hint">Tik op een plantvak in de tekening of in de lijst hierboven om het te vullen.</p></section>`}
       ${step === 3 ? `<section>
@@ -477,21 +491,35 @@ export class PlantPanel {
       li.appendChild(del);
       ul.appendChild(li);
     }
+    const ctx = this.bedCtx(bed);
+    this.fillChecks($('.checks', el), checkPlanting(mix.map((m) => ({ role: byId[m.role], w: m.w })), ctx));
     el.querySelector('[data-k="bedtype"]').addEventListener('change', (e) => this.app.store.mutate(() => {
       if (e.target.value) bed.btype = e.target.value; else delete bed.btype;
     }, 'bedtype'));
+    el.querySelector('[data-k="bedlight"]').addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.light = e.target.value; else delete bed.light;
+      delete bed.sunHours;
+    }, 'bedlight'));
+    el.querySelector('[data-k="bedmoist"]').addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.moisture = e.target.value; else delete bed.moisture;
+    }, 'bedmoist'));
+    el.querySelector('[data-act="measure"]').addEventListener('click', () => this.measureSun(bed));
+    el.querySelector('[data-act="compose"]').addEventListener('click', () => this.showProposal(el, bed, 1));
     el.querySelector('[data-act="addplant"]').addEventListener('click', () => this.openPicker({
       title: `Plant toevoegen aan ${bed.name ? bed.name : 'dit vak'}`,
       btype: bed.btype,
+      light: bed.light,
+      moisture: bed.moisture,
       onPick: (pl) => this.addPlantToBed(bed, pl),
     }));
     const cbox = $('.combos', el);
     el.querySelector('[data-act="combos"]').addEventListener('click', () => {
       cbox.hidden = !cbox.hidden;
       if (cbox.hidden) return;
-      const list = combosFor(bed.btype);
+      // passend bij de standplaats eerst; bij elke combinatie wat er voor dit vak aan aangepast wordt
+      const list = combosFor(bed.btype).map((c) => ({ c, a: adaptItems(c.items, ctx) })).sort((x, y) => x.a.swaps.length - y.a.swaps.length || (y.c.light === ctx.light) - (x.c.light === ctx.light));
       cbox.innerHTML = list.length ? '' : '<p class="hint">Nog geen combinaties voor dit type.</p>';
-      for (const c of list) {
+      for (const { c, a } of list) {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'combo';
@@ -499,11 +527,103 @@ export class PlantPanel {
         for (const [id] of c.items.slice(0, 5)) { const pl = plantById(id); if (pl) thumbs.appendChild(this.thumb(pl, 26)); }
         b.appendChild(thumbs);
         const t = document.createElement('span');
-        t.innerHTML = `<b>${esc(c.name)}</b><small>${c.items.map(([id]) => esc(plantById(id)?.nl || id)).join(', ')}</small>`;
+        t.innerHTML = `<b>${esc(c.name)}</b><small>${c.items.map(([id]) => esc(plantById(id)?.nl || id)).join(', ')}</small>${a.swaps.length ? `<small class="swap">Voor dit vak: ${a.swaps.map(([x, y]) => `${esc(x)} → ${esc(y)}`).join(', ')}</small>` : ''}`;
         b.appendChild(t);
-        b.addEventListener('click', () => this.applyCombo(bed, c));
+        b.addEventListener('click', () => this.applyCombo(bed, { ...c, items: a.items }, a.swaps));
         cbox.appendChild(b);
       }
+    });
+  }
+
+  /** Omstandigheden van een vak voor samenstellen en controleren. */
+  bedCtx(bed) {
+    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: this.ensure().scheme };
+  }
+
+  fillChecks(ul, checks) {
+    ul.innerHTML = checks.map((c) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'bad' : 'open'}" title="${esc(c.text)}"><b>${c.ok === true ? '✓' : c.ok === false ? '✗' : '?'} ${esc(c.label)}</b> <span>${esc(c.text)}</span></li>`).join('');
+  }
+
+  /** Zonuren in een vak uit de zonnestudie: gemiddeld per dag, april t/m september, binnen de omtrek van het vak. */
+  async measureSun(bed) {
+    const poly = shapePolygon(bed);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of poly) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+    const pad = 0.2;
+    const box = { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+    const sun = this.app.sun;
+    const { lat, lon } = sun.geo();
+    const y = new Date().getFullYear();
+    const dates = [4, 5, 6, 7, 8, 9].map((m) => `${y}-${String(m).padStart(2, '0')}-21`);
+    this.app.toast('Zonuren meten…', 1500);
+    // schaduw van alles met een hoogte: huis, schuur, schuttingen, hagen en bomen
+    const casters = collectCasters(this.doc);
+    const res = await computeSunHours({ casters, box, dates, lat, lon, northRot: sun.northRot(), maxCells: 60, stepMin: 20 });
+    if (!res) return;
+    let sum = 0, n = 0;
+    const { cols, rows } = res;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const px = box.minX + ((i + 0.5) / cols) * (box.maxX - box.minX), py = box.minY + ((j + 0.5) / rows) * (box.maxY - box.minY);
+        if (!pointInPolygon([px, py], poly)) continue;
+        sum += res.hours[j * cols + i]; n++;
+      }
+    }
+    if (!n) return;
+    const hours = Math.round((sum / n) * 10) / 10;
+    const light = lightFromHours(hours);
+    this.app.store.mutate(() => { bed.sunHours = hours; bed.light = light; }, 'bedlight');
+    const geoNote = this.doc.geo && Number.isFinite(this.doc.geo.lat) ? '' : ' (zonder kaart: gerekend voor het midden van Nederland, noorden boven)';
+    this.app.toast(`Gemiddeld ${String(hours).replace('.', ',')} uur zon per dag van april t/m september: ${LIGHTS[light].split(' (')[0].toLowerCase()}${geoNote}.`, 5000);
+  }
+
+  /** Voorstel van de samensteller tonen, met checklist; gebruiken of een nieuw voorstel. */
+  showProposal(el, bed, seed) {
+    const box = $('.proposal', el);
+    const ctx = this.bedCtx(bed);
+    const keep = box.querySelector('[data-k="keep"]')?.checked ? (bed.planting?.mix || []).map((m) => this.ensure().roles.find((r) => r.id === m.role)?.plant).filter(Boolean) : [];
+    const { items, pool } = compose(ctx, seed, keep);
+    box.hidden = false;
+    const missing = [!ctx.btype && 'het type', !ctx.light && 'de zon', !ctx.moisture && 'de grond'].filter(Boolean);
+    const entries = items.map(([id, role, w]) => ({ role: { ...roleFromPlant(plantById(id)), role, code: '' }, w }));
+    box.innerHTML = `
+      <h4>Voorstel ${seed} <small>gekozen uit ${pool} passende planten</small></h4>
+      ${missing.length ? `<p class="hint">Tip: vul ook ${missing.join(' en ')} van het vak in, dan past het voorstel beter.</p>` : ''}
+      <ul class="roles prop"></ul>
+      <ul class="checks"></ul>
+      <label class="check"><input type="checkbox" data-k="keep" ${keep.length ? 'checked' : ''}> Houd de planten die al in het vak staan</label>
+      <div class="row add">
+        <button type="button" class="primary" data-act="use">Gebruik dit voorstel</button>
+        <button type="button" data-act="again">Nog een voorstel</button>
+      </div>`;
+    const ul = $('.prop', box);
+    if (!items.length) ul.innerHTML = '<li class="hint">Geen planten gevonden die aan alle eisen voldoen. Kies een ander kleurenschema of andere grond.</li>';
+    for (const [id, role, w] of items) {
+      const pl = plantById(id);
+      const li = document.createElement('li');
+      li.className = 'role';
+      li.appendChild(this.thumb(pl, 30));
+      const t = document.createElement('div');
+      t.className = 'rtxt';
+      t.innerHTML = `<b>${esc(pl.nl)}</b> <small>${ROLES[role].name} · ${w}% · ${pl.h} cm · bloei ${bloomText(pl)}</small>`;
+      li.appendChild(t);
+      ul.appendChild(li);
+    }
+    this.fillChecks($('.checks', box), checkPlanting(entries, ctx));
+    box.querySelector('[data-act="again"]').addEventListener('click', () => this.showProposal(el, bed, seed + 1));
+    box.querySelector('[data-k="keep"]').addEventListener('change', () => this.showProposal(el, bed, seed));
+    box.querySelector('[data-act="use"]').addEventListener('click', () => {
+      this.ensure();
+      this.app.store.mutate((doc) => {
+        const mix = [];
+        for (const [id, role, w] of items) {
+          const { role: r, created } = roleForPlant(doc.planting.roles, plantById(id), role);
+          if (created) doc.planting.roles.push(r);
+          mix.push({ role: r.id, w });
+        }
+        bed.planting = { ...(bed.planting || {}), mix };
+      }, 'compose');
+      this.app.toast('Voorstel in het vak gezet. Pas aandelen aan, of verfijn in stap 3 met groepen.', 3500);
     });
   }
 
@@ -520,7 +640,7 @@ export class PlantPanel {
   }
 
   /** Een vak vullen met een kant-en-klare combinatie. */
-  applyCombo(bed, combo) {
+  applyCombo(bed, combo, swaps = []) {
     if ((bed.planting?.mix || []).length && !confirm(`"${combo.name}" vervangt wat er nu in dit vak staat. Doorgaan?`)) return;
     this.ensure();
     this.app.store.mutate((doc) => {
@@ -535,17 +655,17 @@ export class PlantPanel {
       bed.planting = { ...(bed.planting || {}), mix };
       if (!bed.btype) bed.btype = combo.btype;
     }, 'combo');
-    this.app.toast(`Vak gevuld met "${combo.name}". Pas aandelen aan of voeg planten toe.`, 3500);
+    this.app.toast(`Vak gevuld met "${combo.name}"${swaps.length ? `, aangepast aan dit vak (${swaps.map(([x, y]) => `${x} → ${y}`).join(', ')})` : ''}.`, 4500);
   }
 
   // ---------------------------------------------------------------- plant kiezen
 
   /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
-  openPicker({ title, btype = null, onPick }) {
+  openPicker({ title, btype = null, light = null, moisture = null, onPick }) {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
-    const f = { q: '', type: '', height: '', light: '', soil: '', color: '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
+    const f = { q: '', type: '', height: '', light: light || '', soil: moisture || '', color: '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
     dlg.innerHTML = `
       <form method="dialog" class="dlg wide picker">
         <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
@@ -553,8 +673,8 @@ export class PlantPanel {
         <div class="filters">
           <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
           <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), '', 'Elke hoogte')}</select>
-          <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, '', 'Elke standplaats')}</select>
-          <select data-f="soil">${opt({ droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' }, '', 'Elke grond')}</select>
+          <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, f.light, 'Elke standplaats')}</select>
+          <select data-f="soil">${opt({ droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' }, f.soil, 'Elke grond')}</select>
           <select data-f="color">${opt({ wit: 'Wit', geel: 'Geel', oranje: 'Oranje', rood: 'Rood', roze: 'Roze', paars: 'Paars', blauw: 'Blauw', groen: 'Groen' }, '', 'Elke bloeikleur')}</select>
           <select data-f="month">${opt(Object.fromEntries(MONTH_NAMES.map((m, i) => [String(i + 1), `Bloeit in ${m}`])), '', 'Elke bloeitijd')}</select>
           <label class="check"><input type="checkbox" data-f="native"> Inheems</label>

@@ -10,6 +10,8 @@ import { STENCIL_MAP } from './stencils.js';
 import { itemOutline } from './items.js';
 import { dist, rotate } from './geom.js';
 import { sunPosition, localDate, sunTimes } from './sun.js';
+import { plantForStencil, stencilPlantSpec, HEIGHTS } from './planting.js';
+import { PLANTS, plantById } from './plantdb.js';
 
 /** Standaard schaduwgedrag en hoogte (m) per stencil. Hoogte 0 = geen schaduw. */
 export const STENCIL_SHADOW = {
@@ -33,8 +35,31 @@ export const STENCIL_SHADOW = {
   auto: { type: 'prism', h: 1.5 },
 };
 
+/** Vaste hoogtes van stencils die niet in de plantendatabase staan. */
+const EXTRA_HEIGHT = {
+  haag_wolk: { type: 'prism', h: 1.5 }, haag_golf: { type: 'prism', h: 1.2 }, haag_vrij: { type: 'prism', h: 2 },
+  regenton_groot: { type: 'prism', h: 1.2 }, regenton_vat: { type: 'prism', h: 1 }, regenton_plat: { type: 'prism', h: 1.2 },
+  regenton_zuil: { type: 'prism', h: 1 }, regenton_bak: { type: 'prism', h: 1 }, regentank_ibc: { type: 'prism', h: 1.2 },
+  scherm_bak: { type: 'prism', h: 1.8 }, kruidenspiraal: { type: 'bush', h: 0.9 }, kruidenspiraal_klein: { type: 'bush', h: 0.7 },
+};
+
+/**
+ * Schaduwvorm en standaardhoogte (m) van een stencil: eigen tabel, anders de plantendatabase (bomen per soort,
+ * hagen), anders de hoogteklasse van een plantstencil. null = geen schaduw.
+ */
+export function stencilShadow(symbol) {
+  if (STENCIL_SHADOW[symbol]) return STENCIL_SHADOW[symbol];
+  if (EXTRA_HEIGHT[symbol]) return EXTRA_HEIGHT[symbol];
+  const tree = plantForStencil(symbol);
+  if (tree) return { type: 'tree', h: tree.h / 100, ...(tree.id === 'grove_den' ? { crown: 0.6 } : {}) };
+  for (const p of PLANTS.values()) if (p.stencil === symbol && (p.type === 'haag')) return { type: 'prism', h: p.h / 100 };
+  const spec = stencilPlantSpec(symbol);
+  if (spec && HEIGHTS[spec.height]) return { type: spec.kind === 'haag' ? 'prism' : 'bush', h: HEIGHTS[spec.height].h };
+  return null;
+}
+
 export function defaultHeight(item) {
-  if (item.type === 'stencil') return STENCIL_SHADOW[item.symbol]?.h ?? 0;
+  if (item.type === 'stencil') return stencilShadow(item.symbol)?.h ?? 0;
   return 0;
 }
 
@@ -50,14 +75,24 @@ export function canHaveHeight(item) {
 /** Verzamel alle schaduwwerpers uit zichtbare lagen. */
 export function collectCasters(doc) {
   const out = [];
+  const roles = Object.fromEntries((doc.planting?.roles || []).map((r) => [r.id, r]));
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
     for (const item of layer.items) {
+      if (item.type === 'plant') {
+        // losse solitair uit de beplanting: boom als kroon, andere planten als bol
+        const r = roles[item.role];
+        if (!r) continue;
+        const p = r.plant && plantById(r.plant);
+        const h = p ? p.h / 100 : HEIGHTS[r.height]?.h || 0;
+        if (h > 0) out.push({ type: r.kind === 'boom' ? 'tree' : 'bush', c: [item.x, item.y], rx: item.d / 2, ry: item.d / 2, rot: 0, h });
+        continue;
+      }
       const h = itemHeight(item);
       if (!(h > 0)) continue;
       if (item.type === 'stencil') {
         const def = STENCIL_MAP[item.symbol];
-        const sh = STENCIL_SHADOW[item.symbol] || { type: 'prism' };
+        const sh = stencilShadow(item.symbol) || { type: 'prism' };
         if (sh.type === 'prism' || !def?.round) {
           out.push({ type: 'prism', poly: itemOutline(item), h });
         } else {

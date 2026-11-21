@@ -36,6 +36,17 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const flat = r.ids.filter((id) => want.includes(id) && r.variety[id] < 25);
   assert(!flat.length, 'elke nieuwe boom heeft bladstructuur in meerdere tinten' + (flat.length ? ': ' + flat.join(', ') : ''));
   assert(r.distinct >= r.ids.length - 1, `de bomen zien er allemaal anders uit (${r.distinct} van ${r.ids.length} verschillend)`);
+  const hts = await page.evaluate(async () => {
+    const S = await import('./js/shadows.js'); const { STENCILS } = await import('./js/stencils.js');
+    const h = (id) => S.defaultHeight({ type: 'stencil', symbol: id });
+    const zero = STENCILS.filter((s) => ['Bomen', 'Hagen', 'Heesters & planten', 'Vaste planten', 'Regenwater'].includes(s.cat) && s.id !== 'regentank_ondergronds' && !(h(s.id) > 0)).map((s) => s.id);
+    // solitair uit de beplanting werpt ook schaduw
+    const doc = { layers: [{ visible: true, items: [{ type: 'plant', id: 'p', role: 'r', x: 0, y: 0, d: 4 }] }], planting: { roles: [{ id: 'r', plant: 'lijsterbes', kind: 'boom', height: 'xhoog' }] } };
+    return { zero, lijst: h('lijsterbes'), eik: h('eik'), haag: h('haag'), rand: h('haag_laag'), aar: h('vp_aar'), sol: S.collectCasters(doc) };
+  });
+  assert(!hts.zero.length, 'elke boom, haag, plant en regenton heeft een standaardhoogte' + (hts.zero.length ? ': zonder ' + hts.zero.join(', ') : ''));
+  assert(hts.lijst === 8 && hts.eik === 25 && hts.haag === 1.8 && hts.rand === 0.4 && hts.aar === 0.9, `hoogtes uit de plantendatabase: lijsterbes ${hts.lijst} m, eik ${hts.eik} m, liguster ${hts.haag} m, buxusrand ${hts.rand} m, vaste plant (aar) ${hts.aar} m`);
+  assert(hts.sol.length === 1 && hts.sol[0].type === 'tree' && hts.sol[0].h === 8, 'solitaire lijsterbes uit de beplanting werpt schaduw als boom van 8 m');
   assert(!errors.length, 'geen JavaScript-fouten (heel klein en heel groot getekend)' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle boom-tests geslaagd.');

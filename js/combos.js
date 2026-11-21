@@ -14,7 +14,7 @@ export const COMBOS = [
   // middelhoog
   { id: 'middel_prairie', name: 'Middelhoog, zon: prairie', btype: 'middel', light: 'zon', items: [['lampenpoetsergras', 'structuur', 25], ['rudbeckia', 'vulling', 25], ['zonnehoed', 'vulling', 20], ['duizendblad', 'vulling', 15], ['hemelsleutel', 'vulling', 10], ['sierui_groot', 'accent', 5]] },
   { id: 'middel_romantisch', name: 'Middelhoog, zon: romantisch roze en blauw', btype: 'middel', light: 'zon', items: [['pioen', 'structuur', 15], ['ooievaarsbek_rozanne', 'vulling', 25], ['klokjesbloem', 'vulling', 20], ['zeeuws_knoopje', 'vulling', 20], ['vrouwenmantel', 'vulling', 10], ['sierui', 'accent', 10]] },
-  { id: 'middel_wit', name: 'Middelhoog: witte tuin', btype: 'middel', light: 'half', items: [['zonnehoed_wit', 'vulling', 20], ['margriet', 'vulling', 20], ['herfstanemoon', 'structuur', 20], ['pluimspirea_wit', 'vulling', 20], ['blauwgras', 'structuur', 10], ['narcis', 'accent', 10]] },
+  { id: 'middel_wit', name: 'Middelhoog, halfschaduw: witte tuin', btype: 'middel', light: 'half', items: [['herfstanemoon', 'structuur', 25], ['pluimspirea_wit', 'vulling', 30], ['bosaster', 'vulling', 20], ['blauwgras', 'structuur', 15], ['narcis', 'accent', 10]] },
   { id: 'middel_vochtig', name: 'Middelhoog, halfschaduw en vochtig', btype: 'middel', light: 'half', items: [['pluimspirea', 'vulling', 30], ['siberische_iris', 'structuur', 20], ['ereprijs', 'vulling', 20], ['smele', 'structuur', 20], ['kievitsbloem', 'accent', 10]] },
   // hoog
   { id: 'hoog_oudolf', name: 'Hoog, zon: naturalistisch (Oudolf-stijl)', btype: 'hoog', light: 'zon', items: [['struisriet', 'structuur', 25], ['virginische_ereprijs', 'structuur', 20], ['koninginnekruid', 'structuur', 15], ['pimpernel_roze', 'vulling', 15], ['zonnekruid', 'vulling', 15], ['herfstaster', 'vulling', 10]] },
@@ -22,7 +22,7 @@ export const COMBOS = [
   // heesters
   { id: 'heesters_bloei', name: 'Heesterborder: bloei door het jaar', btype: 'heesters', light: 'zon', items: [['sneeuwbal_tinus', 'structuur', 20], ['weigela', 'vulling', 20], ['pluimhortensia', 'vulling', 20], ['vlinderstruik', 'vulling', 15], ['boerenjasmijn', 'vulling', 15], ['schoonvrucht', 'accent', 10]] },
   { id: 'heesters_wintergroen', name: 'Heesters: wintergroen voor de schaduw', btype: 'heesters', light: 'schaduw', items: [['rododendron', 'structuur', 30], ['skimmia', 'vulling', 25], ['rotsheide', 'vulling', 25], ['laurierkers', 'vulling', 20]] },
-  { id: 'heesters_inheems', name: 'Heesters: inheems, voor vogels en insecten', btype: 'heesters', light: 'half', items: [['gelderse_roos', 'structuur', 25], ['vlier', 'structuur', 25], ['hazelaar', 'vulling', 25], ['meidoorn', 'vulling', 25]] },
+  { id: 'heesters_inheems', name: 'Heesters: inheems, voor vogels en insecten', btype: 'heesters', light: 'zon', items: [['gelderse_roos', 'structuur', 25], ['vlier', 'structuur', 25], ['hazelaar', 'vulling', 25], ['meidoorn', 'vulling', 25]] },
 ];
 
 /** Combinaties voor een type plantvak (alle als er geen type is). */
