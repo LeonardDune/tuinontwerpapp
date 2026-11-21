@@ -721,3 +721,6 @@ body.side-open .north-btn { right: 364px; }
 .proposal .prop .role { cursor: default; }
 .combos .combo .swap { color: #8a5a1a; }
 .sunh { margin: 0; }
+
+/* 3D-wandeling */
+.walk3d { position: fixed; inset: 0; z-index: 2000; background: #bcd7ea; }

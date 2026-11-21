@@ -54,6 +54,7 @@ export function renderScene(ctx, opts) {
     cam.apply(g, dpr);
     for (const item of layer.items) {
       if (hide && hide.has(item.id)) continue;
+      if (opts.skip && opts.skip(item)) continue;
       g.save();
       drawItem(g, item, rc);
       g.restore();

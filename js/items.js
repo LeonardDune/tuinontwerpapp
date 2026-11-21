@@ -183,8 +183,9 @@ function drawBed(g, item, rc) {
     }
     g.restore();
   }
-  if (bt && bt.spacing && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
-  if (view !== 'groepen') {
+  // 'grond' (3D): alleen de bodem, de planten staan er in 3D op
+  if (bt && bt.spacing && view !== 'grond' && (!mix.length || view === 'groepen')) drawBedSketch(g, item, poly, groups, bt, rc, lw);
+  if (view !== 'groepen' && view !== 'grond') {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
     if (item.clipPlants) g.clip();
@@ -193,7 +194,7 @@ function drawBed(g, item, rc) {
     else drawImpressions(g, pts, rc, lw);
     g.restore();
   }
-  if (item.stroke !== false) {
+  if (item.stroke !== false && view !== 'grond') {
     tracePath(g, item);
     g.strokeStyle = item.color || '#3f7a2e';
     g.lineWidth = item.width || paperToWorld(0.3, rc.scale);

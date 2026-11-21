@@ -22,6 +22,7 @@ import {
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { openWalk } from './walk.js';
 import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool, selectionAngle } from './select.js';
 import { syncOpenings, isOpening } from './walls.js';
@@ -3723,6 +3724,7 @@ class App {
     };
     for (const id of ['#exp-paper', '#exp-orient', '#exp-scale', '#exp-area', '#exp-rot', '#exp-titleblock']) $(id).addEventListener('change', info);
 
+    $('#btn-3d').addEventListener('click', () => openWalk(this).catch((err) => this.toast(`3D openen lukt niet: ${err.message || err}`, 5000)));
     $('#btn-export').addEventListener('click', () => {
       $('#exp-title').value = this.store.doc.name;
       // tekenschaal als die op het papier past, anders passend maken
