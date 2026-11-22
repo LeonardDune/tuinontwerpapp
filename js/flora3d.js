@@ -7,7 +7,7 @@
 import { plantShape } from './plantdraw.js';
 
 const S = 256; // celgrootte in de textuuratlas (4 × 4 cellen)
-export const CELL = { leaf: 0, leafRound: 1, leafBig: 2, blade: 3, fern: 4, daisy: 5, umbel: 6, spike: 7, plume: 8, ball: 9, cluster: 10, needles: 11, bark: 12, cup: 13, florets: 14, solid: 15 };
+export const CELL = { leaf: 0, leafRound: 1, leafBig: 2, blade: 3, fern: 4, daisy: 5, umbel: 6, spike: 7, plume: 8, ball: 9, cluster: 10, needles: 11, bark: 12, cup: 13, florets: 14, rose: 15 };
 
 function rng(seed) {
   let s = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
@@ -183,15 +183,27 @@ const DRAW = [
       g.restore();
     }
   },
-  // 15 vol
-  (g) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S); },
+  // 15 roos (van bovenaf: blaadjes in een spiraal)
+  (g, r) => {
+    g.translate(S / 2, S / 2);
+    for (let ring = 0; ring < 5; ring++) {
+      const n = 5 + ring, R = 110 - ring * 20;
+      for (let i = 0; i < n; i++) {
+        g.save(); g.rotate((i / n) * Math.PI * 2 + ring * 0.6);
+        g.beginPath(); g.ellipse(0, -R * 0.55, R * 0.42, R * 0.5, 0, 0, Math.PI * 2);
+        g.fillStyle = shade(255 - ring * 22 - r() * 15); g.fill();
+        g.strokeStyle = shade(170 - ring * 15); g.lineWidth = 2; g.stroke(); g.restore();
+      }
+    }
+  },
 ];
 
 /** De textuuratlas (canvas 1024 × 1024) met alle bladvormen en bloeiwijzen. */
 export function drawAtlas() {
   const c = document.createElement('canvas');
-  c.width = c.height = S * 4;
+  c.width = c.height = S * 8; // dubbele resolutie voor scherpe blaadjes van dichtbij
   const g = c.getContext('2d');
+  g.scale(2, 2);
   DRAW.forEach((fn, i) => {
     g.save();
     g.translate((i % 4) * S, Math.floor(i / 4) * S);
@@ -616,7 +628,7 @@ export function buildShrub(T, spec, seed = 1) {
 export function buildTree(T, spec, seed = 1) {
   const r = rng(seed * 104729 + 11);
   const H = spec.h, rx = spec.rx, rz = spec.rz;
-  const ch = H * Math.min(0.92, spec.crown || 0.62);
+  const ch = H * Math.min(0.92, spec.habit === 'rechtop' && !spec.conifer ? 0.86 : spec.crown || 0.62);
   const G = new Geo(T, H);
   G.center = [0, H - ch / 2, 0];
   G.aoMin = 0.55;
@@ -638,49 +650,96 @@ export function buildTree(T, spec, seed = 1) {
     return G;
   }
 
-  G.tube([[0, 0, 0], [0, trunkTop * 0.5, 0], [0, trunkTop, 0]], [tr * 1.15, tr, tr * 0.85], bark, 8);
-  const tips = [];
-  const limbs = 5 + Math.floor(r() * 3);
-  for (let i = 0; i < limbs; i++) {
-    const a = (i / limbs) * Math.PI * 2 + r() * 0.7;
-    const out = [Math.cos(a) * rx, 0, Math.sin(a) * rz];
-    const start = [0, trunkTop - r() * ch * 0.15, 0];
-    const end = [out[0] * (0.55 + r() * 0.3), H - ch * (0.25 + r() * 0.3), out[2] * (0.55 + r() * 0.3)];
-    const mid = add(mul(add(start, end), 0.5), [0, ch * 0.08, 0]);
-    G.tube([start, mid, end], [tr * 0.6, tr * 0.38, tr * 0.16], bark, 5);
-    for (let k = 0; k < 3; k++) {
-      const from = k === 0 ? mid : end;
-      const b = a + (r() - 0.5) * 1.6;
-      const to = add(from, [Math.cos(b) * rx * 0.35, ch * (0.12 + r() * 0.22), Math.sin(b) * rz * 0.35]);
-      G.tube([from, to], [tr * 0.16, tr * 0.05], bark, 3);
-      tips.push(to);
-      if (spec.bare) for (let j = 0; j < 3; j++) {
-        const c = b + (r() - 0.5) * 2;
-        G.tube([to, add(to, [Math.cos(c) * rx * 0.18, ch * 0.08 + r() * ch * 0.1, Math.sin(c) * rz * 0.18])], [tr * 0.05, 0.004], bark, 3);
-      }
+  // stam met wortelaanzet, licht gebogen
+  const lean = [(r() - 0.5) * 0.12, 0, (r() - 0.5) * 0.12];
+  const trunkPts = [[0, 0, 0], [lean[0] * 0.3, trunkTop * 0.35, lean[2] * 0.3], [lean[0] * 0.7, trunkTop * 0.7, lean[2] * 0.7], [lean[0], trunkTop, lean[2]]];
+  G.tube(trunkPts, [tr * 1.35, tr * 1.02, tr * 0.92, tr * 0.8], bark, 9);
+  const cy = H - ch / 2, cr = ch / 2;
+  const weep = spec.habit === 'overhangend', column = spec.habit === 'rechtop', airy = spec.habit === 'ijl';
+  const big = Math.max(rx, rz) > 3.2;
+  const maxDepth = big ? 4 : 3;
+  const cs = spec.habit === 'rechtop' ? 0.5 : Math.max(0.28, Math.min(0.62, Math.min(rx, rz) * 0.17));
+  const leafCell = CELL.cluster;
+  const twigs = [];
+  /** Buiten de kroon? (> 1 = erbuiten) */
+  const crownR = (p) => Math.hypot(p[0] / rx, (p[1] - cy) / cr, p[2] / rz);
+  const randDir = (d, spread) => {
+    const ref = Math.abs(d[1]) > 0.9 ? [1, 0, 0] : UP;
+    const e1 = norm(cross(d, ref)), e2 = norm(cross(d, e1));
+    const a = r() * Math.PI * 2, t = spread * (0.5 + r() * 0.5);
+    return norm(add(mul(d, Math.cos(t)), add(mul(e1, Math.sin(t) * Math.cos(a)), mul(e2, Math.sin(t) * Math.sin(a)))));
+  };
+  const branch = (start, dir, len, rad, depth) => {
+    const pts = [start];
+    let p = start, d = dir;
+    for (let k = 1; k <= 4; k++) {
+      // takken buigen naar het licht, treurtakken hangen
+      const g = weep && depth >= 1 ? -0.5 - depth * 0.25 : column ? 0.18 : 0.06 - depth * 0.05;
+      d = norm(add(add(d, [0, g, 0]), [(r() - 0.5) * 0.25, (r() - 0.5) * 0.15, (r() - 0.5) * 0.25]));
+      p = add(p, mul(d, len / 4));
+      // binnen de kroon blijven (treurtakken mogen omlaag)
+      if (!weep && crownR(p) > 1.02) { const k2 = 1.02 / crownR(p); p = [p[0] * k2 + (1 - k2) * 0, cy + (p[1] - cy) * k2, p[2] * k2]; }
+      pts.push(p);
     }
-    tips.push(end);
+    G.tube(pts, pts.map((_, i) => Math.max(0.004, rad * (1 - 0.55 * i / 4))), bark, depth === 0 ? 6 : depth === 1 ? 4 : 3);
+    if (depth >= maxDepth) {
+      twigs.push({ pts, d });
+      if (weep) {
+        // lange hangende twijgen
+        for (let k = 0; k < 3; k++) {
+          const from = pts[1 + Math.floor(r() * 3)];
+          const L = ch * (0.35 + r() * 0.35);
+          const sp = [from];
+          for (let j = 1; j <= 4; j++) sp.push(add(from, [(r() - 0.5) * 0.25 + d[0] * 0.2 * j, -L * j / 4, (r() - 0.5) * 0.25 + d[2] * 0.2 * j]));
+          G.tube(sp, sp.map(() => 0.004), bark, 3);
+          twigs.push({ pts: sp, d: [0, -1, 0], hang: true });
+        }
+      }
+      return;
+    }
+    const n = depth === 0 ? 3 + Math.floor(r() * 2) : 2 + Math.floor(r() * 2) + (depth >= 2 && r() < 0.4 ? 1 : 0);
+    for (let i = 0; i < n; i++) {
+      const t = 0.35 + (i / n) * 0.65 * (0.8 + r() * 0.2);
+      const idx = Math.min(3, Math.floor(t * 4));
+      const from = add(pts[idx], mul(sub(pts[idx + 1], pts[idx]), t * 4 - idx));
+      const nd = randDir(d, weep && depth >= 1 ? 0.6 : column ? 0.45 : 0.75);
+      branch(from, nd, len * (0.58 + r() * 0.18), rad * 0.5, depth + 1);
+    }
+    twigs.push({ pts, d, inner: depth < maxDepth - 1 });
+  };
+  // gesteltakken vanuit de stam
+  const limbs = column ? 16 : 5 + Math.floor(r() * 3);
+  if (column) G.tube([[lean[0], trunkTop, lean[2]], [lean[0] * 1.1, trunkTop + ch * 0.5, lean[2] * 1.1], [lean[0] * 1.2, H - 0.3, lean[2] * 1.2]], [tr * 0.8, tr * 0.5, 0.03], bark, 6);
+  for (let i = 0; i < limbs; i++) {
+    const a = (i / limbs) * Math.PI * 2 * 2.4 + r() * 0.7;
+    const startY = column ? trunkTop + (i / limbs) * ch * 0.8 : trunkTop - ch * (0.05 + r() * 0.2);
+    const out = column ? 0.25 : weep ? 0.85 : airy ? 0.7 : 0.6 + r() * 0.3;
+    const dir = norm([Math.cos(a) * out * rx / Math.max(rx, rz), 1, Math.sin(a) * out * rz / Math.max(rx, rz)]);
+    const len = column ? Math.max(rx, rz) * 1.4 + ch * 0.12 * (1 - i / limbs) : Math.hypot(rx, cr) * (0.55 + r() * 0.2);
+    branch([lean[0], startY, lean[2]], dir, len, column ? tr * 0.25 : tr * 0.55, column ? 1 : 0);
   }
+  // doorgaande top
+  branch([lean[0], trunkTop, lean[2]], norm([lean[0], 1, lean[2]]), ch * 0.5, tr * 0.55, 1);
   if (spec.bare) return G;
 
-  // bladtrossen: aan de takken en verspreid door de kroon (meer aan de buitenkant)
-  const n = Math.round(Math.min(2400, Math.max(260, rx * rz * ch * 42)));
-  const size = Math.max(0.45, Math.min(1.2, Math.min(rx, rz) * 0.34));
-  const cy = H - ch / 2;
-  for (let i = 0; i < n; i++) {
-    let p;
-    if (i < tips.length * 4) {
-      const t = tips[i % tips.length];
-      p = add(t, [(r() - 0.5) * size, (r() - 0.5) * size, (r() - 0.5) * size]);
-    } else {
-      const th = r() * Math.PI * 2, ph = Math.acos(1 - 2 * r()), k = Math.pow(r(), 0.3);
-      p = [Math.sin(ph) * Math.cos(th) * rx * k, cy + Math.cos(ph) * ch * 0.5 * k, Math.sin(ph) * Math.sin(th) * rz * k];
+  // blad (en bloesem) aan de twijgen
+  const target = Math.min(3600, Math.max(500, rx * rz * ch * (airy ? 34 : column ? 110 : 55)));
+  const ends = twigs.filter((t) => !t.inner);
+  const perTwig = Math.max(3, Math.round(target / Math.max(1, ends.length)));
+  for (const tw of ends) {
+    for (let k = 0; k < perTwig; k++) {
+      const t = 0.35 + r() * 0.65;
+      const idx = Math.min(3, Math.floor(t * 4));
+      const base = add(tw.pts[idx], mul(sub(tw.pts[idx + 1], tw.pts[idx]), t * 4 - idx));
+      const spread = weep ? cs * 0.3 : cs * 0.9;
+      const p = add(base, [(r() - 0.5) * spread, (r() - 0.5) * spread * 0.7, (r() - 0.5) * spread]);
+      const out = norm(sub(p, [0, cy, 0]));
+      const up = weep && tw.hang ? norm(add([0, -1, 0], mul(out, 0.25))) : norm(add(add(out, [0, 0.55, 0]), [(r() - 0.5) * 0.7, (r() - 0.5) * 0.4, (r() - 0.5) * 0.7]));
+      const right = norm(cross(up, [r() - 0.5, r() - 0.5, r() - 0.5]));
+      const flower = spec.flower && r() < 0.45;
+      const size = cs * (0.75 + r() * 0.5) * (weep ? 0.8 : 1);
+      G.card(sub(p, mul(up, size * 0.35)), up, right, weep && tw.hang ? size * 0.6 : size, size, flower ? CELL.florets : leafCell, G.col(flower ? spec.flower : spec.leaf, (r() - 0.5) * 0.16));
     }
-    const out = norm(sub(p, [0, cy, 0]));
-    const up = norm(add(out, [(r() - 0.5), 0.5, (r() - 0.5)]));
-    const right = norm(cross(up, [r() - 0.5, r() - 0.5, r() - 0.5]));
-    const flower = spec.flower && r() < 0.45;
-    G.card(sub(p, mul(up, size * 0.5)), up, right, size, size, flower ? CELL.florets : CELL.cluster, G.col(flower ? spec.flower : spec.leaf, (r() - 0.5) * 0.16));
   }
   return G;
 }
@@ -693,3 +752,130 @@ export function buildLawnTuft(T, seed, color) {
 }
 
 export { plantShape };
+
+// ------------------------------------------------------------------ klimplanten
+
+const VINES = {
+  blauweregen: { leafCell: CELL.fern, leaf: 0.26, ratio: 0.55, per: 1, flower: 'tros', stem: 0.022, cluster: 0 },
+  roos: { leafCell: CELL.leafRound, leaf: 0.08, ratio: 0.7, per: 2, flower: 'roos', stem: 0.016, cluster: 0.22 },
+  clematis: { leafCell: CELL.leaf, leaf: 0.09, ratio: 0.5, per: 2, flower: 'ster', stem: 0.01, cluster: 0.2 },
+  kamperfoelie: { leafCell: CELL.leafRound, leaf: 0.08, ratio: 0.65, per: 2, flower: 'bloemetjes', stem: 0.012, cluster: 0.2 },
+  groen: { leafCell: CELL.leafBig, leaf: 0.11, ratio: 0.95, per: 2, flower: null, stem: 0.014, cluster: 0.18 },
+  druif: { leafCell: CELL.leafBig, leaf: 0.18, ratio: 0.95, per: 2, flower: 'druif', stem: 0.024, cluster: 0 },
+  herfst: { leafCell: CELL.leafBig, leaf: 0.13, ratio: 0.95, per: 2, flower: null, stem: 0.016, cluster: 0.18 },
+  haagbeuk: { leafCell: CELL.leaf, leaf: 0.1, ratio: 0.6, per: 2, flower: null, stem: 0.02, cluster: 0.26 },
+  fruit: { leafCell: CELL.leafRound, leaf: 0.085, ratio: 0.62, per: 2, flower: 'bloemetjes', stem: 0.03, cluster: 0.2 },
+};
+
+/**
+ * Klimplant langs dragers: houtige ranken die om palen draaien en over balken lopen, bladeren aan steeltjes,
+ * zijscheuten die afhangen, bloemen of trossen. Kaal in de winter (alleen de ranken).
+ * supports: polylijnen [[x, y, z], …] (meters). spec: { kind, leaf, flower, fruit, bare, full, face ([x, y, z] = blad
+ * kijkt die kant op, voor muren en hekken) }.
+ */
+export function buildVine(T, supports, spec, seed = 1) {
+  const r = rng(seed * 7717 + 5);
+  const V = VINES[spec.kind] || VINES.groen;
+  let maxY = 1;
+  for (const s of supports) for (const p of s) maxY = Math.max(maxY, p[1]);
+  const G = new Geo(T, maxY + 0.3);
+  G.aoMin = 0.72;
+  const bark = G.col('#6a5644');
+  const full = spec.full !== false;
+  const step = full ? 0.07 : 0.13;
+  const leafCol = () => G.col(spec.leaf, (r() - 0.5) * 0.16);
+  const GRAV = [0, -1, 0];
+
+  const leafAt = (p, dir) => {
+    // steeltje schuin naar buiten, blad hangt iets
+    let side = norm(cross(dir, [r() - 0.5, r() - 0.5, r() - 0.5]));
+    if (spec.face) { const f = (r() < 0.8 ? 1 : -1) * (spec.faceBoth && r() < 0.5 ? -1 : 1); side = norm(add(mul(spec.face, f * 1.4), mul(side, 0.6))); }
+    const tip = add(p, add(mul(side, 0.035), [0, 0.01, 0]));
+    if (!spec.bare) {
+      const up = norm(add(add(side, mul(GRAV, 0.35 + r() * 0.3)), mul(dir, (r() - 0.5) * 0.6)));
+      const right = norm(cross(up, side[1] > 0.9 ? [1, 0, 0] : UP));
+      const L = V.leaf * (0.8 + r() * 0.45);
+      const n = norm(add(mul(side, 0.6), [0, 0.8, 0]));
+      G.card(tip, up, right, L * V.ratio, L, V.leafCell, leafCol(), { flatNormal: true, n });
+      if (V.cluster) {
+        // bladtrosje aan hetzelfde knooppunt: voller blad, maar vast aan de rank
+        const cs = V.cluster * (0.8 + r() * 0.45);
+        const cu = norm(add(add(side, mul(GRAV, 0.15)), [(r() - 0.5) * 0.5, (r() - 0.5) * 0.5, (r() - 0.5) * 0.5]));
+        G.card(sub(p, mul(cu, cs * 0.15)), cu, norm(cross(cu, Math.abs(cu[1]) > 0.9 ? [1, 0, 0] : UP)), cs, cs, CELL.cluster, G.col(spec.leaf, (r() - 0.5) * 0.16 - 0.04), { flatNormal: true, n });
+      }
+    }
+    return side;
+  };
+
+  const flowerAtV = (p, side) => {
+    if (spec.bare) return;
+    if (spec.fruit && V.flower === 'druif') {
+      G.disc(add(p, [0, -0.08, 0]), side, 0.12, CELL.ball, G.col(spec.fruit, (r() - 0.5) * 0.1), r() * 6);
+      return;
+    }
+    if (!spec.flower) return;
+    const c = G.col(spec.flower, (r() - 0.5) * 0.1);
+    if (V.flower === 'tros') {
+      // hangende tros (blauweregen)
+      const L = 0.22 + r() * 0.14, a = r() * 3.14;
+      for (const k of [0, 1.5708]) G.card(p, GRAV, [Math.cos(a + k), 0, Math.sin(a + k)], L * 0.32, L, CELL.spike, c, { flatNormal: true, n: norm(add(side, [0, 0.5, 0])) });
+    } else if (V.flower === 'roos') G.disc(add(p, mul(side, 0.03)), norm(add(side, [0, 0.4, 0])), 0.075, CELL.rose, c, r() * 6);
+    else if (V.flower === 'ster') G.disc(add(p, mul(side, 0.03)), side, 0.1, CELL.daisy, c, r() * 6);
+    else G.disc(add(p, mul(side, 0.03)), side, 0.09, CELL.florets, c, r() * 6);
+  };
+
+  const flowerEvery = { tros: 0.18, roos: 0.22, ster: 0.25, bloemetjes: 0.25, druif: 0.45 }[V.flower] || 9;
+
+  const grow = (pts, radius, depth) => {
+    // rank langs een lijn, zachtjes om de lijn heen slingerend
+    const out = [];
+    let phase = r() * 6.28, sLen = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      if (L < 1e-4) continue;
+      const dir = norm(sub(b, a));
+      const ref = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : UP;
+      const e1 = norm(cross(dir, ref)), e2 = norm(cross(dir, e1));
+      const n = Math.max(1, Math.round(L / 0.06));
+      for (let k = 0; k < n; k++) {
+        const t = k / n, s2 = sLen + t * L;
+        const w = depth === 0 ? 0.045 : 0.012;
+        const off = add(mul(e1, Math.cos(phase + s2 * 6.5) * w), mul(e2, Math.sin(phase + s2 * 6.5) * w));
+        out.push({ p: add(add(a, mul(sub(b, a), t)), off), dir, s: s2 });
+      }
+      sLen += L;
+    }
+    if (pts.length) out.push({ p: pts[pts.length - 1], dir: out.length ? out[out.length - 1].dir : UP, s: sLen });
+    if (out.length < 2) return;
+    G.tube(out.map((o) => o.p), out.map((o, i) => radius * (1 - 0.5 * i / out.length)), bark, depth === 0 ? 5 : 3);
+    // bladeren, bloemen en zijscheuten langs de rank
+    let nextLeaf = 0, nextFlower = r() * flowerEvery, nextShoot = 0.3 + r() * 0.3;
+    for (const o of out) {
+      if (o.s >= nextLeaf) {
+        for (let k = 0; k < V.per; k++) {
+          const side = leafAt(add(o.p, mul(o.dir, (r() - 0.5) * step)), o.dir);
+          if (o.s >= nextFlower && k === 0) { flowerAtV(add(o.p, mul(side, 0.05)), side); nextFlower = o.s + flowerEvery * (0.6 + r() * 0.8) * (full ? 1 : 1.6); }
+        }
+        nextLeaf = o.s + step * (0.7 + r() * 0.6);
+      }
+      if (depth < 2 && o.s >= nextShoot) {
+        nextShoot = o.s + (full ? 0.35 : 0.6) * (0.7 + r() * 0.6);
+        // zijscheut: van een balk hangt hij omlaag, van een paal groeit hij schuin weg
+        const horizontal = Math.abs(o.dir[1]) < 0.5;
+        let side = norm(cross(o.dir, [r() - 0.5, r() - 0.5, r() - 0.5]));
+        if (spec.face) side = norm(add(mul(side, 0.5), [o.dir[1] * 0.0 + (r() - 0.5), (r() - 0.5) * 0.6, 0]));
+        const L = (full ? 0.35 : 0.25) + r() * (depth === 0 ? 0.45 : 0.2);
+        const pts2 = [o.p];
+        for (let k = 1; k <= 4; k++) {
+          const t = k / 4;
+          const sag = horizontal ? -t * t * L * (0.9 + r() * 0.4) : -t * t * L * 0.3;
+          const along = spec.face ? mul(o.dir, t * L * 0.4) : [0, 0, 0];
+          pts2.push(add(add(o.p, add(mul(side, t * L * (horizontal ? 0.45 : 0.75)), along)), [0, sag, 0]));
+        }
+        grow(pts2, radius * 0.35, depth + 1);
+      }
+    }
+  };
+  for (const sp of supports) grow(sp, V.stem * (full ? 1 : 0.85), 0);
+  return G;
+}

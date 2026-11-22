@@ -86,7 +86,7 @@ export function createViewer(opts) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.0;
 
   const box = info.box || { minX: -10, minY: -10, maxX: 10, maxY: 10 };
   const cx = (box.minX + box.maxX) / 2, cz = (box.minY + box.maxY) / 2;
@@ -96,8 +96,20 @@ export function createViewer(opts) {
   const sky = new THREE.Color('#bcd7ea');
   scene.background = sky;
   scene.fog = new THREE.Fog(sky, size * 2.5, size * 9 + 150);
-  const hemi = new THREE.HemisphereLight('#e4f0ff', '#6d7a52', 1.1);
+  const hemi = new THREE.HemisphereLight('#e4f0ff', '#6d7a52', 0.55);
   scene.add(hemi);
+  // licht uit de hele lucht (omgevingskaart): zachter, voller licht en weerspiegeling in water en glas
+  try {
+    const envScene = new THREE.Scene();
+    const eg = new THREE.SphereGeometry(10, 32, 16), ec = [], ep = eg.attributes.position, top = new THREE.Color('#5d8fd0'), hor = new THREE.Color('#eef3f2'), gnd = new THREE.Color('#6f7f52'), t2 = new THREE.Color();
+    for (let i = 0; i < ep.count; i++) { const y = ep.getY(i) / 10; if (y >= 0) t2.copy(hor).lerp(top, Math.pow(y, 0.55)); else t2.copy(hor).lerp(gnd, Math.min(1, -y * 4)); ec.push(t2.r, t2.g, t2.b); }
+    eg.setAttribute('color', new THREE.Float32BufferAttribute(ec, 3));
+    envScene.add(new THREE.Mesh(eg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+    const pm = new THREE.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(envScene, 0.04).texture;
+    scene.environmentIntensity = 0.7;
+    pm.dispose();
+  } catch (err) { /* zonder omgevingslicht */ }
   // lucht: van licht aan de horizon naar blauw boven
   const domeGeo = new THREE.SphereGeometry(size * 10 + 300, 32, 16);
   const dc = [], dp = domeGeo.attributes.position, horizon = new THREE.Color('#e3ecef'), zenith = new THREE.Color('#6f9fd6'), tmp = new THREE.Color();
@@ -127,6 +139,33 @@ export function createViewer(opts) {
   outer.name = 'omgeving';
   scene.add(outer);
 
+  // wind: planten en bomen bewegen zachtjes (in de vertex shader; kost bijna niets)
+  const windTime = { value: 0 };
+  let windOn = !(typeof location !== 'undefined' && /[?&]nowind\b/.test(location.search)) && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  let lastRender = 0;
+  const hookWind = (m) => {
+    if (!m || m.userData.wind || m.name !== 'planten') return;
+    m.userData.wind = true;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uWind = windTime;
+      sh.vertexShader = 'uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          vec3 wp = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #ifdef USE_INSTANCING
+            wp += instanceMatrix[3].xyz;
+          #endif
+          float hgt = clamp(position.y, 0.0, 7.0);
+          float ph = wp.x * 0.37 + wp.z * 0.29 + position.x * 0.9 + position.z * 0.8;
+          float sway = sin(uWind * 1.3 + ph) * 0.6 + sin(uWind * 2.1 + ph * 1.7) * 0.4;
+          float flutter = sin(uWind * 6.5 + position.x * 11.0 + position.y * 7.0 + position.z * 9.0);
+          transformed.x += (sway * 0.011 * hgt + flutter * 0.004) * step(0.02, hgt);
+          transformed.z += (cos(uWind * 1.1 + ph * 1.3) * 0.008 * hgt + flutter * 0.003) * step(0.02, hgt);
+        }`);
+    };
+    m.customProgramCacheKey = () => 'wind';
+    m.needsUpdate = true;
+  };
+
   let content = null;
   function setContent(obj) {
     if (content) {
@@ -136,6 +175,7 @@ export function createViewer(opts) {
     content = obj;
     content.traverse((o) => {
       if (!o.isMesh) return;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(hookWind);
       const ground = o.name === 'grond' || o.userData.ground;
       o.receiveShadow = true;
       o.castShadow = !ground && !(o.material && o.material.transparent && o.material.opacity < 0.3);
@@ -341,7 +381,7 @@ export function createViewer(opts) {
   root.appendChild(bar);
   const modes = doc.createElement('div');
   modes.className = 'w3d-grp';
-  modes.innerHTML = `${info.title ? `<span class="w3d-title"></span>` : ''}<button type="button" data-m="walk" class="on" title="Op ooghoogte door de tuin lopen">Lopen</button><button type="button" data-m="orbit" title="Van bovenaf rond de tuin kijken">Vogelvlucht</button>`;
+  modes.innerHTML = `${info.title ? `<span class="w3d-title"></span>` : ''}<button type="button" data-m="walk" class="on" title="Op ooghoogte door de tuin lopen">Lopen</button><button type="button" data-m="orbit" title="Van bovenaf rond de tuin kijken">Vogelvlucht</button><button type="button" data-wind title="Planten bewegen in de wind (uit: zuiniger voor de batterij)">Wind</button>`;
   if (info.title) modes.querySelector('.w3d-title').textContent = info.title;
   bar.appendChild(modes);
   const time = doc.createElement('div');
@@ -402,6 +442,9 @@ export function createViewer(opts) {
     dirty = true;
   }
   for (const b of modes.querySelectorAll('[data-m]')) b.addEventListener('click', () => setMode(b.dataset.m));
+  const wb = modes.querySelector('[data-wind]');
+  wb.classList.toggle('on', windOn);
+  wb.addEventListener('click', () => { windOn = !windOn; wb.classList.toggle('on', windOn); dirty = true; });
 
   /** Eigen knop in de balk (de app: downloads en sluiten). */
   function addButton(label, title, onClick) {
@@ -458,8 +501,11 @@ export function createViewer(opts) {
       if (L < 0.02) glide = null; else { walk.x += (dx / L) * s; walk.z += (dz / L) * s; }
       dirty = true;
     }
+    if (windOn && !dirty && now - lastRender > 33) { windTime.value = now / 1000; dirty = true; } // wind: hooguit 30 beelden per seconde
+    else if (windOn) windTime.value = now / 1000;
     if (!dirty) return;
     dirty = false;
+    lastRender = now;
     placeCamera();
     renderer.render(scene, camera);
   }

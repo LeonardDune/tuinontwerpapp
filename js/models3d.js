@@ -18,11 +18,39 @@ const CLIMB_ROLES = {
   herfst: { leaf: '#5f8f45', bloom: [], winter: 'weg', autumn: 'rood' },
   haagbeuk: { leaf: '#3f6b2d', bloom: [], winter: 'bruin', autumn: 'geel' },
 };
+const FRUIT_ROLE = { kind: 'fruit', foliage: 'groen', leaf: '#5f8a45', bloom: [4, 5], color: '#f6f1e3', autumn: 'geel', winter: 'weg', fruit: '#c8402c', fruitMonths: [8, 9, 10] };
+
+/** Ranken over bogen: per boog twee ranken, links en rechts omhoog tot over de top (z = plek van de boog, of x bij een tunnel). */
+export function archVines(at, R, H, full, alongX = false) {
+  const out = [];
+  for (const c of at) for (const sd of [-1, 1]) {
+    const pts = [];
+    const P = (u, y) => (alongX ? [c, y, u] : [u, y, c]);
+    pts.push(P(sd * R, 0), P(sd * R, H * 0.5), P(sd * R, H));
+    const n = full ? 10 : 6;
+    for (let k = 1; k <= n; k++) { const a = (sd > 0 ? 0 : Math.PI) + sd * (k / n) * (Math.PI / 2 + (full ? 0.25 : 0)); pts.push(P(Math.cos(a) * R, H + Math.sin(a) * R)); }
+    out.push(pts);
+  }
+  return out;
+}
+
+/** Ranken tegen een wand (klimplant, groenscherm): waaier van stengels vanaf de voet. */
+export function wallVines(w, H, full) {
+  const out = [];
+  const n = Math.max(2, Math.round(w / (full ? 0.3 : 0.6)));
+  for (let i = 0; i < n; i++) {
+    const x0 = -w / 2 + (w / n) * (i + 0.5), dx = ((i / Math.max(1, n - 1)) - 0.5) * w * 0.25;
+    out.push([[x0, 0, 0], [x0 + dx * 0.3, H * 0.35, 0], [x0 + dx * 0.7, H * 0.7, 0], [x0 + dx, H * 0.97, 0]]);
+  }
+  return out;
+}
+
 /** Begroeiing van een stencil: null (geen) of { full, role }. */
 export function climberRole(item, fallback = 'blauweregen') {
   const grow = item.grow || 'geen';
   if (grow === 'geen') return null;
-  return { full: grow === 'vol', role: { foliage: 'groen', ...(CLIMB_ROLES[item.growKind || fallback] || CLIMB_ROLES[fallback]) } };
+  const kind = CLIMB_ROLES[item.growKind] ? item.growKind : fallback;
+  return { full: grow === 'vol', role: { foliage: 'groen', kind, ...CLIMB_ROLES[kind] } };
 }
 
 function rng(seed) {
@@ -536,17 +564,12 @@ const MODELS = {
       K.torus(R, 0.015, 0, H, sz * d * 0.4, C.black, { kind: 'metal', arc: Math.PI, rs: 20 });
     }
     for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI; K.rod([Math.cos(a) * R, H + Math.sin(a) * R, -d * 0.4], [Math.cos(a) * R, H + Math.sin(a) * R, d * 0.4], 0.008, C.black); }
-    const pts = [];
-    for (const sx of [-1, 1]) for (let y = 0.2; y < H; y += 0.25) pts.push([sx * R, y, 0]);
-    for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI; pts.push([Math.cos(a) * R, H + Math.sin(a) * R, 0]); }
     const cr = climberRole(item, 'roos');
-    if (cr) K.object(ctx.climber(cr.full ? pts : pts.filter((_, i) => i % 2 === 0), d * 0.9, cr.role, 71), 0, 0, 0);
+    if (cr) K.object(ctx.vine(archVines([-d * 0.4, d * 0.4], R, H, cr.full), cr.role, 71, { full: cr.full }), 0, 0, 0);
   },
   klimplant: (K, w, d, ctx, item) => {
     const cr = climberRole({ grow: 'vol', ...item }, 'groen');
-    const pts = [];
-    for (let x = -w / 2 + 0.2; x <= w / 2 - 0.1; x += cr.full ? 0.28 : 0.45) for (let y = 0.3; y < 2.3; y += 0.3) if (y < 2.3 - Math.abs(x) * 0.25) pts.push([x, y, 0]);
-    K.object(ctx.climber(pts, 0.25, cr.role, 81), 0, 0, 0);
+    K.object(ctx.vine(wallVines(w, 2.3, cr.full), cr.role, 81, { full: cr.full, face: [0, 0, 1], faceBoth: true }), 0, 0, 0);
   },
   berceau: (K, w, d, ctx, item) => tunnel(K, w, d, ctx, item, C.black, 0.012),
   berceau_hout: (K, w, d, ctx, item) => tunnel(K, w, d, ctx, item, C.wood, 0.03),
@@ -562,9 +585,9 @@ const MODELS = {
       K.rod([x0, 0, 0], [x0, 0.48, 0], 0.03, '#6a5847', 'wood');
       K.rod([x0, 0.48, 0], [x0 + w / n * 0.65, 0.5, 0], 0.022, '#6a5847', 'wood');
     }
-    const pts = [];
-    for (let x = -w / 2 + 0.2; x < w / 2; x += 0.15) pts.push([x, 0.5, 0]);
-    K.object(ctx.climber(pts, 0.2, { foliage: 'groen', bloom: [4, 5], color: '#f6f1e3', winter: 'weg', fruit: true }, 91, 0.25), 0, 0, 0);
+    const sup = [];
+    for (let i = 0; i < n; i++) { const x0 = -w / 2 + (w / n) * (i + 0.3); sup.push([[x0, 0.48, 0], [x0 + w / n * 0.65, 0.52, 0]]); }
+    K.object(ctx.vine(sup, FRUIT_ROLE, 91, { full: true, face: [0, 0, 1], faceBoth: true }), 0, 0, 0);
   },
   leiboom: (K, w, d, ctx) => {
     K.rod([0, 0, 0], [0, 2.2, 0], 0.07, '#6a5847', 'wood');
@@ -728,12 +751,13 @@ function tunnel(K, w, d, ctx, item, col, t) {
   const cr = climberRole(item, 'roos');
   if (!cr) return;
   const full = cr.full;
-  const pts = [];
-  for (let x = -w / 2 + 0.1; x < w / 2; x += full ? 0.3 : 0.45) {
-    for (let k = 0; k <= 12; k++) { const a = (k / 12) * Math.PI; if (full || k % 2 === 0) pts.push([x, H + Math.sin(a) * R, Math.cos(a) * R]); }
-    for (const sz of [-1, 1]) for (let y = 0.3; y < H; y += full ? 0.25 : 0.45) pts.push([x, y, sz * R]);
-  }
-  K.object(ctx.climber(pts, 0.22, cr.role, 131, full ? 0.34 : 0.28), 0, 0, 0);
+  const sup = [];
+  xs.forEach((x, i) => {
+    if (!full && i % 2) return;
+    for (const v of archVines([x], R, H, true, true)) sup.push(v);
+  });
+  if (full) for (let k = 1; k < 6; k++) { const a = (k / 6) * Math.PI; sup.push([[-w / 2, H + Math.sin(a) * R, Math.cos(a) * R], [w / 2, H + Math.sin(a) * R, Math.cos(a) * R]]); }
+  K.object(ctx.vine(sup, cr.role, 131, { full }), 0, 0, 0);
 }
 
 /** Leifruit: stam met horizontale etages langs draden (tegen een muur of aan een rek). */
@@ -744,12 +768,12 @@ function espalier(K, w, d, ctx, rack) {
     for (const y of tiers) K.rod([-w / 2, y, 0], [w / 2, y, 0], 0.003, C.metal);
   }
   K.rod([0, 0, 0], [0, 2.0, 0], 0.045, '#6a5847', 'wood');
-  const pts = [];
+  const sup = [];
   for (const y of tiers) for (const sx of [-1, 1]) {
     K.rod([0, y, 0], [sx * w * 0.45, y + 0.04, 0], 0.025, '#6a5847', 'wood');
-    for (let x = 0.15; x < w * 0.45; x += 0.15) pts.push([sx * x, y + 0.05, 0]);
+    sup.push([[0, y + 0.03, 0], [sx * w * 0.45, y + 0.06, 0]]);
   }
-  K.object(ctx.climber(pts, 0.18, { foliage: 'groen', bloom: [4, 5], color: '#f6f1e3', autumn: 'geel', winter: 'weg', fruit: true }, 141, 0.26), 0, 0, 0);
+  K.object(ctx.vine(sup, FRUIT_ROLE, 141, { full: true, face: [0, 0, 1], faceBoth: true }), 0, 0, 0);
 }
 
 /** Heeft dit stencil een eigen 3D-model? */

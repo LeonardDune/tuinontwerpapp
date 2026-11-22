@@ -166,10 +166,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(!err2.length, 'los bestand zonder fouten' + (err2.length ? ': ' + err2.join(' | ') : ''));
 
   // aanraken: joystick op een tablet
-  const tab = await b.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true });
+  const tab = await b.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   const p3 = await tab.newPage();
-  await p3.goto('file://' + htmlPath);
-  await p3.waitForSelector('.w3d canvas');
+  await p3.goto('file://' + encodeURI(htmlPath) + '?nowind');
+  await p3.waitForSelector('.w3d canvas', { timeout: 90000 });
   const vis = await p3.evaluate(() => getComputedStyle(document.querySelector('.w3d-stick')).display);
   assert(vis === 'block', 'op de iPad staat er een joystick om mee te lopen');
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));

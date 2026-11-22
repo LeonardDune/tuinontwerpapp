@@ -13,8 +13,8 @@ import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, mon
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
 import { plantForStencil, stencilPlantSpec } from './planting.js';
 import { plantShape } from './plantdraw.js';
-import { stencilModel, openingModel, hasModel, buildHouse, buildCanopy, climberRole } from './models3d.js';
-import { Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
+import { stencilModel, openingModel, hasModel, buildHouse, buildCanopy, climberRole, wallVines } from './models3d.js';
+import { buildVine, Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
 import { wallShape } from './walls.js';
 import { FENCES } from './fences.js';
 import { contentBox } from './export.js';
@@ -184,7 +184,7 @@ export function buildGarden(T, doc, opts = {}) {
   const tree = ({ x, y, rx, rz, rot = 0, h, crown = 0.62, spec, conifer, id }) => {
     const lc = conifer ? { color: '#3f6b3a' } : leafColor(spec);
     const bare = !conifer && lc.bare;
-    const G = buildTree(T, { h, rx, rz, crown, conifer, bare, leaf: lc.bloom ? lc.leaf : lc.color, flower: lc.bloom ? lc.color : null }, hashId(id) + Math.round(x * 7 + y * 13));
+    const G = buildTree(T, { h, rx, rz, crown, conifer, bare, leaf: lc.bloom ? lc.leaf : lc.color, flower: lc.bloom ? lc.color : null, habit: spec?.habit, bark: spec?.plant === 'ruwe_berk' ? '#e4e0d8' : undefined }, hashId(id) + Math.round(x * 7 + y * 13));
     const m = new T.Mesh(G.geometry(), leafMat);
     m.position.set(x, 0, y);
     m.rotation.y = -rot;
@@ -293,6 +293,15 @@ export function buildGarden(T, doc, opts = {}) {
       return m;
     },
     /** Klimplant: bladtrossen (en bloemen) rond de gegeven punten. */
+    /** Klimplant met echte ranken langs de dragers (polylijnen). */
+    vine(supports, role, seed, o = {}) {
+      const st = season(role);
+      const fruit = role.fruitMonths?.includes(month) ? role.fruit : null;
+      const spec = { kind: role.kind || 'groen', leaf: st.leaf, flower: fruit ? null : st.flower, fruit, bare: !!(st.bare || st.straw), full: o.full !== false, face: o.face, faceBoth: o.faceBoth };
+      const m = new T.Mesh(buildVine(T, supports, spec, seed).geometry(), leafMat);
+      m.name = 'klimplant';
+      return m;
+    },
     climber(pts, spread, role, seed, size = 0.3) {
       const st = season(role);
       if (st.bare || st.straw || !pts.length) return new T.Group();
@@ -434,6 +443,17 @@ export function buildGarden(T, doc, opts = {}) {
           const k = Math.max(1, Math.round((d1 - d0) / (f.every || 1.8)));
           for (let i = 0; i <= k; i++) add(post(at(d0 + ((d1 - d0) * i) / k), f.post, H + 0.05, pm), 'paal');
         }
+      }
+    }
+    // groenscherm en trellis: klimop of clematis op het scherm
+    if (f.style === 'groen' || f.style === 'trellis') {
+      const role = climberRole({ grow: 'vol', growKind: f.style === 'groen' ? 'groen' : 'clematis' });
+      for (let s2 = 0; s2 < n; s2++) {
+        const a = pts[s2], b = pts[(s2 + 1) % pts.length], L = dist(a, b);
+        if (L < 0.3) continue;
+        const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+        const sup = wallVines(L, H, true).map((line) => line.map(([lx, ly]) => [(a[0] + b[0]) / 2 + ux * lx - uz * (t / 2 + 0.01), ly, (a[1] + b[1]) / 2 + uz * lx + ux * (t / 2 + 0.01)]));
+        add(mctx.vine(sup, role.role, hashId(item.id) + s2, { full: true, face: [-uz, 0, ux], faceBoth: true }), 'klimplant');
       }
     }
     stats.fences++;
@@ -650,16 +670,14 @@ export function buildGarden(T, doc, opts = {}) {
     // klimplanten: langs de palen omhoog en over de balken
     const cr = climberRole(item);
     if (cr) {
-      const pts = [];
-      const st = cr.full ? 0.32 : 0.55;
-      for (let u = -w / 2 + 0.1; u < w / 2; u += st) for (let v = -d / 2; v <= d / 2; v += st) {
-        if (!cr.full && Math.abs(v) < d * 0.25 && (Math.round(u / st) % 2)) continue;
-        const [x, z] = P(u, v);
-        pts.push([x, h + 0.12, z]);
-      }
-      for (const [x, z] of posts) for (let y = 0.3; y < h; y += cr.full ? 0.3 : 0.5) pts.push([x, y, z]);
-      const m = mctx.climber(pts, 0.22, cr.role, hashId(item.id), cr.full ? 0.36 : 0.3);
-      add(m, 'klimplant');
+      const sup = [];
+      const W3 = (u, v, y) => { const [x, z] = P(u, v); return [x, y, z]; };
+      posts.forEach(([x, z], i) => { if (cr.full || i % 2 === 0) sup.push([[x, 0, z], [x, h * 0.5, z], [x, h - 0.05, z]]); });
+      for (const v of [-d / 2 + ps, d / 2 - ps]) sup.push([W3(-w / 2 + 0.1, v, h - 0.02), W3(0, v, h + 0.02), W3(w / 2 - 0.1, v, h - 0.02)]);
+      const cstep = item.symbol === 'pergolalatten' ? 0.3 : 0.55;
+      let k = 0;
+      for (let u = -w / 2 + 0.1; u <= w / 2 - 0.05; u += cstep, k++) if (cr.full ? k % 2 === 0 : k % 4 === 0) sup.push([W3(u, -d / 2, h + 0.14), W3(u, 0, h + 0.16), W3(u, d / 2, h + 0.14)]);
+      add(mctx.vine(sup, cr.role, hashId(item.id), { full: cr.full }), 'klimplant');
     }
     stats.frames++;
   }
