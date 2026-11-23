@@ -568,43 +568,64 @@ function principalAngle(poly) {
  * langgerekte vlekken langs de lengterichting van het vak; vullers vormen de basis.
  * roleIds: welke bouwstenen meedoen (leeg = alle).
  */
+/**
+ * De samengestelde mix van een vak, ook als een deel ervan in groepjes ligt: { mix, grouped }.
+ * (Na 'groepjes leggen' staat de volledige mix in fullMix, zolang de basis daarna niet is aangepast.)
+ */
+export function bedPlan(bed) {
+  const p = bed?.planting || {};
+  const valid = p.fullMix && p.baseSig === JSON.stringify(p.mix || []);
+  if (!valid) return { mix: p.mix || [], grouped: [] };
+  const base = new Set((p.mix || []).map((m) => m.role));
+  return { mix: p.fullMix, grouped: p.fullMix.filter((m) => !base.has(m.role)).map((m) => m.role) };
+}
+
 export function suggestDrifts(bed, allRoles, roleIds, seed) {
   const poly = shapePolygon(bed);
-  const A = polygonArea(poly);
+  const A = Math.abs(polygonArea(poly));
+  const byId = Object.fromEntries(allRoles.map((r) => [r.id, r]));
+  // alleen de planten uit dit vak, met hun aandeel uit de samengestelde mix
+  const mix = (bed.planting?.mix || []).filter((m) => byId[m.role] && m.w > 0 && (!roleIds?.length || roleIds.includes(m.role)));
+  const total = mix.reduce((t, m) => t + m.w, 0) || 1;
   // bomen (extra hoog) zijn solitairen, geen groepen in een border
-  const roles = (roleIds?.length ? allRoles.filter((r) => roleIds.includes(r.id)) : allRoles).filter((r) => r.height !== 'xhoog');
+  const usable = mix.filter((m) => byId[m.role].height !== 'xhoog');
+  let grouped = usable.filter((m) => byId[m.role].role !== 'vulling');
+  if (!grouped.length && usable.length > 1) {
+    // alleen vulplanten: de grootste blijft de basis (matrix), de rest komt in groepjes
+    const main = usable.reduce((a, m) => (m.w > a.w ? m : a), usable[0]);
+    grouped = usable.filter((m) => m !== main);
+  }
+  const groupedIds = new Set(grouped.map((m) => m.role));
   const rnd = rng(`${bed.id}-${seed}`);
-  const struct = roles.filter((r) => r.role === 'structuur');
-  const accent = roles.filter((r) => r.role === 'accent');
-  const fill = roles.filter((r) => r.role === 'vulling');
   const theta = principalAngle(poly);
   const b = bbox(poly);
   const placed = [];
   const groups = [];
-  const want = [
-    ...struct.map((r) => ({ r, area: (A * 0.3) / struct.length })),
-    ...accent.map((r) => ({ r, area: (A * 0.1) / accent.length })),
-  ];
-  for (const { r, area } of want) {
-    const plantA = Math.PI * (roleDiameter(r) / 2) ** 2;
-    const n = Math.max(1, Math.min(6, Math.round(area / (plantA * (r.role === 'accent' ? 3 : 6)))));
+  for (const m of grouped) {
+    const r = byId[m.role];
+    const area = (A * m.w) / total;
+    const sp = roleSpacing(r);
+    const plants = area / (sp * sp);
+    // groepjes van ±7 planten (accenten ±3), zodat een soort een paar keer terugkomt
+    const per = r.role === 'accent' ? 3 : 7;
+    const n = Math.max(1, Math.min(r.role === 'accent' ? 5 : 7, Math.round(plants / per) || 1, plants >= per * 1.5 ? 99 : 1));
     const each = area / n;
     for (let k = 0; k < n; k++) {
-      const ratio = r.role === 'accent' ? 1.4 : 2.4;
+      const ratio = r.role === 'accent' ? 1.3 : 1.9 + rnd() * 0.6;
       const ry = Math.sqrt(each / (Math.PI * ratio)), rx = ry * ratio;
       let best = null;
-      for (let tries = 0; tries < 80 && !best; tries++) {
+      for (let tries = 0; tries < 120 && !best; tries++) {
         const c = [b.minX + rnd() * (b.maxX - b.minX), b.minY + rnd() * (b.maxY - b.minY)];
         if (!pointInPolygon(c, poly)) continue;
-        if (placed.some((q) => dist(q.c, c) < (q.rx + rx) * 0.75)) continue;
+        if (placed.some((q) => dist(q.c, c) < (q.rx + rx) * (tries < 60 ? 0.8 : 0.5))) continue;
         best = c;
       }
       if (!best) continue;
-      const ang = theta + (rnd() - 0.5) * 0.6;
+      const ang = theta + (rnd() - 0.5) * 0.8;
       const pts = [];
-      const m = 10;
-      for (let i = 0; i < m; i++) {
-        const a = (i / m) * Math.PI * 2;
+      const mm = 10;
+      for (let i = 0; i < mm; i++) {
+        const a = (i / mm) * Math.PI * 2;
         const kk = 0.82 + rnd() * 0.36;
         const lx = Math.cos(a) * rx * kk, ly = Math.sin(a) * ry * kk;
         pts.push([best[0] + lx * Math.cos(ang) - ly * Math.sin(ang), best[1] + lx * Math.sin(ang) + ly * Math.cos(ang)]);
@@ -613,8 +634,10 @@ export function suggestDrifts(bed, allRoles, roleIds, seed) {
       groups.push({ points: smoothClosed(pts, 2).map((p) => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]), mix: [{ role: r.id, w: 100 }] });
     }
   }
-  const baseMix = fill.length ? fill.map((r) => ({ role: r.id, w: ROLES.vulling.weight })) : (bed.planting?.mix || []);
-  return { groups, baseMix };
+  // de basis: de overige planten in hun eigen verhouding (de samengestelde mix blijft bewaard)
+  const rest = mix.filter((m) => !groupedIds.has(m.role));
+  const baseMix = rest.length ? rest.map((m) => ({ ...m })) : mix.map((m) => ({ ...m }));
+  return { groups, baseMix, groupedRoles: [...groupedIds] };
 }
 
 // ------------------------------------------------------------------ plantstencils

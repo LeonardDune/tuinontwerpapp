@@ -83,11 +83,47 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.setTool('lasso'); a.setSelection(new Set(['W']));
   });
   const head2 = await page.locator('#plant-panel .focus').innerText();
+  assert(!(await page.locator('#plant-panel .bedlist').count()), 'met een vak geselecteerd staat er geen lijst met alle plantvakken');
   assert(/Voortuin/.test(head2) && /nog leeg/.test(head2), 'een ander vak selecteren: het paneel gaat over dat vak (Voortuin, nog leeg)');
   await page.evaluate(() => { window.app.state.plantStep = 1; window.app.plantPanel.render(); });
   assert(await page.locator('#plant-panel').getByText('Type van Voortuin').isVisible(), 'stap 1 zegt ook over welk vak het gaat');
   await page.locator('#plant-panel [data-act="unfocus"]').click();
-  assert(await page.locator('#plant-panel').getByText('Alle plantvakken').isVisible() && !(await page.evaluate(() => window.app.selection.size)), '"Alle vakken" gaat terug naar het overzicht');
+  assert(await page.locator('#plant-panel').getByText('Alle plantvakken').isVisible() && !(await page.evaluate(() => window.app.selection.size)) && await page.locator('#plant-panel .bedlist li').count() === 2, '"Alle vakken" gaat terug naar het overzicht, met de lijst om een vak te kiezen');
+  // weergave (Impressie / Symbolen / Groepen) per vak
+  const views = await page.evaluate(() => {
+    const a = window.app;
+    a.setTool('lasso'); a.setSelection(new Set(['V'])); a.state.plantStep = 3; a.plantPanel.render();
+    document.querySelector('#plant-panel [data-view="symbolen"]').click();
+    return { v: a.state.plantViews?.V, w: a.state.plantViews?.W, glob: a.state.plantView || 'planten', label: document.querySelector('#plant-panel .scope')?.textContent };
+  });
+  assert(views.v === 'symbolen' && !views.w && views.glob === 'planten' && /Weergave van/.test(views.label), 'Symbolen geldt alleen voor het gekozen vak, de andere vakken blijven een impressie');
+
+  // groepjes automatisch leggen houdt de samengestelde beplanting aan
+  const auto = await page.evaluate(async () => {
+    const a = window.app; const doc = a.store.doc;
+    const { roleFromPlant, plantById } = await import('./js/plantdb.js'); const { bedPlan, rolesMap } = await import('./js/planting.js');
+    const role = (id, pid, rl) => ({ id, code: id, role: rl, ...roleFromPlant(plantById(pid)) });
+    a.store.mutate(() => {
+      doc.planting.roles.push(role('q1', 'herfstanemoon', 'structuur'), role('q2', 'vrouwenmantel', 'vulling'), role('q3', 'ooievaarsbek_rozanne', 'vulling'), role('q4', 'sierui', 'accent'));
+      doc.layers[0].items = doc.layers[0].items.filter((i) => !i.group && i.type !== 'plant');
+      doc.layers[0].items.push({ type: 'shape', id: 'X', kind: 'polygon', bed: true, btype: 'middel', points: [[10, 0], [18, 0], [18, 4], [10, 4]], color: '#3f7a2e', width: 0.03, planting: { mix: [{ role: 'q1', w: 25 }, { role: 'q2', w: 40 }, { role: 'q3', w: 25 }, { role: 'q4', w: 10 }] } });
+    });
+    a.setSelection(new Set(['X']));
+    a.planAction('suggest');
+    const bed = a.store.findItem('X').item;
+    const groups = doc.layers[0].items.filter((i) => i.group && i.bedId === 'X');
+    const per = {}; for (const g of groups) per[g.planting.mix[0].role] = (per[g.planting.mix[0].role] || 0) + 1;
+    const others = groups.some((g) => !['q1', 'q4'].includes(g.planting.mix[0].role));
+    const plan = bedPlan(bed);
+    const base = bed.planting.mix.map((m) => m.role + ':' + m.w).join();
+    a.planAction('cleargroups');
+    const after = a.store.findItem('X').item.planting.mix.map((m) => m.role + ':' + m.w).join();
+    return { per, others, base, plan: plan.mix.length, after };
+  });
+  assert(!auto.others, 'alleen planten uit dit vak (niet alle planten uit de tekening)');
+  assert(auto.per.q1 >= 2 && auto.per.q4 >= 1 && auto.per.q4 <= 6 && auto.per.q1 <= 8, `structuurplant in meerdere groepjes (herfstanemoon ${auto.per.q1}×, sierui ${auto.per.q4}×)`);
+  assert(auto.base === 'q2:40,q3:25', 'beide vulplanten blijven de basis, in hun eigen verhouding');
+  assert(auto.plan === 4 && auto.after === 'q1:25,q2:40,q3:25,q4:10', 'de samengestelde mix blijft bewaard; Groepjes weghalen zet hem terug');
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await b.close();
   console.log('Alle verfijn-tests geslaagd.');

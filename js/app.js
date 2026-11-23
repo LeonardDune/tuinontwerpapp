@@ -22,6 +22,7 @@ import {
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { bedPlan } from './planting.js';
 import { scatterInPolygon, SCATTER_JOINT } from './scatter.js';
 import { openWalk } from './walk.js';
 import { APP_VERSION, APP_DATE } from './version.js';
@@ -330,7 +331,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, grid: this.settings.grid ? { size: doc.grid || 1, at: doc.gridAt || 0, opacity: doc.gridOpacity ?? 0.5 } : null });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, plantViews: this.state.plantViews, grid: this.settings.grid ? { size: doc.grid || 1, at: doc.gridAt || 0, opacity: doc.gridOpacity ?? 0.5 } : null });
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
     }
@@ -339,7 +340,7 @@ class App {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.base, 0, 0);
 
-    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, plantView: this.state.plantView || 'planten', ...plantContext(doc) };
+    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, plantView: this.state.plantView || 'planten', plantViews: this.state.plantViews, ...plantContext(doc) };
     ctx.save();
     cam.apply(ctx, dpr);
     this.tool.drawWorld(ctx, rc);
@@ -2567,6 +2568,9 @@ class App {
     if (!isBed(it)) return;
     if (action === 'cleargroups') {
       this.store.mutate(() => {
+        // de samengestelde mix weer helemaal in het vak
+        const plan = bedPlan(it);
+        if (plan.grouped.length) { it.planting = { ...it.planting, mix: plan.mix.map((m) => ({ ...m })) }; delete it.planting.fullMix; delete it.planting.baseSig; }
         for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id));
       }, 'clear-groups');
       return;
@@ -2578,26 +2582,30 @@ class App {
         this.plantPanel.open();
         return;
       }
-      // de bouwstenen van het vak; als daar geen structuur of accent in zit: alle bouwstenen
-      const ids = (it.planting?.mix || []).map((m) => m.role);
-      const byId = rolesMap(doc);
-      const chosen = ids.some((id) => byId[id] && byId[id].role !== 'vulling') ? ids : [];
+      // alleen de planten van dit vak, in de verhouding van de samengestelde beplanting
+      if (!(it.planting?.mix || []).length) {
+        this.toast('Vul dit vak eerst met planten (stap 2: Invullen); daarna legt de app er groepjes van.', 4000);
+        return;
+      }
+      // bij opnieuw leggen: de oorspronkelijke mix (zoals samengesteld) als uitgangspunt
+      const src = bedPlan(it).mix;
       const seed = (it.planting?.seed || 0) + 1;
-      const res = suggestDrifts(it, roles, chosen, seed);
+      const res = suggestDrifts({ ...it, planting: { ...it.planting, mix: src } }, roles, null, seed);
       if (!res.groups.length) {
-        this.toast('Geen groepen voor te stellen: voeg structuur- of accent-bouwstenen toe.');
+        this.toast('Geen groepjes te leggen: dit vak heeft maar één soort. Voeg planten toe in stap 2.', 4000);
         return;
       }
       this.store.mutate(() => {
         // eerdere voorstellen vervangen, zelf getekende groepen blijven
         for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id && i.auto));
         const bed = this.store.findItem(it.id).item;
-        bed.planting = { ...(bed.planting || {}), mix: res.baseMix, seed };
+        bed.planting = { ...(bed.planting || {}), mix: res.baseMix, fullMix: src.map((m) => ({ ...m })), baseSig: JSON.stringify(res.baseMix), seed };
         const idx = f.layer.items.indexOf(bed);
         const groups = res.groups.map((g) => newGroup(g.points, 'polygon', g.mix, bed.id, doc.scale, { auto: true }));
         f.layer.items.splice(idx + 1, 0, ...groups);
       }, 'suggest-groups');
-      this.toast(`${res.groups.length} groepen voorgesteld. Nogmaals tikken geeft een nieuwe variant.`);
+      const names = res.groupedRoles.map((id) => rolesMap(doc)[id]?.label || rolesMap(doc)[id]?.code).filter(Boolean);
+      this.toast(`${res.groups.length} groepjes gelegd van ${names.join(', ')}, in de verhouding van je beplanting. De overige planten blijven de basis. Nog eens = andere schikking.`, 5000);
     }
   }
 

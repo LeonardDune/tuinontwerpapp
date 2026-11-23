@@ -3,7 +3,7 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant,
+  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan,
 } from './planting.js';
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
 import { combosFor } from './combos.js';
@@ -173,9 +173,10 @@ export class PlantPanel {
     if (!bed) return beds.length ? '<section class="focus none"><p class="hint">Alle plantvakken. Tik op een vak in de tekening of in de lijst om alleen dat vak te zien.</p></section>' : '';
     const bt = BED_TYPES[bed.btype];
     const area = Math.abs(polygonArea(shapePolygon(bed)));
-    const n = (bed.planting?.mix || []).length;
+    const plan = bedPlan(bed);
+    const n = plan.mix.length;
     const groups = this.doc.layers.flatMap((l) => l.items).filter((i) => isGroup(i) && i.bedId === bed.id).length;
-    return `<section class="focus"><i style="background:${bt ? bt.color : '#cdb9a4'}"></i><div><b>${esc(bed.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}${groups ? ` · ${groups} groepje${groups > 1 ? 's' : ''}` : ''}</small></div><button type="button" data-act="unfocus" title="Terug naar het overzicht van alle plantvakken">Alle vakken</button></section>`;
+    return `<section class="focus"><i style="background:${bt ? bt.color : '#cdb9a4'}"></i><div><b>${esc(bed.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}${groups ? ` · ${groups} groepje${groups > 1 ? 's' : ''}` : ''}${plan.grouped.length ? ` (${plan.grouped.map((id) => esc((this.doc.planting?.roles || []).find((r) => r.id === id)?.label || '')).join(', ')} in groepjes)` : ''}</small></div><button type="button" data-act="unfocus" title="Terug naar het overzicht van alle plantvakken">Alle vakken</button></section>`;
   }
 
   render() {
@@ -183,7 +184,7 @@ export class PlantPanel {
     const bed = this.scopeBed();
     const yr = yearRound(this.doc, bed?.id || null);
     const counts = plantCounts(this.doc, bed?.id || null);
-    const view = this.app.state.plantView || 'planten';
+    const view = (bed && this.app.state.plantViews?.[bed.id]) || this.app.state.plantView || 'planten';
     const palette = schemePalette(p.scheme);
     const off = p.roles.filter((r) => !inScheme(r.color, p.scheme));
     const low = yr.total ? yr.months.filter((m) => m.score < 0.3) : [];
@@ -212,7 +213,7 @@ export class PlantPanel {
         </div>
         <p class="hint">De vorm kies je onderin: vrij, rechthoek, cirkel, boog, of <b>tik in ruimte</b> (het vak volgt de lijnen eromheen). Is er een vak geselecteerd, dan krijgt dat vak het gekozen type.</p>
       </section>` : ''}
-      ${step <= 2 && !(step === 2 && bed) ? `<section>
+      ${!bed ? `<section>
         <h3>Plantvakken <small>${beds.length ? `${beds.length} in de tekening` : ''}</small></h3>
         <ul class="bedlist"></ul>
       </section>` : ''}
@@ -223,7 +224,7 @@ export class PlantPanel {
             <button type="button" data-view="symbolen" class="${view === 'symbolen' ? 'on' : ''}" title="Plansymbolen: technisch beplantingsplan met codes">Symbolen</button>
             <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}" title="Groepen: vlakken per mix, met aantallen">Groepen</button>
           </div>
-          <small class="scope">${bed ? `Overzicht: <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Overzicht: hele tuin'}</small>
+          <small class="scope">${bed ? `Weergave van <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Weergave: alle vakken'}</small>
         </div>
       </section>
       ${step !== 2 ? '' : bed ? `<section class="bedsec">
@@ -434,7 +435,9 @@ export class PlantPanel {
     }
     for (const b of el.querySelectorAll('[data-view]')) {
       b.addEventListener('click', () => {
-        this.app.state.plantView = b.dataset.view;
+        // met een vak in beeld: alleen dat vak; anders alle vakken (en eigen keuzes per vak vervallen)
+        if (bed) this.app.state.plantViews = { ...(this.app.state.plantViews || {}), [bed.id]: b.dataset.view };
+        else { this.app.state.plantView = b.dataset.view; this.app.state.plantViews = {}; }
         this.app.persistSettings();
         this.app.baseDirty = true;
         this.app.requestRender();

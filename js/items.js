@@ -148,7 +148,7 @@ function drawBed(g, item, rc) {
   const roles = rc.roles || rolesMap(rc.doc);
   const poly = shapePolygon(item);
   const groups = (rc.groupsByBed?.[item.id] || []).map((gr) => shapePolygon(gr));
-  const view = rc.plantView || 'planten';
+  const view = rc.plantViews?.[item.id] || rc.plantView || 'planten';
   const lw = paperToWorld(0.15, rc.scale);
   g.save();
   tracePath(g, item);
@@ -287,7 +287,7 @@ function drawGroup(g, item, rc) {
   const bed = rc.bedsById?.[item.bedId];
   const bedPoly = bed ? shapePolygon(bed) : null;
   const poly = shapePolygon(item);
-  const view = rc.plantView || 'planten';
+  const view = rc.plantViews?.[item.bedId] || rc.plantView || 'planten';
   const mix = item.planting?.mix || [];
   const color = mixColor(mix, rc);
   const lw = paperToWorld(0.15, rc.scale);

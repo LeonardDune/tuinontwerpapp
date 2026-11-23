@@ -97,6 +97,11 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(/binnen een plantvak/.test(await page.locator('#toast').innerText()), 'melding: groep hoort binnen een plantvak');
 
   console.log('Groepen voorstellen');
+  // het vak is samengesteld uit alle bouwstenen (structuur, vulling, accent) in hun standaardaandeel
+  await page.evaluate((id) => {
+    const a = window.app; const bed = a.store.findItem(id).item; const W = { structuur: 30, vulling: 60, accent: 10 };
+    a.store.mutate(() => { bed.planting = { ...(bed.planting || {}), mix: a.store.doc.planting.roles.map((r) => ({ role: r.id, w: W[r.role] || 30 })) }; });
+  }, leftBed.id);
   await page.evaluate((id) => { const a = window.app; a.setTool('lasso'); a.setSelection(new Set([id])); }, leftBed.id);
   assert(/Plantvak/.test(await page.locator('#selection-bar .count').innerText()), 'eigenschappenbalk: Plantvak');
   await page.click('#selection-bar [data-plan="suggest"]');
@@ -124,7 +129,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.click('#btn-planting');
   assert(/dit plantvak/.test(await page.locator('#plant-panel .scope').innerText()), 'paneel: overzicht van het geselecteerde vak');
   await page.click('#plant-panel [data-view="groepen"]');
-  assert(await page.evaluate(() => window.app.state.plantView) === 'groepen', 'weergave Groepen');
+  assert(await page.evaluate((id) => window.app.state.plantViews?.[id], leftBed.id) === 'groepen', 'weergave Groepen (voor dit vak)');
   await page.screenshot({ path: path.join(OUT, 'vakken-groepen.png') });
   await page.click('#plant-panel [data-view="planten"]');
   await page.click('#btn-planting');

@@ -73,7 +73,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(steps.length === 3 && /Schetsen/.test(steps[0]) && /Invullen/.test(steps[1]) && /Verfijnen/.test(steps[2]), `stappen: ${steps.join(' → ')}`);
   assert(await page.evaluate(() => window.app.state.plantStep) === 2, 'paneel geopend met een vak geselecteerd: stap 2 Invullen');
   await page.click('#plant-panel .steps [data-step="1"]');
-  assert(await page.isVisible('#plant-panel .btypes') && await page.isVisible('#plant-panel .bedlist .bedrow') && !(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]')), 'stap 1: types en de lijst met plantvakken, geen invullen');
+  assert(await page.isVisible('#plant-panel .btypes') && !(await page.isVisible('#plant-panel .bedlist')) && !(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]')), 'stap 1 met een vak gekozen: het type van dat vak, geen lijst met alle vakken, geen invullen');
   await page.click('#plant-panel .btypes [data-btype="middel"]');
   assert(await page.evaluate(() => window.app.store.findItem('B').item.btype) === 'middel', 'type kiezen in stap 1 geldt voor het geselecteerde vak');
   await page.evaluate(() => window.app.store.undo());
