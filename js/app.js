@@ -22,6 +22,7 @@ import {
 } from './tools.js';
 import { dist, DEG, normAngle, matTranslate, matMul, matScale, rotate, polygonArea } from './geom.js';
 import { SunPanel } from './sunpanel.js';
+import { scatterInPolygon, SCATTER_JOINT } from './scatter.js';
 import { openWalk } from './walk.js';
 import { APP_VERSION, APP_DATE } from './version.js';
 import { SelectTool, selectionAngle } from './select.js';
@@ -1523,10 +1524,15 @@ class App {
       const seg = document.createElement('div');
       seg.className = 'seg';
       const shp = this.state.paveShape || 'rechthoek';
-      seg.innerHTML = [['rechthoek', 'Rechthoek'], ['vrij', 'Vrij'], ['cirkel', 'Cirkel'], ['boog', 'Boog'], ['tik', 'Tik in ruimte']].map(([m, n]) => `<button type="button" data-s="${m}" class="${shp === m ? 'on' : ''}">${n}</button>`).join('');
+      seg.innerHTML = [['rechthoek', 'Rechthoek'], ['vrij', 'Vrij'], ['cirkel', 'Cirkel'], ['boog', 'Boog'], ['tik', 'Tik in ruimte'], ['strooien', 'Strooien']].map(([m, n]) => `<button type="button" data-s="${m}" class="${shp === m ? 'on' : ''}">${n}</button>`).join('');
       for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.paveShape = b.dataset.s; this.persistSettings(); this.renderOptions(); });
       add(seg);
       if (shp === 'boog') add(this.arcOptions());
+      if (shp === 'strooien') {
+        add(this.slider('Penseel', 0.15, 2, 0.05, this.state.scatterSize || 0.5, (v) => { this.state.scatterSize = v; }, (v) => `${String(Math.round(v * 100) / 100).replace('.', ',')} m`));
+        add(this.slider('Dichtheid', 0.1, 1, 0.05, this.state.scatterDensity ?? 0.6, (v) => { this.state.scatterDensity = v; }, (v) => `${Math.round(v * 100)}%`));
+        add(this.toggle('Weghalen', !!this.state.scatterErase, (v) => { this.state.scatterErase = v; this.requestRender(); }));
+      }
       const blk = this.paveBlock();
       const chip = document.createElement('button');
       chip.type = 'button'; chip.className = 'stencil-current'; chip.title = 'Bouwsteen kiezen in het paneel Verharding';
@@ -1534,7 +1540,7 @@ class App {
       chip.append(` ${blk.name} ▾`);
       chip.addEventListener('click', () => this.pavePanel.open());
       add(chip);
-      add(this.hint(shp === 'boog' ? 'Sleep van het middelpunt naar de binnenrand; de boog ligt in die richting.' : shp === 'tik' ? 'Tik in een ruimte tussen lijnen: het vak volgt die lijnen.' : 'Teken een verhardingsvak. Daarna pas je in de balk steenmaat, kleur, voeg en afwerking aan en geef je het vak een naam.'));
+      add(this.hint(shp === 'strooien' ? 'Schilder over de tekening: de stenen vallen in het raster van het verband, met meer stenen in het midden van het penseel. Nog een keer erover = voller. Weghalen aan = stenen weghalen.' : shp === 'boog' ? 'Sleep van het middelpunt naar de binnenrand; de boog ligt in die richting.' : shp === 'tik' ? 'Tik in een ruimte tussen lijnen: het vak volgt die lijnen.' : 'Teken een verhardingsvak. Daarna pas je in de balk steenmaat, kleur, voeg en afwerking aan en geef je het vak een naam.'));
     } else if (t === 'calibrate') {
       add(this.hint('Trek een lijn over een bekende maat in de ondergrond (bijv. een gevel) en vul de werkelijke lengte in.'));
     } else if (t === 'pan') {
@@ -2188,6 +2194,7 @@ class App {
       if (i.type === 'shape') return { circle: 'Cirkel', polygon: 'Vorm', line: i.points.length === 2 ? 'Lijn' : 'Lijnstuk' }[i.kind] || 'Vorm';
       if (i.type === 'stencil') return STENCIL_MAP[i.symbol]?.name || 'Stencil';
       if (i.type === 'plant') return 'Bouwsteen';
+      if (i.type === 'stones') return 'Gestrooide stenen';
       return { stroke: 'Penseelstreek', dim: i.kind === 'area' ? 'Oppervlakte' : 'Maatlijn', text: 'Tekst', image: 'Afbeelding' }[i.type] || 'Element';
     };
     const gidsSel = [...new Set(items.map((i) => i.gid).filter(Boolean))];
@@ -2299,6 +2306,17 @@ class App {
       const pl = padLayout(it.w, it.h, it.gap);
       html += field('gap', 'Tussenruimte', String(Math.round(pl.gap * 100)), 'cm') + `<span class="pinfo">${pl.n} stenen</span>`;
     }
+    if (it && it.type === 'stones') {
+      html += `<span class="pinfo" title="Aantal stenen in dit veld">${it.cells.length.toLocaleString('nl-NL')} stenen · ${escapeHtml(it.bondName || describeBond(it.bond))}</span>`;
+      if (it.gen) {
+        html += `<label class="pf" title="Hoeveel van het vak met stenen bedekt is">Dichtheid<input type="range" min="10" max="100" step="5" data-scatter="density" value="${Math.round((it.gen.density ?? 0.6) * 100)}"></label>`;
+        html += `<label class="pf" title="Hoe breed de rafelige rand is (0 = strak tot de rand)">Rafelrand<input type="range" min="0" max="100" step="5" data-scatter="edge" value="${Math.round((it.gen.edge ?? 0.5) * 100)}"></label>`;
+        html += `<button type="button" class="tgl" data-act="scatterAgain" title="Een ander willekeurig patroon (handmatig gestrooide stenen gaan dan verloren)">Opnieuw</button>`;
+      }
+      html += `<label class="pf" title="Kleur van de stenen">Steen<input type="color" data-scatter="color" value="${it.bond.color || '#8d8a84'}"></label>`;
+      html += `<select data-scatter="finish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(it.bond.finish || 'getrommeld') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
+      html += `<button type="button" class="tgl" data-act="scatterBrush" title="Met het penseel stenen bijstrooien of weghalen">Bijstrooien…</button>`;
+    }
     const stones = items.filter((i) => i.type === 'stencil' && STENCIL_MAP[i.symbol]?.stone);
     if (stones.length) {
       const s0 = stones[0];
@@ -2367,6 +2385,7 @@ class App {
           html += `<select data-k="bondFinish" title="Afwerking van de stenen">${Object.entries(FINISHES).map(([k, v]) => `<option value="${k}" ${(bd.finish || 'glad') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
           html += field('hatchRot', 'Legrichting', String(displayAngle(hatchAngle(it))).replace('.', ','), '°');
         }
+        if (!SURF && it.kind === 'polygon') html += `<button type="button" class="tgl" data-act="scatterize" title="Losse stenen in groepjes die naar de rand uitdunnen, met grind (of zand, split) ertussen, zoals kinderkopjes in een grindpad">Willekeurig strooien</button>`;
         html += `<button type="button" class="tgl" data-act="saveBond" title="Dit verband (met steenmaat, kleur, voeg, afwerking en rand) bewaren als eigen bouwsteen, voor al je tekeningen">Bewaar als bouwsteen</button>`;
         if (it.bondLib && lib[it.bondLib]) html += `<button type="button" class="tgl" data-act="deleteBond" title="Deze bouwsteen uit 'Mijn bouwstenen' verwijderen (vlakken die hem gebruiken blijven zoals ze zijn)">Bouwsteen verwijderen</button>`;
       }
@@ -2458,6 +2477,21 @@ class App {
     bar.querySelector('[data-act="see"]')?.addEventListener('click', () => this.applyProperty('see'));
     bar.querySelector('[data-act="stroke"]')?.addEventListener('click', () => this.applyProperty('stroke'));
     bar.querySelector('[data-act="saveBond"]')?.addEventListener('click', () => this.saveBondBlock());
+    bar.querySelector('[data-act="scatterize"]')?.addEventListener('click', () => this.scatterize(it));
+    bar.querySelector('[data-act="scatterAgain"]')?.addEventListener('click', () => this.regenScatter(it, { seed: Math.floor(Math.random() * 1e5) }));
+    bar.querySelector('[data-act="scatterBrush"]')?.addEventListener('click', () => {
+      this.state.paveShape = 'strooien';
+      this.setTool('pave');
+      this.toast('Strooi met het penseel over het veld; zet Weghalen aan om stenen weg te halen.', 3500);
+    });
+    for (const el of bar.querySelectorAll('[data-scatter]')) {
+      const k = el.dataset.scatter;
+      el.addEventListener(el.type === 'range' ? 'change' : 'input', () => {
+        if (k === 'density' || k === 'edge') this.regenScatter(it, { [k]: Number(el.value) / 100 });
+        else this.store.mutate(() => { it.bond = { ...it.bond, [k]: el.value }; }, 'stones');
+        this.requestRender();
+      });
+    }
     bar.querySelector('[data-act="mix"]')?.addEventListener('click', () => this.openMixDialog(it));
     bar.querySelector('[data-act="deleteBond"]')?.addEventListener('click', () => this.deleteBondBlock());
     bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
@@ -2707,6 +2741,38 @@ class App {
   }
 
   /** Het verband van het geselecteerde vlak bewaren als eigen bouwsteen (voor alle tekeningen). */
+  /** Maak van een verhardingsvak losse stenen in groepjes, met grind ertussen. */
+  scatterize(it) {
+    if (!it || it.type !== 'shape' || !it.bond) return;
+    const loc = this.store.findItem(it.id);
+    if (!loc) return;
+    const stones = {
+      type: 'stones', id: uid(), origin: [it.points[0][0], it.points[0][1]], rot: hatchAngle(it),
+      bond: { ...it.bond, joint: Math.max(it.bond.joint ?? 0.003, SCATTER_JOINT) }, bondName: it.bondName || describeBond(it.bond),
+      gen: { density: 0.6, edge: 0.5, seed: Math.floor(Math.random() * 1e5), poly: it.points.map((p) => [p[0], p[1]]) }, cells: [],
+    };
+    scatterInPolygon(stones, stones.gen.poly, stones.gen.density, stones.gen.edge, stones.gen.seed);
+    const grind = BOND_PRESETS['h-grind'];
+    this.store.mutate(() => {
+      it.bond = { ...grind.bond };
+      it.bondName = grind.name;
+      delete it.bondLib;
+      const layer = this.store.doc.layers.find((l) => l.items.includes(it));
+      layer.items.splice(layer.items.indexOf(it) + 1, 0, stones);
+    }, 'scatter');
+    this.setSelection(new Set([stones.id]));
+    this.toast(`${stones.cells.length} stenen gestrooid, met grind ertussen. Pas Dichtheid en Rafelrand aan, of kies Opnieuw voor een ander patroon.`, 4500);
+  }
+
+  regenScatter(it, change) {
+    if (!it?.gen) return;
+    this.store.mutate(() => {
+      it.gen = { ...it.gen, ...change };
+      scatterInPolygon(it, it.gen.poly, it.gen.density, it.gen.edge, it.gen.seed);
+    }, 'scatter');
+    this.updateSelectionUI();
+  }
+
   async saveBondBlock() {
     const it = this.store.findItem([...this.selection][0])?.item;
     if (!it?.bond) return;

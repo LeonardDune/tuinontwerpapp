@@ -13,6 +13,7 @@ import { rolesMap, isBed, isGroup, shapePolygon, layoutPoints, roleDiameter, mon
 import { PLANTS, plantById, roleFromPlant } from './plantdb.js';
 import { plantForStencil, stencilPlantSpec } from './planting.js';
 import { plantShape } from './plantdraw.js';
+import { stonesList } from './scatter.js';
 import { stencilModel, openingModel, hasModel, buildHouse, buildCanopy, climberRole, wallVines } from './models3d.js';
 import { buildVine, Geo, CELL, buildPlant, buildShrub, buildTree, buildLawnTuft, drawAtlas, drawHedgeTile } from './flora3d.js';
 import { wallShape } from './walls.js';
@@ -41,7 +42,7 @@ export function surfaceKind(item) {
 
 /** Krijgt dit item een eigen 3D-vorm (en hoort het dus niet op de grondtekening)? */
 function in3d(item) {
-  if (item.type === 'text' || item.type === 'dim' || item.type === 'plant') return true;
+  if (item.type === 'text' || item.type === 'dim' || item.type === 'plant' || item.type === 'stones') return true;
   if (item.type === 'shape') return !!item.wall || isGroup(item) || itemHeight(item) > 0 || !!surfaceKind(item);
   if (item.type === 'stencil') {
     const def = STENCIL_MAP[item.symbol];
@@ -383,6 +384,7 @@ export function buildGarden(T, doc, opts = {}) {
         continue;
       }
       if (item.type === 'shape' && surfaceKind(item)) { surface(item, surfaceKind(item)); continue; }
+      if (item.type === 'stones') { looseStones(item); continue; }
       if (item.type === 'stencil') stencil(item, h);
       else if (item.type === 'plant') solitair(item);
     }
@@ -520,6 +522,27 @@ export function buildGarden(T, doc, opts = {}) {
     mesh.rotation.y = -(item.rot || 0);
     mesh.userData.ground = true;
     add(mesh, def.name);
+    stats.surfaces++;
+  }
+
+  /** Gestrooide stenen: losse, iets afgeronde stenen die net boven het grind uitkomen. */
+  function looseStones(item) {
+    const list = stonesList(item);
+    if (!list.length) return;
+    const geo = new T.BoxGeometry(1, 1, 1, 1, 1, 1);
+    const im = new T.InstancedMesh(geo, new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.88, name: 'stenen' }), list.length);
+    const M4 = new T.Matrix4(), Q = new T.Quaternion(), Y = new T.Vector3(0, 1, 0), col = new T.Color();
+    list.forEach((st, i) => {
+      const h = 0.06, j = ((st.key[0] * 7 + st.key[1] * 13 + st.key[2] * 3) % 10) / 10;
+      Q.setFromAxisAngle(Y, -st.rot + (j - 0.5) * 0.03);
+      M4.compose(new T.Vector3(st.c[0], 0.032 - h / 2 + j * 0.006, st.c[1]), Q, new T.Vector3(st.w, h, st.h));
+      im.setMatrixAt(i, M4);
+      im.setColorAt(i, col.set(st.color).offsetHSL(0, 0, (j - 0.5) * 0.08));
+    });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    im.computeBoundingSphere();
+    add(im, item.bondName || 'stenen');
     stats.surfaces++;
   }
 
@@ -722,6 +745,7 @@ export function buildGarden(T, doc, opts = {}) {
   const pavedPolys = [];
   for (const layer of doc.layers) if (layer.visible) for (const it of layer.items) {
     if (surfaceKind(it)) pavedPolys.push(shapePolygon(it));
+    else if (it.type === 'stones') pavedPolys.push(itemOutline(it));
     else if (it.type === 'stencil' && (TILE_CATS.has(STENCIL_MAP[it.symbol]?.cat) || hasModel(it.symbol))) pavedPolys.push(itemOutline(it));
   }
   const lawnSpecs = ['#6e9a45', '#5d8a3b', '#7fa653'].map((c, i) => ({ lawn: true, leaf: winter ? '#7d8f55' : c, key: `gazon|${i}` }));

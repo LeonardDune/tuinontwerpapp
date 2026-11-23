@@ -11,6 +11,8 @@ import { regionAt } from './region.js';
 import { simplify, dist, polygonArea, pointInPolygon, polygonCentroid } from './geom.js';
 import { formatArea, formatLength } from './units.js';
 import { arcPolygon, arcParams } from './arc.js';
+import { brushStones, stonesOutline, SCATTER_JOINT } from './scatter.js';
+import { BOND_TYPES } from './bonds.js';
 
 const r4 = (v) => Math.round(v * 10000) / 10000;
 const rp = (p) => [r4(p[0]), r4(p[1])];
@@ -291,6 +293,107 @@ export class PaveTool extends PlantTool {
       hatch: 'bond', bond: { ...blk.bond }, bondName: blk.name, ...(blk.lib ? { bondLib: blk.lib } : {}),
       ...(blk.border && kind === 'polygon' ? { border: blk.border } : {}),
     };
+  }
+
+  // ---- strooien: losse stenen met een penseel in het raster van het verband
+  get scattering() { return this.shape() === 'strooien'; }
+
+  brushR() { return Math.max(0.05, this.app.state.scatterSize || 0.5); }
+
+  down(e) {
+    if (!this.scattering) return super.down(e);
+    this.layer = this.app.editableLayer();
+    if (!this.layer) return;
+    const blk = this.app.paveBlock();
+    if (BOND_TYPES[blk.bond.type]?.surface) {
+      this.app.toast('Kies een bouwsteen met stenen (klinkers, kasseien, tegels) om te strooien; halfverharding teken je als vak.', 4000);
+      this.layer = null;
+      return;
+    }
+    const erase = !!this.app.state.scatterErase;
+    const r = this.brushR();
+    // verder strooien in een steenveld met dezelfde steen dat hier al ligt (of bij gummen: elk steenveld)
+    const near = (it) => {
+      const o = stonesOutline(it);
+      const xs = o.map((q) => q[0]), ys = o.map((q) => q[1]);
+      return e.w[0] >= Math.min(...xs) - r - 0.3 && e.w[0] <= Math.max(...xs) + r + 0.3 && e.w[1] >= Math.min(...ys) - r - 0.3 && e.w[1] <= Math.max(...ys) + r + 0.3;
+    };
+    const sel = this.app.selection ? [...this.app.selection].map((id) => this.app.store.findItem(id)?.item).find((it) => it?.type === 'stones') : null;
+    let target = sel && near(sel) ? sel : null;
+    if (!target) for (const it of this.layer.items) if (it.type === 'stones' && (erase || it.bondName === blk.name) && near(it)) target = it;
+    this.app.store.begin();
+    this.created = false;
+    if (!target) {
+      if (erase) { this.app.store.cancel(); this.layer = null; return; }
+      target = {
+        type: 'stones', id: uid(), origin: rp(e.w), rot: 0,
+        bond: { ...blk.bond, joint: Math.max(blk.bond.joint ?? 0.003, SCATTER_JOINT) }, bondName: blk.name, cells: [],
+      };
+      this.layer.items.push(target);
+      this.created = true;
+    }
+    this.target = target;
+    this.visited = new Set();
+    this.seed = Math.floor(Math.random() * 100000);
+    this.last = e.w;
+    this.cur = e.s;
+    this.dab(e.w);
+  }
+
+  dab(p) {
+    const st = this.app.state;
+    if (brushStones(this.target, p, this.brushR(), st.scatterDensity ?? 0.6, this.seed, this.visited, !!st.scatterErase)) this.app.store.touch();
+  }
+
+  move(e) {
+    if (!this.scattering) return super.move(e);
+    this.cur = e.s;
+    if (!this.target) { this.app.requestRender(); return; }
+    const step = this.brushR() * 0.3, d = dist(this.last, e.w);
+    // tussenpunten, zodat een snelle streek geen gaten geeft (nieuwe cellen per stap)
+    for (let t = step; t < d; t += step) {
+      this.visited = new Set();
+      this.dab([this.last[0] + (e.w[0] - this.last[0]) * (t / d), this.last[1] + (e.w[1] - this.last[1]) * (t / d)]);
+    }
+    if (d >= step) { this.visited = new Set(); this.dab(e.w); this.last = e.w; }
+    this.app.requestRender();
+  }
+
+  up() {
+    if (!this.scattering) return super.up();
+    if (!this.target) return;
+    if (this.created && !this.target.cells.length) this.layer.items.splice(this.layer.items.indexOf(this.target), 1);
+    const id = this.target.cells.length ? this.target.id : null;
+    this.target = null;
+    this.app.store.commit('strooien');
+    if (id && this.created) this.app.toast('Stenen gestrooid. Strooi verder om bij te vullen, of zet Weghalen aan om stenen weg te halen.', 3500);
+  }
+
+  hover(e) {
+    if (!this.scattering) return super.hover?.(e);
+    this.cur = e.s;
+    this.app.requestRender();
+  }
+
+  cancel() {
+    if (this.target) { this.target = null; this.app.store.cancel(); }
+    return super.cancel();
+  }
+
+  drawScreen(ctx) {
+    if (!this.scattering) return super.drawScreen(ctx);
+    if (!this.cur) return;
+    ctx.save();
+    const rr = this.brushR() * this.app.cam.zoom;
+    ctx.strokeStyle = this.app.state.scatterErase ? 'rgba(180, 40, 40, 0.75)' : 'rgba(29, 43, 54, 0.6)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(this.app.state.scatterErase ? [5, 4] : []);
+    ctx.beginPath();
+    ctx.arc(this.cur[0], this.cur[1], rr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 
   vakAt(w, res) {

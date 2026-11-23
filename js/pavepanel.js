@@ -75,6 +75,13 @@ export class PavePanel {
     for (const l of app.store.doc.layers) {
       if (!l.visible) continue;
       for (const it of l.items) {
+        if (it.type === 'stones') {
+          const key = (it.bondName || describeBond(it.bond)) + ' (gestrooid)';
+          const r = rows.get(key) || { area: 0, n: 0, vakken: [], bond: it.bond, loose: true };
+          r.n += it.cells.length;
+          rows.set(key, r);
+          continue;
+        }
         if (it.type !== 'shape' || !it.bond || it.hatch !== 'bond') continue;
         const a = paveArea(it);
         const key = it.bondName || describeBond(it.bond);
@@ -92,7 +99,7 @@ export class PavePanel {
       </div>
       <section>
         <h3>Overzicht <small>${rows.size ? `totaal ${m2(total)}` : ''}</small></h3>
-        ${rows.size ? `<ul class="sk">${[...rows.entries()].map(([k, r]) => `<li><span>${esc(k)}${r.vakken.length ? `<small> · ${esc(r.vakken.join(', '))}</small>` : ''}</span><b>${m2(r.area)}</b><small>${materialAmount(r.bond, r.area, r.n)}</small></li>`).join('')}</ul>` : ''}
+        ${rows.size ? `<ul class="sk">${[...rows.entries()].map(([k, r]) => `<li><span>${esc(k)}${r.vakken.length ? `<small> · ${esc(r.vakken.join(', '))}</small>` : ''}</span><b>${r.loose ? '' : m2(r.area)}</b><small>${materialAmount(r.bond, r.area, r.n)}</small></li>`).join('')}</ul>` : ''}
         <p class="hint">${rows.size ? 'Aantal stenen zonder snijverlies; reken 5–10% extra.' : 'Nog geen verhardingsvakken. Kies hieronder een bouwsteen en teken een vak met het gereedschap Verharden.'}</p>
       </section>
       <section>

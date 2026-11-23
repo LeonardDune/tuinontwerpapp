@@ -328,6 +328,8 @@ export const BOND_PRESETS = {
   'n-grasvoeg': B('Tegels 60×60 met grasvoeg', 'stapel', 't60', 'grijs', 'glad', { group: 'Natuurlijk', bond: { joint: 0.05, jointColor: '#7fa35a', jointFill: 'gras' } }),
   'n-splitvoeg': B('Tegels 60×30 met splitvoeg', 'halfsteens', 't6030', 'antraciet', 'structuur', { group: 'Natuurlijk', bond: { joint: 0.02, jointColor: '#a9a9a4', jointFill: 'split' } }),
   'n-tegels-in-gras': B('Tegels 60×40 in gras (stapstenen)', 'halfsteens', 't6040', 'beige', 'structuur', { group: 'Natuurlijk', bond: { joint: 0.2, jointColor: '#7fa35a', jointFill: 'gras' } }),
+  'n-kinderkopjes': B('Kinderkopjes 14×14 grijs, met grindvoeg (ook om te strooien)', 'stapel', 'k14', 'grijs', 'getrommeld', { group: 'Natuurlijk', bond: { joint: 0.02, jointColor: '#d6caae', jointFill: 'grind' } }),
+  'n-kinderkopjes-antraciet': B('Kinderkopjes 10×10 antraciet (om te strooien)', 'stapel', 'k10', '#5b5e63', 'getrommeld', { group: 'Natuurlijk', bond: { joint: 0.018, jointColor: '#d6caae', jointFill: 'grind' } }),
   'n-kasseien-grind': B('Kasseien met grindvoeg', 'halfsteens', 'k1420', 'grijs', 'getrommeld', { group: 'Natuurlijk', bond: { joint: 0.03, jointColor: '#d6caae', jointFill: 'grind' } }),
 
 };

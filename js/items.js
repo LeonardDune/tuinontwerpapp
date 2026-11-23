@@ -1,5 +1,6 @@
 // Tekenen, raken, begrenzen en transformeren van items.
 
+import { drawStones, stonesOutline, hitStones } from './scatter.js';
 import { arcParams } from './arc.js';
 import { BRUSHES, strokePath, grainPattern } from './brushes.js';
 import { hatchPattern, HATCHES } from './patterns.js';
@@ -64,6 +65,7 @@ function drawItemInner(g, item, rc) {
     case 'text': return drawText(g, item, rc);
     case 'image': return drawImage(g, item, rc);
     case 'plant': return drawPlant(g, item, rc);
+    case 'stones': return drawStones(g, item);
   }
 }
 
@@ -772,6 +774,8 @@ export function itemOutline(item) {
       return item.kind === 'area' ? [] : [item.a, item.b];
     case 'plant':
       return plantOutline(item);
+    case 'stones':
+      return stonesOutline(item);
     case 'stencil':
     case 'image':
       return rectCorners(item.x, item.y, item.w, item.h, item.rot || 0);
@@ -823,6 +827,8 @@ export function hitItem(item, p, tol) {
     }
     case 'plant':
       return hitPlant(item, p, tol);
+    case 'stones':
+      return hitStones(item, p, tol);
     case 'dim':
       if (item.kind === 'area') return false;
       return distToSegment(p, item.a, item.b) <= tol * 1.5;
@@ -883,6 +889,13 @@ export function transformItem(item, m, s, r) {
       item.x = c[0]; item.y = c[1];
       item.w *= s; item.h *= s;
       item.rot = (item.rot || 0) + r;
+      break;
+    }
+    case 'stones': {
+      // stenen houden hun maat; het veld schuift en draait mee
+      item.origin = tp(item.origin || [0, 0]);
+      item.rot = (item.rot || 0) + r;
+      if (item.gen?.poly) item.gen.poly = item.gen.poly.map(tp);
       break;
     }
     case 'plant': {
@@ -951,6 +964,10 @@ export function stretchItem(item, th, ou, ov, sx, sy) {
       if (ax === 0) { item.w *= Math.abs(sx); item.h *= Math.abs(sy); } else if (ax === 1) { item.w *= Math.abs(sy); item.h *= Math.abs(sx); } else { item.w *= avg; item.h *= avg; }
       break;
     }
+    case 'stones':
+      item.origin = map(item.origin || [0, 0]);
+      if (item.gen?.poly) item.gen.poly = item.gen.poly.map(map);
+      break;
     case 'plant': {
       const ctr = map([item.x, item.y]);
       item.x = ctr[0]; item.y = ctr[1];
@@ -1001,6 +1018,11 @@ export function mirrorItem(item, c, phi) {
       if (item.wallSide) item.wallSide = -item.wallSide;
       break;
     }
+    case 'stones':
+      item.origin = tp(item.origin || [0, 0]);
+      item.rot = 2 * phi - (item.rot || 0);
+      if (item.gen?.poly) item.gen.poly = item.gen.poly.map(tp);
+      break;
     case 'plant':
     case 'text': {
       const q = tp([item.x, item.y]);
