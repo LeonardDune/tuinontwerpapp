@@ -97,6 +97,45 @@ export class PlantPanel {
     return c;
   }
 
+  /** Stap 3: groepjes en losse planten neerzetten, in drie duidelijke keuzes. */
+  refineHtml(bed) {
+    const roles = this.doc.planting?.roles || [];
+    const st = this.app.state;
+    const inBed = new Set((bed?.planting?.mix || []).map((m) => m.role));
+    const list = [...roles.filter((r) => inBed.has(r.id)), ...roles.filter((r) => !inBed.has(r.id))];
+    const cur = roles.find((r) => r.id === st.plantRole) ? st.plantRole : list[0]?.id;
+    const placing = st.tool === 'plant' && (st.plantMode === 'groep' || st.plantMode === 'plant');
+    const n = st.plantMode === 'plant' && placing ? 1 : [3, 5, 7, 9].includes(st.groupCount) ? st.groupCount : 5;
+    return `<section class="refine">
+        <h3>Verfijnen ${bed ? `<small>${bed.name ? esc(bed.name) : 'dit vak'}</small>` : ''}</h3>
+        <p class="hint">Een plantvak is gevuld met een <b>mengsel</b> van planten. Echt mooi wordt het met <b>groepjes</b>: een paar planten van één soort bij elkaar (bijv. 5 zonnehoeden), die terugkomen in het vak. En met een <b>losse plant</b> als blikvanger, zoals een siergras of een boompje.</p>
+        <h4>1. Welke plant?</h4>
+        ${list.length ? `<div class="chips g3">${list.map((r) => `<button type="button" class="chip${r.id === cur ? ' on' : ''}" data-g3role="${r.id}" title="${esc(describeRole(r))}"><span class="sym" data-sym="${r.id}"></span> ${esc(r.label || r.code)}${inBed.has(r.id) ? '' : ' <small>(niet in dit vak)</small>'}</button>`).join('')}<button type="button" class="chip" data-g3act="pick">+ Andere plant…</button></div>` : '<p class="hint">Nog geen planten. Vul eerst een vak in stap 2, of kies <button type="button" class="link" data-g3act="pick">een plant uit de database</button>.</p>'}
+        <h4>2. Hoeveel?</h4>
+        <div class="seg g3n">${[3, 5, 7, 9].map((k) => `<button type="button" data-g3n="${k}" class="${placing && n === k ? 'on' : ''}">Groepje van ${k}</button>`).join('')}<button type="button" data-g3n="1" class="${placing && n === 1 ? 'on' : ''}">1 losse plant</button></div>
+        <h4>3. Tik in de tekening</h4>
+        <p class="hint">${placing ? (n === 1 ? 'Tik waar de plant moet komen.' : `Tik in een plantvak: daar komt een groepje van ${n}. Je ziet vooraf waar het komt; buiten een vak gebeurt niets. Liever een eigen vorm? Sleep een omtrek in het vak.`) : 'Kies hierboven een plant en hoeveel; daarna tik je in de tekening.'} Weghalen of aanpassen: selecteer het groepje en gebruik de balk, of Ongedaan maken.</p>
+        ${bed ? `<div class="row add"><button type="button" data-plan="suggest" title="De app legt zelf groepjes van de structuurplanten en accenten uit dit vak">Leg automatisch groepjes</button><button type="button" data-plan="cleargroups" title="Alle groepjes in dit vak weghalen (het mengsel blijft)">Groepjes in dit vak weghalen</button></div>` : ''}
+      </section>`;
+  }
+
+  /** Plant uit de database kiezen om als groepje of losse plant te zetten. */
+  pickForPlacing() {
+    this.openPicker({
+      title: 'Kies een plant om te zetten',
+      onPick: (pl) => {
+        const roles = this.doc.planting?.roles || [];
+        const { role, created } = roleForPlant(roles, pl);
+        if (created) this.mutate((x) => { x.roles.push(role); });
+        this.app.state.plantRole = role.id;
+        if (this.app.state.plantMode !== 'plant') this.app.state.plantMode = 'groep';
+        this.app.persistSettings();
+        if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
+        this.render();
+      },
+    });
+  }
+
   /** Huidige stap van de route (1 schetsen, 2 invullen, 3 verfijnen). */
   step() {
     const s2 = Number(this.app.state.plantStep);
@@ -115,13 +154,28 @@ export class PlantPanel {
 
   /** Plantvak waarop het overzicht betrekking heeft (geselecteerd vak of het vak van een groep). */
   scopeBed() {
+    // het geselecteerde vak (of het vak van een geselecteerde groep) …
     const sel = [...this.app.selection];
-    if (sel.length !== 1) return null;
-    const it = this.app.store.findItem(sel[0])?.item;
-    if (!it) return null;
-    if (isBed(it)) return it;
-    if (isGroup(it)) return this.app.store.findItem(it.bedId)?.item || null;
+    if (sel.length === 1) {
+      const it = this.app.store.findItem(sel[0])?.item;
+      const bed = it && (isBed(it) ? it : isGroup(it) ? this.app.store.findItem(it.bedId)?.item : null);
+      if (bed) { this.focusId = bed.id; return bed; }
+    }
+    // … anders het vak waar je mee bezig was (bijv. tijdens het leggen van groepjes), tot je 'Alle vakken' kiest
+    const f = this.focusId && this.app.store.findItem(this.focusId)?.item;
+    if (f && isBed(f)) return f;
+    this.focusId = null;
     return null;
+  }
+
+  /** Kop: over welk plantvak gaat het paneel nu? */
+  focusHtml(bed, beds) {
+    if (!bed) return beds.length ? '<section class="focus none"><p class="hint">Alle plantvakken. Tik op een vak in de tekening of in de lijst om alleen dat vak te zien.</p></section>' : '';
+    const bt = BED_TYPES[bed.btype];
+    const area = Math.abs(polygonArea(shapePolygon(bed)));
+    const n = (bed.planting?.mix || []).length;
+    const groups = this.doc.layers.flatMap((l) => l.items).filter((i) => isGroup(i) && i.bedId === bed.id).length;
+    return `<section class="focus"><i style="background:${bt ? bt.color : '#cdb9a4'}"></i><div><b>${esc(bed.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}${groups ? ` · ${groups} groepje${groups > 1 ? 's' : ''}` : ''}</small></div><button type="button" data-act="unfocus" title="Terug naar het overzicht van alle plantvakken">Alle vakken</button></section>`;
   }
 
   render() {
@@ -143,14 +197,15 @@ export class PlantPanel {
         <button class="tb" data-act="close" title="Sluiten">${icon('close')}</button>
       </div>
       <nav class="steps">${stepBtn(1, 'Schetsen')}${stepBtn(2, 'Invullen')}${stepBtn(3, 'Verfijnen')}</nav>
+      ${this.focusHtml(bed, beds)}
       <section class="step-intro">${[
         '',
         '<p><b>Schets de beplanting.</b> Teken plantvakken en geef elk vak een <b>type</b>: hoe hoog wordt het ongeveer? Welke planten erin komen, kies je in stap 2.</p>',
         '<p><b>Vul de vakken.</b> Selecteer een vak en kies planten uit de database of een kant-en-klare combinatie. Wat bij het type past, staat bovenaan.</p>',
-        '<p><b>Maak het af.</b> Leg vlekken (groepen) van structuurplanten en accenten in een vak, zet losse solitairen, en kijk hoe de tuin er het hele jaar uitziet.</p>',
+        '<p><b>Maak het af.</b> Leg groepjes en losse planten in het vak, en kijk onderaan hoe het er het hele jaar uitziet.</p>',
       ][step]}</section>
       ${step === 1 ? `<section>
-        <h3>Type voor nieuwe vakken</h3>
+        <h3>${bed ? `Type van ${esc(bed.name || 'dit vak')}` : 'Type voor nieuwe vakken'}</h3>
         <div class="btypes">${Object.entries(BED_TYPES).map(([k, v]) => `<button type="button" data-btype="${k}" class="${(this.app.state.bedType || '') === k ? 'on' : ''}" title="${esc(v.name)}${v.examples ? ` (${esc(v.examples)})` : ''}"><i style="background:${v.color}"></i>${esc(v.label)}<small>${v.range}</small></button>`).join('')}</div>
         <div class="row add">
           <button type="button" class="primary" data-tool="vak">${icon('area', 16)} Plantvak tekenen</button>
@@ -194,15 +249,7 @@ export class PlantPanel {
         <div class="proposal" hidden></div>
         <div class="combos" hidden></div>
       </section>` : `<section class="bedsec"><p class="hint">Tik op een plantvak in de tekening of in de lijst hierboven om het te vullen.</p></section>`}
-      ${step === 3 ? `<section>
-        <h3>Groepen en solitairen ${bed ? `<small>${bed.name ? esc(bed.name) : 'dit vak'}</small>` : ''}</h3>
-        <div class="row add">
-          ${bed ? '<button type="button" class="primary" data-plan="suggest" title="Vlekken (drifts) van structuurplanten en accenten voorstellen in dit vak">Stel groepen voor</button>' : ''}
-          <button type="button" data-tool="groep" title="Zelf een vlek van één of een paar soorten tekenen, binnen een plantvak">Groep tekenen</button>
-          <button type="button" data-tool="plant" title="Eén losse plant of boom zetten (mag overal)">Solitair zetten</button>
-        </div>
-        <p class="hint">${bed ? 'Groepen liggen bovenop de basis van het vak. Hun inhoud kies je in de balk als je een groep selecteert.' : 'Selecteer een plantvak om er groepen in te laten voorstellen.'}</p>
-      </section>` : ''}
+      ${step === 3 ? this.refineHtml(bed) : ''}
       <section data-in="1">
         <h3>Schets: soorten plantvak</h3>
         <div class="sketch"></div>
@@ -264,7 +311,7 @@ export class PlantPanel {
       txt.className = 'rtxt';
       const a = areas[r.id];
       const n = counts[r.id];
-      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
+      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role]?.name || "Plant"} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
       li.appendChild(txt);
       const edit = document.createElement('button');
       edit.type = 'button';
@@ -334,6 +381,7 @@ export class PlantPanel {
 
     // gebeurtenissen
     el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
+    el.querySelector('[data-act="unfocus"]')?.addEventListener('click', () => { this.focusId = null; this.app.setSelection(new Set()); this.render(); });
     for (const b of el.querySelectorAll('[data-step]')) b.addEventListener('click', () => { this.app.state.plantStep = Number(b.dataset.step); this.app.persistSettings(); this.render(); });
     for (const b of el.querySelectorAll('[data-btype]')) {
       b.addEventListener('click', () => {
@@ -352,6 +400,21 @@ export class PlantPanel {
       });
     }
     el.querySelector('[data-plan="suggest"]')?.addEventListener('click', () => this.app.planAction('suggest'));
+    el.querySelector('[data-plan="cleargroups"]')?.addEventListener('click', () => this.app.planAction('cleargroups'));
+    const place = (mode) => {
+      this.app.state.plantMode = mode;
+      this.app.persistSettings();
+      if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
+      this.render();
+      this.app.requestRender();
+    };
+    for (const b of el.querySelectorAll('[data-g3role]')) b.addEventListener('click', () => { this.app.state.plantRole = b.dataset.g3role; place(this.app.state.plantMode === 'plant' ? 'plant' : 'groep'); });
+    for (const b of el.querySelectorAll('[data-g3n]')) b.addEventListener('click', () => {
+      const n = Number(b.dataset.g3n);
+      if (n === 1) place('plant'); else { this.app.state.groupCount = n; place('groep'); }
+    });
+    el.querySelector('[data-g3act="pick"]')?.addEventListener('click', () => this.pickForPlacing());
+    for (const sp of el.querySelectorAll('[data-sym]')) { const r = (this.doc.planting?.roles || []).find((q) => q.id === sp.dataset.sym); if (r) sp.appendChild(this.symbol(r, 22)); }
     const bl = $('.bedlist', el);
     if (bl) {
       if (!beds.length) bl.innerHTML = '<li class="hint">Nog geen plantvakken. Kies een type en teken een vak.</li>';

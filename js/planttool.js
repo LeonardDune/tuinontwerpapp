@@ -6,7 +6,7 @@
 import { Tool, snapPoint, drawSnapMarker, drawBubble } from './tools.js';
 import { drawItem } from './items.js';
 import { uid, paperToWorld } from './model.js';
-import { roleDiameter, rolesMap, ROLES, isBed, shapePolygon, smoothClosed, BED_TYPES } from './planting.js';
+import { roleDiameter, rolesMap, ROLES, isBed, shapePolygon, smoothClosed, BED_TYPES, roleSpacing } from './planting.js';
 import { regionAt } from './region.js';
 import { simplify, dist, polygonArea, pointInPolygon, polygonCentroid } from './geom.js';
 import { formatArea, formatLength } from './units.js';
@@ -51,6 +51,30 @@ export function newGroup(points, kind, mix, bedId, scale, extra = {}) {
   };
 }
 
+/**
+ * Een natuurlijk gevormde vlek voor een groepje van n planten: iets uitgerekt (zoals een 'drift'), met een
+ * golvende rand, en zo groot als n planten op hun plantafstand nodig hebben.
+ */
+export function groupBlob(center, role, n, seed = 1) {
+  const s = roleSpacing(role);
+  const area = Math.max(0.05, n * s * s * 0.95);
+  let k = Math.abs(Math.round(seed)) % 2147483646 + 1;
+  const rnd = () => ((k = (k * 16807) % 2147483647) / 2147483647);
+  const ratio = n <= 3 ? 1.15 : 1.4 + rnd() * 0.4;
+  const a = Math.sqrt((area * ratio) / Math.PI), b = area / (Math.PI * a);
+  const rot = rnd() * Math.PI;
+  const ph1 = rnd() * 6.28, ph2 = rnd() * 6.28;
+  const pts = [];
+  const N = 20;
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * Math.PI * 2;
+    const wob = 1 + 0.1 * Math.sin(t * 2 + ph1) + 0.07 * Math.sin(t * 3 + ph2);
+    const x = Math.cos(t) * a * wob, y = Math.sin(t) * b * wob;
+    pts.push(rp([center[0] + x * Math.cos(rot) - y * Math.sin(rot), center[1] + x * Math.sin(rot) + y * Math.cos(rot)]));
+  }
+  return pts;
+}
+
 export class PlantTool extends Tool {
   /** Type voor de schets (bodembedekkers, laag, middel, hoog) van een nieuw plantvak. */
   btype() {
@@ -80,6 +104,7 @@ export class PlantTool extends Tool {
   }
 
   shape() {
+    if (this.mode() === 'groep') return 'vrij'; // groepjes: tikken (of zelf een omtrek slepen), geen vaste vormen
     const s = this.app.state.plantShape || 'vrij';
     if (s === 'tik' && this.mode() !== 'vak') return 'vrij';
     return s;
@@ -95,9 +120,28 @@ export class PlantTool extends Tool {
     return cur ? [{ role: cur.id, w: 100 }] : [];
   }
 
+  /** Aantal planten in een groepje. */
+  groupCount() { return [3, 5, 7, 9].includes(this.app.state.groupCount) ? this.app.state.groupCount : 5; }
+
+  /** Voorbeeld van het groepje op plek w (of null buiten een plantvak). */
+  blobAt(w) {
+    const r = this.current();
+    const bed = r && bedAt(this.app.store.doc, w);
+    if (!bed) return null;
+    return { bed, item: newGroup(groupBlob(w, r, this.groupCount(), Math.round(w[0] * 997 + w[1] * 131)), 'polygon', [{ role: r.id, w: 100 }], bed.id, this.app.store.doc.scale) };
+  }
+
+  hover(e) {
+    this.hoverW = e.w;
+    this.curS = e.s;
+    if (this.mode() === 'groep' || this.mode() === 'plant') this.app.requestRender();
+  }
+
   down(e) {
     this.layer = this.app.editableLayer();
     if (!this.layer) return;
+    this.hoverW = null;
+    this.downS = e.s;
     const mode = this.mode();
     const doc = this.app.store.doc;
     if (mode !== 'vak' && !this.roles.length) {
@@ -109,7 +153,7 @@ export class PlantTool extends Tool {
     if (mode === 'groep') {
       this.bed = bedAt(doc, e.w);
       if (!this.bed) {
-        this.app.toast(hasBeds(doc) ? 'Een groep begint binnen een plantvak.' : 'Teken eerst een plantvak; groepen komen daarbinnen. Solitairen mogen overal.');
+        this.app.toast(hasBeds(doc) ? 'Tik binnen een plantvak om daar een groepje te leggen.' : 'Teken eerst een plantvak; groepjes komen daarbinnen. Een losse plant mag overal.');
         this.layer = null;
         return;
       }
@@ -206,6 +250,14 @@ export class PlantTool extends Tool {
       }
     } else if (this.preview) {
       item = { ...this.preview, x: r4(this.preview.x), y: r4(this.preview.y) };
+    } else if (mode === 'groep' && this.pts && (this.pts.length < 4 || Math.max(...this.ptsS.map((q) => dist(q, this.downS))) < 10)) {
+      // tik: een groepje van n planten op deze plek
+      const b = this.blobAt(this.pts[0]);
+      if (b) {
+        item = b.item;
+        const r = this.current();
+        this.app.toast(`Groepje van ${this.groupCount()} × ${r.label || r.code} gelegd. Tik nog eens voor nog een groepje.`, 2500);
+      }
     } else {
       const geo = this.geometry();
       if (geo) {
@@ -217,7 +269,8 @@ export class PlantTool extends Tool {
           if (mode === 'groep') {
             const c = geo.kind === 'circle' ? geo.points[0] : polygonCentroid(poly);
             const bed = pointInPolygon(c, shapePolygon(this.bed)) ? this.bed : (bedAt(doc, c) || this.bed);
-            item = newGroup(points, geo.kind, this.mix(), bed.id, scale, extra);
+            const r = this.current();
+            item = newGroup(points, geo.kind, r ? [{ role: r.id, w: 100 }] : this.mix(), bed.id, scale, extra);
           } else {
             item = this.makeVak(points, geo.kind, scale, extra);
           }
@@ -231,6 +284,8 @@ export class PlantTool extends Tool {
       d.layers.find((l) => l.id === layerId)?.items.push(item);
     }, 'plant');
     if (item.bed || item.group) this.app.lastPlantItem = item.id;
+    // het paneel Beplanting blijft over het vak gaan waarin je werkt
+    if (this.app.plantPanel && (item.bed || item.group)) { this.app.plantPanel.focusId = item.group ? item.bedId : item.id; this.app.plantPanel.refresh(); }
   }
 
   cancel() {
@@ -248,12 +303,29 @@ export class PlantTool extends Tool {
       drawItem(g, this.preview, rc);
       return;
     }
+    if (this.mode() === 'groep' && this.hoverW && !this.pts) {
+      // voorbeeld: hier komt het groepje als je tikt
+      const b = this.blobAt(this.hoverW);
+      if (b) {
+        b.item.id = 'voorbeeld';
+        g.save();
+        g.globalAlpha *= 0.75;
+        drawItem(g, b.item, { ...rc, bedsById: { ...rc.bedsById, [b.bed.id]: b.bed }, groupsByBed: {} });
+        g.restore();
+      }
+      return;
+    }
+    if (this.mode() === 'plant' && this.hoverW && !this.preview) {
+      const r = this.current();
+      if (r) { g.save(); g.globalAlpha *= 0.6; drawItem(g, { type: 'plant', id: 'voorbeeld', role: r.id, x: this.hoverW[0], y: this.hoverW[1], d: this.app.state.plantD?.[r.id] || roleDiameter(r) }, rc); g.restore(); }
+      return;
+    }
     const geo = this.geometry();
     if (!geo) return;
     const mode = this.mode();
     const doc = this.app.store.doc;
     const tmp = mode === 'groep' && this.bed
-      ? newGroup(geo.points, geo.kind, this.mix(), this.bed.id, doc.scale)
+      ? newGroup(geo.points, geo.kind, this.current() ? [{ role: this.current().id, w: 100 }] : this.mix(), this.bed.id, doc.scale)
       : this.makeVak(geo.points, geo.kind, doc.scale, geo.rect ? { rect: true } : geo.arc ? { arc: true } : {});
     tmp.id = 'voorbeeld';
     const ctx = mode === 'groep' && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };

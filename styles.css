@@ -724,3 +724,19 @@ body.side-open .north-btn { right: 364px; }
 
 /* 3D-wandeling */
 .walk3d { position: fixed; inset: 0; z-index: 2000; background: #bcd7ea; }
+
+/* Beplanting, stap 3 (verfijnen) */
+.refine h4 { margin: 12px 0 6px; font-size: 13px; }
+.refine .chips.g3 { display: flex; flex-wrap: wrap; gap: 6px; }
+.refine .chips.g3 .chip { display: inline-flex; align-items: center; gap: 4px; }
+.refine .chips.g3 .chip small { opacity: 0.6; }
+.refine .seg.g3n { flex-wrap: wrap; }
+.refine .sym canvas { vertical-align: middle; }
+
+/* Beplanting: over welk vak gaat het paneel */
+.focus { display: flex; align-items: center; gap: 10px; background: var(--accent-soft, #e9f1e6); border-radius: 10px; padding: 8px 10px; margin: 6px 0 4px; }
+.focus.none { background: transparent; padding: 0 2px; }
+.focus > i { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.focus > div { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.focus small { opacity: 0.75; }
+.focus button { flex: none; }

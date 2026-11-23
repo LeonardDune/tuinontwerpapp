@@ -79,7 +79,6 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Groepen');
   await page.click('#optionsbar .seg button[data-m="groep"]');
-  await page.click('#optionsbar button[data-s="vrij"]');
   await page.click('#optionsbar .chip >> nth=0'); // S1
   const draw = async (pts) => {
     const [sx, sy] = S(...pts[0]);

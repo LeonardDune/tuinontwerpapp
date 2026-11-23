@@ -1577,14 +1577,14 @@ class App {
     const beds = hasBeds(doc);
     const seg = document.createElement('div');
     seg.className = 'seg';
-    seg.innerHTML = [['vak', 'Plantvak'], ['groep', 'Groep'], ['plant', 'Solitair']]
+    seg.innerHTML = [['vak', 'Plantvak'], ['groep', 'Groepje'], ['plant', 'Losse plant']]
       .map(([m, n]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${n}</button>`).join('');
     for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantMode = b.dataset.m; this.persistSettings(); this.renderOptions(); });
     wrap.appendChild(seg);
-    if (mode !== 'plant') {
+    if (mode === 'vak') {
       const shape = this.state.plantShape || 'vrij';
       const shapes = [['vrij', 'Vrij'], ['rechthoek', 'Rechthoek'], ['cirkel', 'Cirkel'], ['boog', 'Boog']];
-      if (mode === 'vak') shapes.push(['tik', 'Tik in ruimte']);
+      shapes.push(['tik', 'Tik in ruimte']);
       const seg2 = document.createElement('div');
       seg2.className = 'seg';
       const cur = shape === 'tik' && mode !== 'vak' ? 'vrij' : shape;
@@ -1619,7 +1619,39 @@ class App {
       wrap.appendChild(b);
       return wrap;
     }
-    if (roles.length) {
+    if (mode === 'groep') {
+      // hoeveel planten in het groepje
+      const segN = document.createElement('div');
+      segN.className = 'seg';
+      segN.title = 'Aantal planten in het groepje';
+      const n = [3, 5, 7, 9].includes(this.state.groupCount) ? this.state.groupCount : 5;
+      segN.innerHTML = [3, 5, 7, 9].map((k) => `<button type="button" data-n="${k}" class="${n === k ? 'on' : ''}">${k} planten</button>`).join('');
+      for (const b of segN.querySelectorAll('button')) b.addEventListener('click', () => { this.state.groupCount = Number(b.dataset.n); this.persistSettings(); this.renderOptions(); this.plantPanel.refresh(); this.requestRender(); });
+      wrap.appendChild(segN);
+    }
+    if (roles.length && mode !== 'vak') {
+      // één plant kiezen, met naam
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      const cur = roles.find((r) => r.id === this.state.plantRole) ? this.state.plantRole : roles[0].id;
+      for (const r of roles) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'chip' + (r.id === cur ? ' on' : '');
+        c.title = describeRole(r);
+        c.appendChild(this.plantPanel.symbol(r, 22));
+        c.append(` ${r.label || r.code}`);
+        c.addEventListener('click', () => { this.state.plantRole = r.id; this.persistSettings(); this.renderOptions(); this.plantPanel.refresh(); this.requestRender(); });
+        chips.appendChild(c);
+      }
+      const other = document.createElement('button');
+      other.type = 'button';
+      other.className = 'chip';
+      other.textContent = '+ Andere plant…';
+      other.addEventListener('click', () => this.plantPanel.pickForPlacing());
+      chips.appendChild(other);
+      wrap.appendChild(chips);
+    } else if (roles.length) {
       const chips = document.createElement('div');
       chips.className = 'chips';
       const cur = this.state.plantRole || roles[0].id;
@@ -1648,8 +1680,8 @@ class App {
     }
     const shape = this.state.plantShape || 'vrij';
     const hints = {
-      plant: 'Tik om de gekozen bouwsteen als solitair te plaatsen (op zijn uiteindelijke breedte). Solitairen mogen overal staan.',
-      groep: 'Teken een groep binnen een plantvak; het vak begrenst de groep. Kies de bouwsteen(en) van de groep hierboven.',
+      plant: 'Tik waar de plant moet komen (op zijn uiteindelijke breedte). Een losse plant mag overal staan, ook buiten een plantvak.',
+      groep: 'Tik in een plantvak: daar komt een groepje van deze plant (je ziet vooraf waar). Liever een eigen vorm? Sleep een omtrek in het vak.',
       vak: shape === 'tik'
         ? 'Tik in een vlak van het ontwerp (bijv. een border tussen pad en gazon): het plantvak volgt de lijnen eromheen.'
         : 'Teken de contour van een plantvak. De gekozen bouwstenen vormen de basis (matrix); groepen kun je daarna tekenen of laten voorstellen.',
@@ -2246,7 +2278,7 @@ class App {
         }
         if (isBed(it)) {
           const hasGroups = (st?.groups || 0) > 0;
-          html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw voorstellen' : 'Stel groepen voor'}</button>`;
+          html += `<button type="button" class="tgl" data-plan="suggest" title="Groepen (drifts) voorstellen voor structuur en accenten">${hasGroups ? 'Opnieuw automatisch leggen' : 'Leg automatisch groepjes'}</button>`;
           html += `<label class="pf" title="Naam van het plantvak (staat in het vak op de tekening)">Naam<input data-k="bedName" class="wide" value="${escapeHtml(it.name || '')}" placeholder="bijv. Border oost"></label>`;
           html += `<select data-k="btype" title="Type plantvak voor de schets: hoe hoog wordt het ongeveer">${[['', 'Type: nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.examples ? v.examples + ', ' : ''}${v.range})`])].map(([k, n]) => `<option value="${k}" ${(it.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
           html += `<select data-k="soil" title="Ondergrond van het plantvak">${Object.entries(SOILS).map(([k, v]) => `<option value="${k}" ${(it.soil || 'aarde') === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>`;
