@@ -54,6 +54,29 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   });
   assert(dens.nLow < dens.n0 * 0.8 && dens.nFull > dens.n0, `Dichtheid: 30% → ${dens.nLow}, 100% zonder rafelrand → ${dens.nFull} stenen`);
   assert(dens.other, 'Opnieuw geeft een ander patroon');
+  // aantikken met het selectiegereedschap: steen of grind ernaast → het steenveld; ver ervan → het grindvak
+  const pickTest = await page.evaluate(async () => {
+    const a = window.app; const { stonesList } = await import('./js/scatter.js');
+    const it = a.store.doc.layers[0].items.find((i) => i.type === 'stones');
+    const list = stonesList(it);
+    const st = list[Math.floor(list.length / 2)];
+    a.setTool('lasso'); a.setSelection(new Set());
+    const tool = a.tools.lasso;
+    const onStone = tool.pickAt(st.c)?.item.type;
+    const beside = tool.pickAt([st.c[0] + 0.09, st.c[1]])?.item.type;
+    // een plek in het grind zonder stenen in de buurt
+    let far = null;
+    for (let x = 0.2; x < 3.8 && !far; x += 0.1) for (let y = 0.2; y < 2.3; y += 0.1) if (!list.some((q) => Math.hypot(q.c[0] - x, q.c[1] - y) < 0.35)) { far = [x, y]; break; }
+    const farPick = far ? tool.pickAt(far)?.item.type : 'shape';
+    return { onStone, beside, farPick, id: it.id };
+  });
+  assert(pickTest.onStone === 'stones' && pickTest.beside === 'stones', 'aantikken van een steen (of het grind ernaast) selecteert de gestrooide stenen');
+  assert(pickTest.farPick === 'shape', 'een tik ver van de stenen selecteert het grindvak eronder');
+  const sp = await page.evaluate(async () => { const { stonesList } = await import('./js/scatter.js'); const a = window.app; const it = a.store.doc.layers[0].items.find((i) => i.type === 'stones'); return stonesList(it)[5].c; });
+  const [px, py] = await S(...sp);
+  await page.mouse.click(px, py);
+  assert(await page.evaluate(() => { const a = window.app; return [...a.selection].map((id) => a.store.findItem(id).item.type).join() === 'stones'; }), 'met de muis/vinger aantikken werkt ook');
+  assert(await page.locator('#selection-bar [data-scatter="density"]').isVisible(), 'daarna zijn Dichtheid, Rafelrand en Opnieuw aan te passen');
   await page.screenshot({ path: path.join(OUT, 'strooien-vak.png'), clip: { x: box.x, y: box.y, width: 700, height: 500 } });
 
   console.log('Penseel');

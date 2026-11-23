@@ -43,6 +43,8 @@ function hitKind(it, w, tol) {
     return null;
   }
   if (it.type === 'stroke' || it.type === 'dim') return hitItem(it, w, tol) ? 'edge' : null;
+  // gestrooide stenen: ook een tik in het grind vlak naast een steen pakt het steenveld
+  if (it.type === 'stones') return hitItem(it, w, tol + Math.max(0.05, Math.max(it.bond?.l || 0.1, it.bond?.w || 0.1) * 0.6)) ? 'inside' : null;
   return hitItem(it, w, tol) ? 'inside' : null; // stencil, afbeelding, tekst, plant
 }
 
@@ -53,6 +55,8 @@ function itemArea(it) {
     return Math.abs(polygonArea(it.points));
   }
   if (it.type === 'plant') return Math.PI * (it.d / 2) ** 2;
+  // steenveld: zo klein als één steen, zodat het altijd wint van het grind of de ondergrond eronder
+  if (it.type === 'stones') return Math.max(1e-4, (it.bond?.l || 0.1) * (it.bond?.w || 0.1));
   if (it.type === 'text') { const m = measureText(it); return Math.max(1e-4, m.w * m.h); }
   if (it.w && it.h) return Math.abs(it.w * it.h);
   return Infinity;
