@@ -25,16 +25,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Kleurenschema en bouwstenen');
   await page.click('#btn-planting');
-  assert(await page.isVisible('#plant-panel'), 'paneel Beplanting open');
-  await page.click('#plant-panel .steps [data-step="2"]'); // stap 2 Invullen: kleurenschema en bouwstenen
-  await page.evaluate(() => document.querySelectorAll('#plant-panel details').forEach((d) => { d.open = true; }));
-  await page.selectOption('#plant-panel [data-k="scheme"]', 'verwant');
-  await page.evaluate(() => document.querySelectorAll('#plant-panel details').forEach((d) => { d.open = true; }));
-  const pal = await page.locator('#plant-panel .palette i').count();
+  await page.click('#plant-menu [data-pm="garden"]');
+  assert(await page.isVisible('#garden-panel'), 'paneel Hele ontwerp open (kleurenschema en alle planten)');
+  await page.evaluate(() => document.querySelectorAll('#garden-panel details').forEach((d) => { d.open = true; }));
+  await page.selectOption('#garden-panel [data-k="scheme"]', 'verwant');
+  await page.evaluate(() => document.querySelectorAll('#garden-panel details').forEach((d) => { d.open = true; }));
+  const pal = await page.locator('#garden-panel .palette i').count();
   assert(pal >= 6, `verwant palet met ${pal} kleuren`);
 
   async function makeRole(kind, cfg) {
-    await page.click(`#plant-panel [data-add="${kind}"]`);
+    await page.click(`#garden-panel [data-add="${kind}"]`);
     await page.waitForSelector('#dlg-role[open]');
     for (const [k, v] of Object.entries(cfg.sel || {})) await page.selectOption(`#dlg-role [data-k="${k}"]`, v);
     if (cfg.swatch != null) await page.click(`#dlg-role .sw >> nth=${cfg.swatch}`);
@@ -53,10 +53,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(roles[0].bloom.join() === '7,8,9' && roles[0].form === 'aar' && roles[0].habit === 'rechtop', 'S1: hoog, rechtop, aar, bloei jul–sep');
   console.log('    kleuren:', roles.map((r) => r.code + ' ' + r.color).join(', '));
   assert(roles[2].color === '#e8822e', 'A1 heeft de eigen kleur oranje');
-  assert(await page.locator('#plant-panel .role em').count() === 1 && /A1/.test(await page.locator('#plant-panel .role:has(em)').innerText()), 'alleen A1 (oranje) gemarkeerd als buiten het schema');
+  assert(await page.locator('#garden-panel .role em').count() === 1 && /A1/.test(await page.locator('#garden-panel .role:has(em)').innerText()), 'alleen A1 (oranje) gemarkeerd als buiten het schema');
 
   console.log('Plaatsen');
-  await page.click('#plant-panel .role >> nth=0'); // S1 kiezen -> gereedschap Beplanten
+  await page.click('#garden-panel .role >> nth=0'); // S1 kiezen -> gereedschap Beplanten
   assert(await page.evaluate(() => window.app.state.tool) === 'plant', 'gereedschap Beplanten actief');
   for (const x of [360, 460, 560]) await page.mouse.click(X(x), Y(300));
   await page.click('#optionsbar .seg button[data-m="vak"]');
@@ -76,17 +76,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   console.log('Jaarrond en adviezen');
   const yr = await page.evaluate(async () => { const { yearRound } = await import('./js/planting.js'); return yearRound(window.app.store.doc).months.map((m) => Math.round(m.score * 100)); });
   assert(yr[6] > 80 && yr[0] < 30 && yr[11] > yr[0] - 1, `jul ${yr[6]}%, jan ${yr[0]}%`);
-  await page.click('#plant-panel .steps [data-step="3"]'); // stap 3 Verfijnen: het hele jaar
-  const advice = await page.locator('#plant-panel .advice').innerText();
+  const advice = await page.locator('#garden-panel .advice').innerText();
   assert(/Weinig te zien in/.test(advice) && /jan/.test(advice), 'advies: weinig te zien in de winter');
   assert(/Buiten het kleurenschema/.test(advice), 'advies: kleur buiten schema');
   await page.screenshot({ path: path.join(OUT, 'beplanting-bloei.png') });
 
   console.log('Door de maanden');
-  await page.click('#plant-panel .ymonth >> nth=6');
+  await page.click('#garden-panel .ymonth >> nth=6');
   assert(await page.evaluate(() => window.app.plantPanel.month) === 7, 'juli gekozen; tekening toont juli');
   await page.screenshot({ path: path.join(OUT, 'beplanting-juli.png') });
-  await page.click('#plant-panel .ymonth >> nth=0');
+  await page.click('#garden-panel .ymonth >> nth=0');
   assert(await page.evaluate(() => window.app.plantPanel.month) === 1, 'januari gekozen');
   await page.screenshot({ path: path.join(OUT, 'beplanting-januari.png') });
 

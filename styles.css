@@ -704,10 +704,10 @@ body.side-open .north-btn { right: 364px; }
 .bedlist .bedrow i { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
 .bedlist .bedrow b { display: block; font-size: 13px; }
 .bedlist .bedrow small { display: block; font-size: 11px; color: var(--muted); }
-#plant-panel details { border-top: 1px solid var(--line); padding-top: 4px; }
-#plant-panel details > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 6px 0; }
-#plant-panel details > summary small { font-weight: 400; color: var(--muted); }
-#plant-panel .row.next { justify-content: flex-end; padding: 8px 0 4px; }
+:is(#plant-panel, #garden-panel) details { border-top: 1px solid var(--line); padding-top: 4px; }
+:is(#plant-panel, #garden-panel) details > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 6px 0; }
+:is(#plant-panel, #garden-panel) details > summary small { font-weight: 400; color: var(--muted); }
+:is(#plant-panel, #garden-panel) .row.next { justify-content: flex-end; padding: 8px 0 4px; }
 .checks { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .checks li { display: flex; gap: 6px; align-items: baseline; }
 .checks li b { flex-shrink: 0; min-width: 74px; }
@@ -763,30 +763,42 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .shoplist .sl input[data-f=price] { min-width: 60px; text-align: right; }
 
 /* Wensvakjes (stap 3) */
-#plant-panel .rtabs { display: flex; margin: 4px 0 8px; }
-#plant-panel .rtabs button { flex: 1; }
+:is(#plant-panel, #garden-panel) .rtabs { display: flex; margin: 4px 0 8px; }
+:is(#plant-panel, #garden-panel) .rtabs button { flex: 1; }
 .wishctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wishctl select { width: auto; flex: 1 1 140px; font-size: 14px; padding: 5px 8px; }
 .wishctl .seg button { padding: 5px 9px; font-size: 13px; }
 .opt .wishctl select { flex: 0 1 auto; }
-#plant-panel .wlist { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-#plant-panel .wlist li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 14px; }
-#plant-panel .wlist li.on { border-color: #2f5d3a; background: #eef5ea; }
-#plant-panel .wlist li > b { min-width: 18px; text-align: right; }
-#plant-panel .wlist li > i { width: 14px; height: 14px; border-radius: 50%; border: 1px dashed #6b5a32; flex: none; }
-#plant-panel .wlist li span { flex: 1; min-width: 0; }
-#plant-panel .wlist li small { display: block; color: #8a6a2a; }
-#plant-panel .wlist li.done small { color: #2f6a3a; }
-#plant-panel .wcard { border: 1px solid #2f5d3a; border-radius: 12px; padding: 8px 10px; margin: 8px 0; background: #fbfdf9; }
-#plant-panel .wcard h4 { margin: 0 0 6px; }
-#plant-panel .wcard h5 { margin: 10px 0 4px; font-size: 13px; }
-#plant-panel .wcur { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-#plant-panel .wcur span:nth-child(2) { flex: 1; }
-#plant-panel .wcur small { display: block; color: #2f6a3a; }
-#plant-panel .wcands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-#plant-panel .wcands li.role { cursor: pointer; }
-#plant-panel .wcands .good { color: #2f6a3a; }
-#plant-panel .wcands i { font-style: italic; color: #66705f; font-size: 12px; }
-#plant-panel .wcands .pcolor { width: 14px; height: 14px; border-radius: 50%; flex: none; }
-#plant-panel .layers { display: flex; flex-wrap: wrap; }
-#plant-panel .layers button { font-size: 12px; padding: 4px 7px; }
+:is(#plant-panel, #garden-panel) .wlist { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+:is(#plant-panel, #garden-panel) .wlist li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 14px; }
+:is(#plant-panel, #garden-panel) .wlist li.on { border-color: #2f5d3a; background: #eef5ea; }
+:is(#plant-panel, #garden-panel) .wlist li > b { min-width: 18px; text-align: right; }
+:is(#plant-panel, #garden-panel) .wlist li > i { width: 14px; height: 14px; border-radius: 50%; border: 1px dashed #6b5a32; flex: none; }
+:is(#plant-panel, #garden-panel) .wlist li span { flex: 1; min-width: 0; }
+:is(#plant-panel, #garden-panel) .wlist li small { display: block; color: #8a6a2a; }
+:is(#plant-panel, #garden-panel) .wlist li.done small { color: #2f6a3a; }
+:is(#plant-panel, #garden-panel) .wcard { border: 1px solid #2f5d3a; border-radius: 12px; padding: 8px 10px; margin: 8px 0; background: #fbfdf9; }
+:is(#plant-panel, #garden-panel) .wcard h4 { margin: 0 0 6px; }
+:is(#plant-panel, #garden-panel) .wcard h5 { margin: 10px 0 4px; font-size: 13px; }
+:is(#plant-panel, #garden-panel) .wcur { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+:is(#plant-panel, #garden-panel) .wcur span:nth-child(2) { flex: 1; }
+:is(#plant-panel, #garden-panel) .wcur small { display: block; color: #2f6a3a; }
+:is(#plant-panel, #garden-panel) .wcands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+:is(#plant-panel, #garden-panel) .wcands li.role { cursor: pointer; }
+:is(#plant-panel, #garden-panel) .wcands .good { color: #2f6a3a; }
+:is(#plant-panel, #garden-panel) .wcands i { font-style: italic; color: #66705f; font-size: 12px; }
+:is(#plant-panel, #garden-panel) .wcands .pcolor { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+:is(#plant-panel, #garden-panel) .layers { display: flex; flex-wrap: wrap; }
+:is(#plant-panel, #garden-panel) .layers button { font-size: 12px; padding: 4px 7px; }
+
+/* Menu onder Beplanting */
+.popmenu { position: fixed; z-index: 60; background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.15); padding: 6px; display: flex; flex-direction: column; gap: 2px; width: 290px; }
+.popmenu[hidden] { display: none; }
+.popmenu button { text-align: left; border: 0; background: none; padding: 9px 12px; border-radius: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font-size: 15px; color: var(--ink); }
+.popmenu button small { color: var(--muted); font-size: 12px; }
+.popmenu button:hover, .popmenu button.on { background: var(--accent-soft, #eef5ea); }
+.ymonth.ro { cursor: default; }
+#garden-panel .panel-head h2::before { content: ''; }
+:is(#plant-panel, #garden-panel) details.refine-more > summary { font-weight: 600; }
+.plantlist .ptxt small.esv { color: #2f5d3a; }
+.plantlist .ptxt small.esv a, .shoplist a { color: #2f5d3a; }

@@ -36,8 +36,8 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.selectOption('#selection-bar select[data-k="btype"]', 'bodem');
   bed = await page.evaluate((id) => window.app.store.findItem(id).item, bed.id);
   assert(bed.btype === 'bodem', 'type gewijzigd naar bodembedekkers');
-  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.plantPanel.open(); });
-  const sk = await page.locator('#plant-panel .sketch').innerText();
+  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.gardenPanel.open(); });
+  const sk = await page.locator('#garden-panel .sketch').innerText();
   assert(/Bodembedekkers/.test(sk) && /12 m²/.test(sk), `paneel: oppervlakte per soort ("${sk.split('\n')[0]}")`);
   await page.screenshot({ path: path.join(OUT, 'plantvak-type.png') });
 

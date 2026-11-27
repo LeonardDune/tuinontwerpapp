@@ -16,6 +16,7 @@ import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } fro
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { openPlantList } from './plantlist.js';
+import { loadEsveld, importEsveld, removeEsveld, ESVELD } from './esveld.js';
 import { wishText, wishControlsHtml, bindWishControls } from './wish.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox, shareOrDownload } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
@@ -36,6 +37,7 @@ import { fitsBedType } from './plantdb.js';
 import { PavePanel, paveArea, stoneCount } from './pavepanel.js';
 import { extentsOf, toWorld } from './smartguides.js';
 import { PlantPanel } from './plantpanel.js';
+import { GardenPanel } from './gardenpanel.js';
 import {
   rolesMap, describeRole, ROLES as PLANT_ROLES, BED_TYPES, isBed, isGroup, bedStats, plantCount, suggestDrifts, isPlantStencil, ensureStencilRole,
 } from './planting.js';
@@ -143,12 +145,16 @@ class App {
     hydrateIcons();
     this.sun = new SunPanel(this);
     this.plantPanel = new PlantPanel(this);
+    this.gardenPanel = new GardenPanel(this);
     this.pavePanel = new PavePanel(this);
+    this.setupPlantMenu();
     this.setupCanvas();
     this.setupInput();
     this.setupUI();
     this.setTool(this.state.tool, true);
-    this.openInitialDoc().finally(() => { this.ready = true; }); // tests wachten hierop
+    // Esveld-catalogus (primaire leverancier) op de achtergrond laden
+    const esv = loadEsveld().then(() => { this.plantPanel.refresh(); this.gardenPanel.refresh(); }).catch((err) => console.warn('Esveld:', err.message || err));
+    Promise.allSettled([this.openInitialDoc(), esv]).finally(() => { this.ready = true; }); // tests wachten hierop
     this.registerServiceWorker();
   }
 
@@ -202,6 +208,7 @@ class App {
     $('#doc-name').value = doc.name;
     if (this.sun.active) { this.sun.render(); this.sun.onDocChange(); }
     this.plantPanel.refresh();
+    this.gardenPanel?.refresh();
     this.pavePanel.refresh();
     this.refreshAll();
     if (isNew) this.scheduleSave();
@@ -232,6 +239,7 @@ class App {
     if ($('#doc-name').value !== this.store.doc.name) $('#doc-name').value = this.store.doc.name;
     this.sun.onDocChange();
     this.plantPanel.refresh();
+    this.gardenPanel?.refresh();
     this.pavePanel.refresh();
     this.scheduleSave();
   }
@@ -3438,12 +3446,50 @@ class App {
       const v = Number(e.target.value);
       this.store.mutate((doc) => { doc.grid = v; }, 'grid');
     });
+    $('#set-esveld-import').addEventListener('click', () => $('#set-esveld-file').click());
+    $('#set-esveld-file').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        $('#set-source-info').textContent = 'Bezig met importeren…';
+        await importEsveld(file);
+        this.syncSettingsUI();
+        this.plantPanel.refresh();
+        this.gardenPanel.refresh();
+        this.toast(`Esveld-catalogus geïmporteerd: ${ESVELD.count.toLocaleString('nl-NL')} cultivars. Bewaard op dit apparaat.`, 4000);
+      } catch (err) {
+        this.syncSettingsUI();
+        this.toast('Importeren mislukt: ' + (err.message || err), 5000);
+      }
+    });
+    $('#set-esveld-remove').addEventListener('click', async () => {
+      if (!confirm('De Esveld-catalogus van dit apparaat verwijderen? Planten die al in je ontwerpen staan blijven staan.')) return;
+      await removeEsveld();
+      this.toast('Catalogus verwijderd. Herlaad de app om zonder Esveld verder te werken.', 5000);
+    });
+    $('#set-source').addEventListener('change', (e) => {
+      this.settings.plantSource = e.target.value;
+      saveSettings(this.settings);
+      this.plantPanel.refresh();
+    });
     this.syncSettingsUI();
   }
 
   syncSettingsUI() {
     for (const input of $$('[data-setting]')) input.checked = !!this.settings[input.dataset.setting];
     $('#set-grid').value = String(this.store.doc.grid || 1);
+    $('#set-source').value = this.settings.plantSource === 'alle' ? 'alle' : 'esveld';
+    $('#set-source-info').textContent = ESVELD.loaded
+      ? `Esveld: ${ESVELD.count.toLocaleString('nl-NL')} cultivars, elk met eigen hoogte, breedte en aantal per m². Prijzen van ${new Date(ESVELD.date).toLocaleDateString('nl-NL')}.`
+      : 'Nog geen Esveld-catalogus op dit apparaat. Importeer het bestand esveld.json om Esveld als plantenbron en leverancier te gebruiken.';
+    $('#set-esveld-import').textContent = ESVELD.loaded ? 'Nieuwere catalogus importeren…' : 'Esveld-catalogus importeren…';
+    $('#set-esveld-remove').hidden = !ESVELD.loaded;
+  }
+
+  /** Waar planten uit gekozen worden: 'esveld' (primaire leverancier) of null (alles). */
+  plantSource() {
+    return ESVELD.loaded && this.settings.plantSource !== 'alle' ? 'esveld' : null;
   }
 
   // --- tekeningen
@@ -3884,6 +3930,31 @@ class App {
     $('#exp-pdf').addEventListener('click', () => run('pdf'));
     $('#exp-png').addEventListener('click', () => run('png'));
     $('#exp-plantlist').addEventListener('click', () => { dlg.close(); this.openPlantList(); });
+  }
+
+  /** Menu onder Beplanting: één plantvak inrichten, het hele ontwerp, of de plantenlijst. */
+  setupPlantMenu() {
+    const btn = $('#btn-planting'), menu = $('#plant-menu');
+    const hide = () => { menu.hidden = true; };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!menu.hidden) { hide(); return; }
+      const r = btn.getBoundingClientRect();
+      menu.style.top = `${r.bottom + 6}px`;
+      menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 300, r.left))}px`;
+      for (const b of menu.querySelectorAll('[data-pm]')) b.classList.toggle('on', (b.dataset.pm === 'bed' && !this.plantPanel.el.hidden) || (b.dataset.pm === 'garden' && !this.gardenPanel.el.hidden));
+      menu.hidden = false;
+    });
+    for (const b of menu.querySelectorAll('[data-pm]')) {
+      b.addEventListener('click', () => {
+        hide();
+        const k = b.dataset.pm;
+        if (k === 'bed') { if (this.plantPanel.el.hidden) this.plantPanel.open(); else this.plantPanel.close(); }
+        else if (k === 'garden') { if (this.gardenPanel.el.hidden) this.gardenPanel.open(); else this.gardenPanel.close(); }
+        else this.openPlantList(null);
+      });
+    }
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) hide(); });
   }
 
   /** Grootte (m²) van een nieuw wensvakje als je tikt. */

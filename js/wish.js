@@ -112,6 +112,7 @@ export function wishCandidates(wish, ctx = {}) {
   const excluded = { light: 0, moisture: 0 };
   for (const p of PLANTS.values()) {
     if (plantLayer(p) !== w.layer) continue;
+    if (ctx.source === 'esveld' && !p.esv) continue;
     const hc = HEIGHT_ORDER.indexOf(heightClass(p));
     const dh = Math.abs(hc - want);
     if (dh > 1) continue;

@@ -20,13 +20,15 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     d.layers[0].items.push({ type: 'shape', id: 'B', name: 'Border', kind: 'polygon', bed: true, btype: 'middel', light: 'zon', moisture: 'normaal', points: [[0, 0], [6, 0], [6, 3], [0, 3]], color: '#3f7a2e', width: 0.03, planting: { mix: [{ role: 'r1', w: 100 }] } });
     a.openDoc(d, true); a.cam.zoom = 90; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 200; a.cameraChanged();
     a.setTool('lasso'); a.setSelection(new Set(['B']));
-    a.state.plantStep = 3; a.state.refineTab = 'wens'; a.plantPanel.open();
+    a.state.plantStep = 2; a.plantPanel.open();
   });
   const box = await page.locator('#canvas').boundingBox();
   const S = (x, y) => page.evaluate(([x, y]) => window.app.cam.toScreen([x, y]), [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);
   const panel = page.locator('#plant-panel');
 
-  assert(await panel.locator('.rtabs').isVisible() && await panel.getByText('1. Wat wil je hier?').isVisible(), 'stap 3 begint met wensvakjes: eerst wat je wilt');
+  const steps = await panel.locator('.steps button').allInnerTexts();
+  assert(/Vak/.test(steps[0]) && /Wensen/.test(steps[1]) && /Planten/.test(steps[2]), `stappen in de volgorde van de werkwijze: ${steps.join(' → ').replace(/\s+/g, ' ')}`);
+  assert(await panel.getByText('Wat wil je hier?').isVisible() && !(await panel.locator('[data-act="compose"]').count()), 'stap 2 Wensen: alleen wensen, nog geen planten kiezen');
   // wens: vaste plant, middelhoog, roze, zomer
   await panel.locator('.wnew [data-wc]').selectOption('roze');
   await panel.locator('.wnew [data-ws="zomer"]').click();
@@ -48,6 +50,9 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(ws.length === 2 && ws.every((w) => w.bed === 'B' && w.mix === 0), 'twee wensvakjes in het vak, nog zonder plant');
   assert(ws.every((w) => w.area > 0.8 && w.area < 1.25), `een tik geeft een vakje van ±1 m² (${ws.map((w) => w.area.toFixed(2)).join(', ')})`);
   await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set()); window.app.plantPanel.focusId = 'B'; window.app.plantPanel.render(); });
+  assert(await page.evaluate(() => window.app.state.plantStep) === 2 && await panel.locator('.wlist li').count() === 2, 'de vakjes staan in de lijst van stap 2');
+  await panel.locator('.steps [data-step="3"]').click();
+  assert(await panel.getByText('Basis van Border').isVisible(), 'stap 3 Planten: eerst de wensvakjes, dan de basis van het vak');
   const list = await panel.locator('.wlist li').allInnerTexts();
   assert(list.length === 2 && /Heester/.test(list[0]) && /Vaste plant/.test(list[1]) && /roze/.test(list[1]), 'de lijst volgt de piramide: eerst de heester, dan de vaste plant');
   await page.screenshot({ path: path.join(OUT, 'wensvakjes.png') });
@@ -84,7 +89,11 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(await page.evaluate(() => window.app.store.doc.layers[0].items.filter((i) => i.group && i.planting.mix.length).length === 2), 'alle vakjes hebben een plant');
 
   // lagen als overtrekpapier: alleen bomen en heesters
-  await panel.locator('[data-layer="1"]').click();
+  await page.click('#btn-planting');
+  await page.click('#plant-menu [data-pm="garden"]');
+  const gp = page.locator('#garden-panel');
+  assert(await gp.isVisible() && !(await panel.isVisible()), 'Beplanting ▸ Hele ontwerp is een apart paneel');
+  await gp.locator('[data-layer="1"]').click();
   const lay = await page.evaluate(async () => {
     const { groupLayerIndex } = await import('./js/wish.js'); const { rolesMap } = await import('./js/planting.js');
     const roles = rolesMap(window.app.store.doc);
@@ -92,8 +101,10 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   });
   assert(lay.max === 1 && lay.idx.join() === '1,2', 'Lagen "t/m heester" verbergt de vaste planten (zoals overtrekpapier)');
   await page.screenshot({ path: path.join(OUT, 'wensvakjes-lagen.png') });
-  await panel.locator('[data-layer=""]').click();
+  await gp.locator('[data-layer=""]').click();
   assert(await page.evaluate(() => window.app.plantPanel.layerMax == null), 'Alles laat weer alles zien');
+  await page.click('#btn-planting');
+  await page.click('#plant-menu [data-pm="bed"]');
 
   // plantenlijst
   await panel.locator('[data-act="plantlist"]').click();

@@ -33,6 +33,7 @@ export class PavePanel {
   open() {
     $('#layers-panel').hidden = true;
     this.app.plantPanel.close();
+    this.app.gardenPanel?.close();
     this.el.hidden = false;
     $('#btn-paving').classList.add('on');
     document.body.classList.add('side-open');

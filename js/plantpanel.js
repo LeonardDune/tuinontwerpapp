@@ -1,15 +1,18 @@
-// Paneel "Beplanting": kleurenschema, bouwstenen, jaarrond-overzicht en kleurcirkel.
+// Paneel "Plantvak" (Beplanting ▸ Plantvak inrichten): alles voor één plantvak, in drie stappen:
+// 1 Vak (type, zon, grond), 2 Wensen (wensvakjes), 3 Planten (per wensvakje, dan de basis, groepjes).
+// Wat voor het hele ontwerp geldt, staat in gardenpanel.js.
 
 import {
-  HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
-  schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, PYRAMID, plantCount, rolesMap,
+  HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, MONTHS, MONTH_NAMES,
+  schemePalette, inScheme, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
+  isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, plantCount, rolesMap,
 } from './planting.js';
 import {
   wishOrder, wishText, wishHex, wishCandidates, normalizeWish, wishControlsHtml, bindWishControls, isWish,
 } from './wish.js';
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
 import { combosFor } from './combos.js';
+import { ESVELD } from './esveld.js';
 import { drawPlant } from './plantdraw.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { checkPlanting, compose, adaptItems, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
@@ -29,7 +32,6 @@ export class PlantPanel {
     this.app = app;
     this.el = $('#plant-panel');
     this.month = null; // null = bloeikleur, anders 1..12
-    $('#btn-planting').addEventListener('click', () => (this.el.hidden ? this.open() : this.close()));
   }
 
   get doc() {
@@ -44,9 +46,9 @@ export class PlantPanel {
   open() {
     $('#layers-panel').hidden = true;
     this.app.pavePanel?.close();
+    this.app.gardenPanel?.close();
     this.el.hidden = false;
     // met een plantvak geselecteerd begin je bij het invullen
-    if (this.scopeBed() && this.step() === 1) this.app.state.plantStep = 2;
     $('#btn-planting').classList.add('on');
     document.body.classList.add('side-open');
     this.render();
@@ -54,10 +56,8 @@ export class PlantPanel {
 
   close() {
     this.el.hidden = true;
-    if (this.layerMax != null) this.setLayerMax(null);
     $('#btn-planting').classList.remove('on');
-    document.body.classList.remove('side-open');
-    if (this.month) this.setMonth(null);
+    if (this.app.gardenPanel?.el.hidden !== false) document.body.classList.remove('side-open');
   }
 
   setMonth(m) {
@@ -65,6 +65,7 @@ export class PlantPanel {
     this.app.baseDirty = true;
     this.app.requestRender();
     if (!this.el.hidden) this.render();
+    this.app.gardenPanel?.refresh();
   }
 
   /** Na elke wijziging in de tekening. */
@@ -111,10 +112,9 @@ export class PlantPanel {
     const placing = st.tool === 'plant' && (st.plantMode === 'groep' || st.plantMode === 'plant');
     const n = st.plantMode === 'plant' && placing ? 1 : [3, 5, 7, 9].includes(st.groupCount) ? st.groupCount : 5;
     return `<section class="refine">
-        <h3>Verfijnen ${bed ? `<small>${bed.name ? esc(bed.name) : 'dit vak'}</small>` : ''}</h3>
-        <p class="hint">Een plantvak is gevuld met een <b>mengsel</b> van planten. Echt mooi wordt het met <b>groepjes</b>: een paar planten van één soort bij elkaar (bijv. 5 zonnehoeden), die terugkomen in het vak. En met een <b>losse plant</b> als blikvanger, zoals een siergras of een boompje.</p>
+        <p class="hint">De basis is een <b>mengsel</b> van planten. Echt mooi wordt het met <b>groepjes</b>: een paar planten van één soort bij elkaar (bijv. 5 zonnehoeden), die terugkomen in het vak. En met een <b>losse plant</b> als blikvanger, zoals een siergras of een boompje.</p>
         <h4>1. Welke plant?</h4>
-        ${list.length ? `<div class="chips g3">${list.map((r) => `<button type="button" class="chip${r.id === cur ? ' on' : ''}" data-g3role="${r.id}" title="${esc(describeRole(r))}"><span class="sym" data-sym="${r.id}"></span> ${esc(r.label || r.code)}${inBed.has(r.id) ? '' : ' <small>(niet in dit vak)</small>'}</button>`).join('')}<button type="button" class="chip" data-g3act="pick">+ Andere plant…</button></div>` : '<p class="hint">Nog geen planten. Vul eerst een vak in stap 2, of kies <button type="button" class="link" data-g3act="pick">een plant uit de database</button>.</p>'}
+        ${list.length ? `<div class="chips g3">${list.map((r) => `<button type="button" class="chip${r.id === cur ? ' on' : ''}" data-g3role="${r.id}" title="${esc(describeRole(r))}"><span class="sym" data-sym="${r.id}"></span> ${esc(r.label || r.code)}${inBed.has(r.id) ? '' : ' <small>(niet in dit vak)</small>'}</button>`).join('')}<button type="button" class="chip" data-g3act="pick">+ Andere plant…</button></div>` : '<p class="hint">Nog geen planten. Kies eerst de basis hierboven, of kies <button type="button" class="link" data-g3act="pick">een plant uit de database</button>.</p>'}
         <h4>2. Hoeveel?</h4>
         <div class="seg g3n">${[3, 5, 7, 9].map((k) => `<button type="button" data-g3n="${k}" class="${placing && n === k ? 'on' : ''}">Groepje van ${k}</button>`).join('')}<button type="button" data-g3n="1" class="${placing && n === 1 ? 'on' : ''}">1 losse plant</button></div>
         <h4>3. Tik in de tekening</h4>
@@ -124,17 +124,6 @@ export class PlantPanel {
   }
 
   // ---------------------------------------------------------------- wensvakjes
-
-  refineTab() {
-    return this.app.state.refineTab === 'groep' ? 'groep' : 'wens';
-  }
-
-  /** Stap 3 in twee delen: wensvakjes (eerst wensen, dan planten) en groepjes/losse planten. */
-  refineTabsHtml(bed) {
-    const tab = this.refineTab();
-    return `<nav class="rtabs seg"><button type="button" data-rtab="wens" class="${tab === 'wens' ? 'on' : ''}">Wensvakjes</button><button type="button" data-rtab="groep" class="${tab === 'groep' ? 'on' : ''}">Groepjes en losse planten</button></nav>
-      ${tab === 'wens' ? this.wishHtml(bed) : this.refineHtml(bed)}`;
-  }
 
   /** Het geselecteerde wensvakje (alleen als dat het enige geselecteerde is). */
   selectedWish() {
@@ -161,7 +150,6 @@ export class PlantPanel {
   /** Paneel openen op het kiezen van een plant voor dit wensvakje. */
   openWish(id) {
     this.app.state.plantStep = 3;
-    this.app.state.refineTab = 'wens';
     this.wishId = id;
     if (this.el.hidden) this.open(); else this.render();
   }
@@ -179,27 +167,42 @@ export class PlantPanel {
     this.app.requestRender();
   }
 
-  wishHtml(bed) {
+  /** Lijst met de wensvakjes van het vak, in de volgorde van de piramide. */
+  wishListHtml(wishes, active) {
+    return `<ol class="wlist">${wishes.map((w, i) => {
+      const r = (this.doc.planting?.roles || []).find((x) => x.id === w.planting?.mix?.[0]?.role);
+      return `<li data-wid="${w.id}" class="${active?.id === w.id ? 'on' : ''} ${r ? 'done' : ''}"><b>${i + 1}</b><i style="background:${wishHex(w.wish)}"></i><span>${esc(wishText(w.wish))}<small>${r ? `✓ ${esc(r.label || r.code)}` : 'nog geen plant'}</small></span></li>`;
+    }).join('')}</ol>`;
+  }
+
+  /** Stap 2: wensvakjes tekenen, alleen met wensen (nog geen planten). */
+  wishDrawHtml(bed) {
     const st = this.app.state;
     const drawing = st.tool === 'plant' && st.plantMode === 'wens';
     const wishes = this.wishesOf(bed);
     const active = this.scopeWish(bed);
-    const open = wishes.filter((w) => !(w.planting?.mix || []).length).length;
     return `<section class="wishes">
-        <p class="hint">Teken in het vak eerst kleine <b>wensvakjes</b> (0,5–1,5 m²) met alleen wat je daar wílt: soort, hoogte, kleur en seizoen. Kies daarna per vakje een plant, <b>de grote planten eerst</b>: bomen en heesters, dan vaste planten, bollen en bodembedekkers.</p>
-        ${bed ? '' : '<p class="hint"><b>Tik eerst op een plantvak</b> in de tekening of kies er een in de lijst.</p>'}
-        <h4>1. Wat wil je hier?</h4>
+        <h3>Wat wil je hier?</h3>
         <div class="wnew">${wishControlsHtml(st.wish, { size: this.app.wishSize() })}</div>
         <div class="row add"><button type="button" class="${drawing ? 'on' : 'primary'}" data-wact="draw">${drawing ? 'Bezig: tik in het vak' : 'Wensvakjes tekenen'}</button></div>
         ${drawing ? '<p class="hint">Tik in het plantvak voor een vakje met deze wens, of sleep een eigen vorm. Verander de wens hierboven tussendoor.</p>' : ''}
-        ${bed ? `<h4>2. Kies per vakje een plant <small>${wishes.length ? `${wishes.length} vakje${wishes.length > 1 ? 's' : ''}${open ? `, nog ${open} open` : ', alles gekozen'}` : 'nog geen vakjes'}</small></h4>
-        <ol class="wlist">${wishes.map((w, i) => {
-          const r = (this.doc.planting?.roles || []).find((x) => x.id === w.planting?.mix?.[0]?.role);
-          return `<li data-wid="${w.id}" class="${active?.id === w.id ? 'on' : ''} ${r ? 'done' : ''}"><b>${i + 1}</b><i style="background:${wishHex(w.wish)}"></i><span>${esc(wishText(w.wish))}<small>${r ? `✓ ${esc(r.label || r.code)}` : 'nog kiezen'}</small></span></li>`;
-        }).join('')}</ol>
-        ${active ? this.wishCardHtml(active, wishes) : wishes.length ? '<p class="hint">Tik op een vakje in de lijst of in de tekening om er een plant voor te kiezen.</p>' : ''}` : ''}
-        <h4>Lagen <small>zoals overtrekpapier</small></h4>
-        <div class="seg layers" title="Toon alleen de lagen van de beplantingspiramide tot en met …">${[[null, 'Alles'], ...PYRAMID.slice(0, 4).map((l, i) => [i, `t/m ${l.wish.toLowerCase()}`])].map(([v, n]) => `<button type="button" data-layer="${v ?? ''}" class="${(this.layerMax ?? null) === v ? 'on' : ''}">${n}</button>`).join('')}</div>
+        <h3>Wensvakjes <small>${wishes.length ? `${wishes.length}, in de volgorde van de piramide` : 'nog geen'}</small></h3>
+        ${wishes.length ? this.wishListHtml(wishes, active) : '<p class="hint">Nog geen wensvakjes. Je mag deze stap ook overslaan en in stap 3 meteen de basis van het vak kiezen.</p>'}
+        ${active ? `<div class="wcard"><h4>Wens van vakje ${wishes.indexOf(active) + 1} aanpassen</h4><div class="wedit">${wishControlsHtml(active.wish)}</div></div>` : ''}
+      </section>`;
+  }
+
+  /** Stap 3: per wensvakje een plant kiezen, grote planten eerst. */
+  wishPickHtml(bed) {
+    const wishes = this.wishesOf(bed);
+    if (!wishes.length) return '<section class="wishes"><p class="hint">Geen wensvakjes in dit vak (die teken je in stap 2). Kies hieronder de basis voor het hele vak.</p></section>';
+    const active = this.scopeWish(bed);
+    const open = wishes.filter((w) => !(w.planting?.mix || []).length).length;
+    return `<section class="wishes">
+        <h3>Wensvakjes <small>${open ? `nog ${open} zonder plant` : 'allemaal ingevuld'}</small></h3>
+        <p class="hint">Grote planten eerst: bomen en heesters, dan vaste planten, bollen en bodembedekkers.</p>
+        ${this.wishListHtml(wishes, active)}
+        ${active ? this.wishCardHtml(active, wishes) : '<p class="hint">Tik op een vakje in de lijst of in de tekening om er een plant voor te kiezen.</p>'}
       </section>`;
   }
 
@@ -234,15 +237,17 @@ export class PlantPanel {
       this.render();
     });
     for (const li of el.querySelectorAll('[data-wid]')) li.addEventListener('click', () => this.selectWish(li.dataset.wid));
-    for (const b of el.querySelectorAll('[data-layer]')) b.addEventListener('click', () => { this.setLayerMax(b.dataset.layer === '' ? null : Number(b.dataset.layer)); this.render(); });
     const w = bed && this.scopeWish(bed);
     if (!w) return;
     const id = w.id;
     const edit = $('.wedit', el);
-    bindWishControls(edit, w.wish, (nw) => this.app.store.mutate(() => {
-      const it = this.app.store.findItem(id)?.item;
-      if (it) it.wish = nw;
-    }, 'wish'));
+    if (edit) {
+      bindWishControls(edit, w.wish, (nw) => this.app.store.mutate(() => {
+        const it = this.app.store.findItem(id)?.item;
+        if (it) it.wish = nw;
+      }, 'wish'));
+    }
+    if (!$('.wcands', el)) return;
     for (const sp of el.querySelectorAll('[data-wthumb]')) { const r = (this.doc.planting?.roles || []).find((q) => q.id === sp.dataset.wthumb); if (r) sp.appendChild(this.thumb(r, 34)); }
     el.querySelector('[data-wact="clear"]')?.addEventListener('click', () => this.app.store.mutate(() => {
       const it = this.app.store.findItem(id)?.item;
@@ -286,7 +291,7 @@ export class PlantPanel {
 
   wishCtx(bed) {
     const used = new Set((this.doc.planting?.roles || []).map((r) => r.plant).filter(Boolean));
-    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: this.ensure().scheme, used };
+    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: this.ensure().scheme, used, source: this.app.plantSource() };
   }
 
   /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
@@ -377,66 +382,62 @@ export class PlantPanel {
   }
 
   render() {
-    const p = this.ensure();
+    this.ensure();
     // een wensvakje geselecteerd: meteen naar 'plant kiezen' voor dat vakje
     const selWish = this.selectedWish();
     if (selWish && selWish.id !== this.lastSelWish) {
-      this.app.state.plantStep = 3;
-      this.app.state.refineTab = 'wens';
+      // in stap 2 pas je de wens aan; anders kies je er een plant voor
+      if (this.step() !== 2) this.app.state.plantStep = 3;
       this.wishId = selWish.id;
     }
     this.lastSelWish = selWish?.id || null;
     const bed = this.scopeBed();
-    const yr = yearRound(this.doc, bed?.id || null);
-    const counts = plantCounts(this.doc, bed?.id || null);
-    const view = (bed && this.app.state.plantViews?.[bed.id]) || this.app.state.plantView || 'planten';
-    const palette = schemePalette(p.scheme);
-    const off = p.roles.filter((r) => !inScheme(r.color, p.scheme));
-    const low = yr.total ? yr.months.filter((m) => m.score < 0.3) : [];
     const el = this.el;
-    const step = this.step();
     const beds = this.beds();
-    const stepBtn = (n, t) => `<button type="button" data-step="${n}" class="${step === n ? 'on' : ''}"><b>${n}</b> ${t}</button>`;
-    el.innerHTML = `
-      <div class="panel-head">
-        <h2>Beplanting</h2>
+    const head = `<div class="panel-head">
+        <h2>Plantvak</h2>
         <button class="tb" data-act="close" title="Sluiten">${icon('close')}</button>
-      </div>
-      <nav class="steps">${stepBtn(1, 'Schetsen')}${stepBtn(2, 'Invullen')}${stepBtn(3, 'Verfijnen')}</nav>
+      </div>`;
+    if (!bed) {
+      // zonder plantvak is er niets in te richten: kies een vak of teken er een
+      el.innerHTML = `${head}
+        <section class="step-intro"><p>Hier richt je <b>één plantvak</b> in: type, zon en grond, de planten, wensvakjes en groepjes. Kies een plantvak in de tekening of hieronder, of teken een nieuw vak.</p></section>
+        <section>
+          <h3>Kies een plantvak <small>${beds.length ? `${beds.length} in de tekening` : ''}</small></h3>
+          <ul class="bedlist"></ul>
+        </section>
+        <section>
+          <h3>Nieuw plantvak</h3>
+          <div class="btypes">${Object.entries(BED_TYPES).map(([k, v]) => `<button type="button" data-btype="${k}" class="${(this.app.state.bedType || '') === k ? 'on' : ''}" title="${esc(v.name)}${v.examples ? ` (${esc(v.examples)})` : ''}"><i style="background:${v.color}"></i>${esc(v.label)}<small>${v.range}</small></button>`).join('')}</div>
+          <div class="row add"><button type="button" class="primary" data-tool="vak">${icon('area', 16)} Plantvak tekenen</button></div>
+          <p class="hint">Kies het type (hoe hoog wordt het ongeveer?) en teken het vak. De vorm kies je onderin: vrij, rechthoek, cirkel, boog, of <b>tik in ruimte</b>.</p>
+        </section>
+        <section><p class="hint">Instellingen voor het <b>hele ontwerp</b> (weergave van alle vakken, maand, kleurenschema, alle planten, plantenlijst) staan apart: <button type="button" class="link" data-act="garden">Beplanting ▸ Hele ontwerp</button>.</p></section>`;
+      el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
+      el.querySelector('[data-act="garden"]').addEventListener('click', () => this.app.gardenPanel.open());
+      this.bindBedTypes(el, null);
+      this.bindBedList(el, beds, null);
+      return;
+    }
+    const yr = yearRound(this.doc, bed.id);
+    const view = this.app.state.plantViews?.[bed.id] || this.app.state.plantView || 'planten';
+    const low = yr.total ? yr.months.filter((m) => m.score < 0.3) : [];
+    const step = this.step();
+    const name = esc(bed.name || 'dit vak');
+    const stepBtn = (n, t) => `<button type="button" data-step="${n}" class="${step === n ? 'on' : ''}"><b>${n}</b> ${t}</button>`;
+    el.innerHTML = `${head}
       ${this.focusHtml(bed, beds)}
+      <nav class="steps">${stepBtn(1, 'Vak')}${stepBtn(2, 'Wensen')}${stepBtn(3, 'Planten')}</nav>
       <section class="step-intro">${[
         '',
-        '<p><b>Schets de beplanting.</b> Teken plantvakken en geef elk vak een <b>type</b>: hoe hoog wordt het ongeveer? Welke planten erin komen, kies je in stap 2.</p>',
-        '<p><b>Vul de vakken.</b> Selecteer een vak en kies planten uit de database of een kant-en-klare combinatie. Wat bij het type past, staat bovenaan.</p>',
-        '<p><b>Maak het af.</b> Teken <b>wensvakjes</b> en kies per vakje een plant (de grote eerst), of leg <b>groepjes</b> en losse planten. Onderaan zie je hoe het er het hele jaar uitziet.</p>',
+        `<p><b>Het vak.</b> Hoe hoog wordt ${name} ongeveer, en hoe staat het erbij: hoeveel zon, welke grond? Dat bepaalt welke planten er kunnen.</p>`,
+        `<p><b>Wensen.</b> Teken in ${name} kleine <b>wensvakjes</b> (0,5–1,5 m²) met alleen wat je daar wilt: soort, hoogte, kleur, seizoen. Nog geen planten. Geen wensen? Sla deze stap over.</p>`,
+        `<p><b>Planten.</b> Kies per wensvakje een plant, de grote eerst. Daarna de <b>basis</b>: de planten die de rest van ${name} vullen.</p>`,
       ][step]}</section>
-      ${step === 1 ? `<section>
-        <h3>${bed ? `Type van ${esc(bed.name || 'dit vak')}` : 'Type voor nieuwe vakken'}</h3>
-        <div class="btypes">${Object.entries(BED_TYPES).map(([k, v]) => `<button type="button" data-btype="${k}" class="${(this.app.state.bedType || '') === k ? 'on' : ''}" title="${esc(v.name)}${v.examples ? ` (${esc(v.examples)})` : ''}"><i style="background:${v.color}"></i>${esc(v.label)}<small>${v.range}</small></button>`).join('')}</div>
-        <div class="row add">
-          <button type="button" class="primary" data-tool="vak">${icon('area', 16)} Plantvak tekenen</button>
-        </div>
-        <p class="hint">De vorm kies je onderin: vrij, rechthoek, cirkel, boog, of <b>tik in ruimte</b> (het vak volgt de lijnen eromheen). Is er een vak geselecteerd, dan krijgt dat vak het gekozen type.</p>
-      </section>` : ''}
-      ${!bed ? `<section>
-        <h3>Plantvakken <small>${beds.length ? `${beds.length} in de tekening` : ''}</small></h3>
-        <ul class="bedlist"></ul>
-      </section>` : ''}
-      <section>
-        <div class="row">
-          <div class="seg" title="Weergave van plantvakken en groepen">
-            <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}" title="Impressie: de planten zoals ze er (in de gekozen maand) uitzien">Impressie</button>
-            <button type="button" data-view="symbolen" class="${view === 'symbolen' ? 'on' : ''}" title="Plansymbolen: technisch beplantingsplan met codes">Symbolen</button>
-            <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}" title="Groepen: vlakken per mix, met aantallen">Groepen</button>
-          </div>
-          <small class="scope">${bed ? `Weergave van <b>${bed.name ? esc(bed.name) : 'dit plantvak'}</b>` : 'Weergave: alle vakken'}</small>
-        </div>
-      </section>
-      ${step !== 2 ? '' : bed ? `<section class="bedsec">
-        <h3>Dit vak <small>${bed.name ? esc(bed.name) : ''}</small></h3>
-        <label class="row">Type
-          <select data-k="bedtype">${[['', 'nog open'], ...Object.entries(BED_TYPES).map(([k, v]) => [k, `${v.name} (${v.range})`])].map(([k, n]) => `<option value="${k}" ${(bed.btype || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
-        </label>
+      ${step === 1 ? `<section class="bedsec">
+        <h3>Type van ${name}</h3>
+        <div class="btypes">${Object.entries(BED_TYPES).map(([k, v]) => `<button type="button" data-btype="${k}" class="${(bed.btype || '') === k ? 'on' : ''}" title="${esc(v.name)}${v.examples ? ` (${esc(v.examples)})` : ''}"><i style="background:${v.color}"></i>${esc(v.label)}<small>${v.range}</small></button>`).join('')}</div>
+        <h3>Standplaats</h3>
         <label class="row">Zon
           <select data-k="bedlight">${[['', 'nog onbekend'], ...Object.entries(LIGHTS)].map(([k, n]) => `<option value="${k}" ${(bed.light || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
           <button type="button" data-act="measure" title="Meet de zonuren in dit vak met de zonnestudie (gemiddeld per dag, april t/m september)">☀ Meet</button>
@@ -445,170 +446,51 @@ export class PlantPanel {
         <label class="row">Grond
           <select data-k="bedmoist">${[['', 'nog onbekend'], ...Object.entries(MOISTURES)].map(([k, n]) => `<option value="${k}" ${(bed.moisture || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
         </label>
+        <div class="row add"><button type="button" data-tool="vak">${icon('area', 16)} Nog een plantvak tekenen</button></div>
+      </section>` : ''}
+      ${step === 2 ? this.wishDrawHtml(bed) : ''}
+      ${step === 3 ? `${this.wishPickHtml(bed)}
+      <section class="bedsec">
+        <h3>Basis van ${name}</h3>
+        <p class="hint">De planten die de rest van het vak vullen (tussen de wensvakjes), als mengsel.</p>
         <ul class="checks"></ul>
         <ul class="roles mixlist"></ul>
         <div class="row add">
-          <button type="button" class="primary" data-act="compose" title="Laat de app planten kiezen die passen bij hoogte, zon, grond en kleurenschema, met bloei door het jaar en afwisseling in vorm">Stel een beplanting samen</button>
-          <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in dit vak">+ Plant toevoegen</button>
-          <button type="button" data-act="combos" title="Vul het vak met een kant-en-klare plantcombinatie (aangepast aan dit vak)">Vul met een combinatie</button>
+          <button type="button" class="primary" data-act="compose" title="Laat de app planten kiezen die passen bij hoogte, zon, grond en kleurenschema, met bloei door het jaar en afwisseling in vorm">Stel een basis samen</button>
+          <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in de basis van dit vak">+ Plant toevoegen</button>
+          <button type="button" data-act="combos" title="Vul de basis met een kant-en-klare plantcombinatie (aangepast aan dit vak)">Combinatie</button>
         </div>
         <div class="proposal" hidden></div>
         <div class="combos" hidden></div>
-      </section>` : `<section class="bedsec"><p class="hint">Tik op een plantvak in de tekening of in de lijst hierboven om het te vullen.</p></section>`}
-      ${step === 3 ? this.refineTabsHtml(bed) : ''}
-      <section data-in="1">
-        <h3>Schets: soorten plantvak</h3>
-        <div class="sketch"></div>
       </section>
-      <details data-in="2" ${p.scheme.type !== 'vrij' ? 'open' : ''}><summary>Kleurenschema <small>${esc(SCHEMES[p.scheme.type]?.name || '')}</small></summary><section>
-        <div class="row">
-          <select data-k="scheme">${Object.entries(SCHEMES).map(([k, v]) => `<option value="${k}" ${p.scheme.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>
-          <input type="color" data-k="base" value="${p.scheme.base}" title="Basiskleur" ${['vrij', 'warm', 'koel', 'wit'].includes(p.scheme.type) ? 'hidden' : ''}>
+      <details class="refine-more" ${this.app.state.refineOpen ? 'open' : ''}><summary>Groepjes en losse planten</summary>${this.refineHtml(bed)}</details>` : ''}
+      <section>
+        <h3>Weergave van ${name}</h3>
+        <div class="seg" title="Hoe dit plantvak in de tekening staat">
+          <button type="button" data-view="planten" class="${view === 'planten' ? 'on' : ''}" title="Impressie: de planten zoals ze er uitzien">Impressie</button>
+          <button type="button" data-view="symbolen" class="${view === 'symbolen' ? 'on' : ''}" title="Plansymbolen: technisch beplantingsplan met codes">Symbolen</button>
+          <button type="button" data-view="groepen" class="${view === 'groepen' ? 'on' : ''}" title="Groepen: vlakken per mix, met aantallen">Groepen</button>
         </div>
-        <div class="palette">${palette.map((c) => `<i style="background:${c}" title="${c}"></i>`).join('')}</div>
-      </section></details>
-      <details data-in="2" ${bed ? '' : 'open'}><summary>Alle bouwstenen in deze tuin <small>${p.roles.length}</small></summary><section>
-        <ul class="roles"></ul>
-        <div class="row add">
-          <button type="button" data-act="pickrole" class="primary" title="Een bouwsteen maken van een echte plant uit de plantendatabase">+ Plant uit de database</button>
-          ${Object.entries(ROLES).map(([k, v]) => `<button type="button" data-add="${k}" title="Een eigen bouwsteen zonder soort (${v.note})">+ ${v.name}</button>`).join('')}
-        </div>
-      </section></details>
-      <section data-in="3">
-        <h3>Het hele jaar <small>${this.month ? MONTH_NAMES[this.month - 1] : 'tik een maand om de tekening zo te zien'}</small></h3>
+      </section>
+      <section>
+        <h3>${name} door het jaar</h3>
         <div class="year"></div>
-        <div class="row month-row">
-          <button type="button" data-act="prev" title="Vorige maand">‹</button>
-          <button type="button" data-act="bloom" class="${this.month ? '' : 'on'}">Bloeikleur</button>
-          <button type="button" data-act="next" title="Volgende maand">›</button>
-        </div>
-        <canvas class="wheel" width="300" height="300"></canvas>
-        <div class="advice"></div>
+        <div class="advice">${!yr.total ? '<p>Nog geen planten in dit vak.</p>' : low.length ? `<p>Weinig te zien in <b>${low.map((m) => MONTHS[m.m - 1]).join(', ')}</b>.${low.some((m) => m.m <= 3 || m.m >= 11) ? ' Denk aan wintergroen, planten met een mooi silhouet of zaaddozen, of vroege bloeiers.' : ' Voeg een plant toe die dan bloeit.'}</p>` : '<p>Het hele jaar iets te zien.</p>'}</div>
       </section>
-      <div class="row add plist"><button type="button" data-act="plantlist" title="Alle planten met aantallen, standplaats, bloei, leverancier en prijs; als PDF of voor Excel">Plantenlijst${bed ? ` van ${esc(bed.name || 'dit vak')}` : ''}</button></div>
+      <div class="row add plist"><button type="button" data-act="plantlist" title="Planten van dit vak met aantallen, standplaats, bloei, leverancier en prijs; als PDF of voor Excel">Plantenlijst van ${name}</button></div>
       ${step < 3 ? `<div class="row next"><button type="button" class="primary" data-step="${step + 1}">Verder: ${step === 1 ? '2 Invullen' : '3 Verfijnen'} ›</button></div>` : ''}`;
-    // onderdelen die alleen bij één stap horen
-    for (const sec of el.querySelectorAll('[data-in]')) if (Number(sec.dataset.in) !== step) sec.hidden = true;
 
-    // schets: oppervlakte per type plantvak
-    const sk = {};
-    let open = 0;
-    for (const l of this.doc.layers) {
-      if (!l.visible) continue;
-      for (const it of l.items) {
-        if (!isBed(it) || (bed && it.id !== bed.id)) continue;
-        const a = Math.abs(polygonArea(shapePolygon(it)));
-        if (BED_TYPES[it.btype]) sk[it.btype] = (sk[it.btype] || 0) + a; else open += a;
-      }
-    }
-    const m2 = (v) => `${v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)} m²`;
-    $('.sketch', el).innerHTML = (Object.keys(sk).length || open
-      ? `<ul class="sk">${Object.entries(BED_TYPES).filter(([k]) => sk[k]).map(([k, v]) => `<li><i style="background:${v.color}"></i>${v.name} <small>${v.range}</small><b>${m2(sk[k])}</b></li>`).join('')}${open ? `<li><i style="background:#cdb9a4"></i>Nog open<b>${m2(open)}</b></li>` : ''}</ul>`
-      : '') + '<p class="hint">Kies bij een plantvak het <b>Type</b> (beloopbaar groen, bodembedekkers, laag, middelhoog, hoog, heesters) voor de ruwe schets. Welke planten erin komen, voeg je later toe met de bouwstenen hieronder.</p>';
-
-    // bouwstenen
-    const ul = $('.roles:not(.mixlist)', el);
-    const areas = yr.areas;
-    if (!p.roles.length) ul.innerHTML = '<li class="hint">Nog geen bouwstenen. Begin met een paar structuurplanten en een vulling.</li>';
-    for (const r of p.roles) {
-      const li = document.createElement('li');
-      li.className = 'role' + (this.app.state.plantRole === r.id ? ' active' : '');
-      li.appendChild(view === 'symbolen' ? this.symbol(r, 34, this.month) : this.thumb(r, 34, this.month));
-      const txt = document.createElement('div');
-      txt.className = 'rtxt';
-      const a = areas[r.id];
-      const n = counts[r.id];
-      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role]?.name || "Plant"} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
-      li.appendChild(txt);
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.title = 'Bewerken';
-      edit.innerHTML = icon('pen', 18);
-      edit.addEventListener('click', (e) => { e.stopPropagation(); this.editRole(r.id); });
-      li.appendChild(edit);
-      li.addEventListener('click', () => {
-        this.app.state.plantRole = r.id;
-        this.app.persistSettings();
-        if (this.app.state.tool !== 'plant') this.app.setTool('plant');
-        else this.app.renderOptions();
-        this.render();
-      });
-      ul.appendChild(li);
-    }
-
-    // jaarrond-balken
-    const year = $('.year', el);
-    for (const m of yr.months) {
-      const col = document.createElement('button');
-      col.type = 'button';
-      col.className = 'ymonth' + (this.month === m.m ? ' on' : '') + (yr.total && m.score < 0.3 ? ' low' : '');
-      col.title = `${MONTH_NAMES[m.m - 1]}: ${Math.round(m.score * 100)}% interessant`;
-      const bar = document.createElement('span');
-      bar.className = 'ybar';
-      const tot = Object.values(m.colors).reduce((s, v) => s + v, 0) || 1;
-      const h = Math.round(m.score * 100);
-      bar.style.height = `${Math.max(2, h)}%`;
-      bar.innerHTML = Object.entries(m.colors).sort((a, b) => hueKey(a[0]) - hueKey(b[0]))
-        .map(([c, v]) => `<i style="background:${c};flex:${v / tot}"></i>`).join('');
-      col.appendChild(bar);
-      const lab = document.createElement('small');
-      lab.textContent = MONTHS[m.m - 1];
-      col.appendChild(lab);
-      col.addEventListener('click', () => this.setMonth(this.month === m.m ? null : m.m));
-      year.appendChild(col);
-    }
-
-    // advies
-    const adv = [];
-    if (!yr.total) adv.push('Plaats bouwstenen of plantvakken met het gereedschap Beplanten om het jaarrond-overzicht te vullen.');
-    if (low.length) {
-      const names = low.map((m) => MONTHS[m.m - 1]).join(', ');
-      const winter = low.some((m) => m.m <= 3 || m.m >= 11);
-      adv.push(`Weinig te zien in <b>${names}</b>.${winter ? ' Denk aan wintergroen, planten met een mooi silhouet of zaaddozen, of vroege bloeiers.' : ' Voeg een bouwsteen toe die dan bloeit.'}`);
-    }
-    if (off.length) adv.push(`Buiten het kleurenschema: <b>${off.map((r) => esc(r.code)).join(', ')}</b>.`);
-    const mixAdv = mixAdvice(p.roles, areas);
-    adv.push(...mixAdv);
-    $('.advice', el).innerHTML = adv.map((t) => `<p>${t}</p>`).join('');
-
-    this.drawWheel($('.wheel', el), p, areas);
-    if (bed && step === 2) this.renderBed(el, bed);
-    el.querySelector('[data-act="pickrole"]').addEventListener('click', () => this.openPicker({
-      title: 'Plant kiezen voor een nieuwe bouwsteen',
-      onPick: (pl) => {
-        const roles = this.ensure().roles;
-        const { role, created } = roleForPlant(roles, pl);
-        if (created) this.mutate((x) => { x.roles.push(role); });
-        this.app.state.plantRole = role.id;
-        this.app.persistSettings();
-        this.app.toast(created ? `Bouwsteen ${role.code}: ${pl.nl}. Kies Beplanten om hem te plaatsen, of zet hem in een vak.` : `${pl.nl} is al bouwsteen ${role.code}.`, 3500);
-        this.render();
-      },
-    }));
+    yearBars($('.year', el), yr, this.month, null);
+    this.renderBed(el, bed, step);
 
     // gebeurtenissen
     el.querySelector('[data-act="close"]').addEventListener('click', () => this.close());
     el.querySelector('[data-act="unfocus"]')?.addEventListener('click', () => { this.focusId = null; this.app.setSelection(new Set()); this.render(); });
     for (const b of el.querySelectorAll('[data-step]')) b.addEventListener('click', () => { this.app.state.plantStep = Number(b.dataset.step); this.app.persistSettings(); this.render(); });
-    for (const b of el.querySelectorAll('[data-btype]')) {
-      b.addEventListener('click', () => {
-        this.app.state.bedType = b.dataset.btype;
-        this.app.persistSettings();
-        if (bed) this.app.store.mutate(() => { bed.btype = b.dataset.btype; }, 'bedtype');
-        this.render();
-      });
-    }
-    for (const b of el.querySelectorAll('[data-tool]')) {
-      b.addEventListener('click', () => {
-        this.app.state.plantMode = b.dataset.tool;
-        this.app.persistSettings();
-        if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
-        this.app.toast({ vak: 'Teken een plantvak in de tekening (vorm kiezen onderin).', groep: 'Teken een groep binnen een plantvak.', plant: 'Tik in de tekening om een solitair te zetten; kies de plant onderin of bij de bouwstenen.' }[b.dataset.tool], 3000);
-      });
-    }
-    el.querySelector('[data-act="plantlist"]')?.addEventListener('click', () => this.app.openPlantList(bed?.id || null));
-    for (const b of el.querySelectorAll('[data-rtab]')) b.addEventListener('click', () => { this.app.state.refineTab = b.dataset.rtab; this.app.persistSettings(); this.render(); });
-    if (step === 3 && this.refineTab() === 'wens') this.bindWish(el, bed);
+    this.bindBedTypes(el, bed);
+    el.querySelector('[data-act="plantlist"]')?.addEventListener('click', () => this.app.openPlantList(bed.id));
+    el.querySelector('.refine-more')?.addEventListener('toggle', (e) => { this.app.state.refineOpen = e.target.open; this.app.persistSettings(); });
+    this.bindWish(el, bed);
     el.querySelector('[data-plan="suggest"]')?.addEventListener('click', () => this.app.planAction('suggest'));
     el.querySelector('[data-plan="cleargroups"]')?.addEventListener('click', () => this.app.planAction('cleargroups'));
     const place = (mode) => {
@@ -625,49 +507,56 @@ export class PlantPanel {
     });
     el.querySelector('[data-g3act="pick"]')?.addEventListener('click', () => this.pickForPlacing());
     for (const sp of el.querySelectorAll('[data-sym]')) { const r = (this.doc.planting?.roles || []).find((q) => q.id === sp.dataset.sym); if (r) sp.appendChild(this.symbol(r, 22)); }
-    const bl = $('.bedlist', el);
-    if (bl) {
-      if (!beds.length) bl.innerHTML = '<li class="hint">Nog geen plantvakken. Kies een type en teken een vak.</li>';
-      for (const { item: b2, area } of beds) {
-        const li = document.createElement('li');
-        li.className = 'bedrow' + (bed && bed.id === b2.id ? ' active' : '');
-        const bt = BED_TYPES[b2.btype];
-        const n = (b2.planting?.mix || []).length;
-        li.innerHTML = `<i style="background:${bt ? bt.color : '#cdb9a4'}"></i><span><b>${esc(b2.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}</small></span>`;
-        li.addEventListener('click', () => {
-          if (this.app.state.tool !== 'lasso') this.app.setTool('lasso');
-          this.app.setSelection(new Set([b2.id]));
-          this.render();
-        });
-        bl.appendChild(li);
-      }
-    }
     for (const b of el.querySelectorAll('[data-view]')) {
       b.addEventListener('click', () => {
-        // met een vak in beeld: alleen dat vak; anders alle vakken (en eigen keuzes per vak vervallen)
-        if (bed) this.app.state.plantViews = { ...(this.app.state.plantViews || {}), [bed.id]: b.dataset.view };
-        else { this.app.state.plantView = b.dataset.view; this.app.state.plantViews = {}; }
+        // alleen dit vak; de weergave van alle vakken staat onder Hele ontwerp
+        this.app.state.plantViews = { ...(this.app.state.plantViews || {}), [bed.id]: b.dataset.view };
         this.app.persistSettings();
         this.app.baseDirty = true;
         this.app.requestRender();
         this.render();
       });
     }
-    el.querySelector('[data-k="scheme"]').addEventListener('change', (e) => this.mutate((pl) => { pl.scheme.type = e.target.value; }));
-    el.querySelector('[data-k="base"]').addEventListener('change', (e) => this.mutate((pl) => { pl.scheme.base = e.target.value; }));
-    for (const b of el.querySelectorAll('[data-add]')) {
+  }
+
+  /** Typeknoppen (stap 1) en 'Plantvak tekenen'. Met een vak: het type van dat vak; zonder: voor nieuwe vakken. */
+  bindBedTypes(el, bed) {
+    for (const b of el.querySelectorAll('[data-btype]')) {
       b.addEventListener('click', () => {
-        const r = newRole(this.ensure().roles, b.dataset.add);
-        const pal = schemePalette(this.ensure().scheme);
-        r.color = pal[Math.min(pal.length - 1, this.ensure().roles.length % pal.length)];
-        this.mutate((pl) => { pl.roles.push(r); });
-        this.app.state.plantRole = r.id;
-        this.editRole(r.id);
+        this.app.state.bedType = b.dataset.btype;
+        this.app.persistSettings();
+        if (bed) this.app.store.mutate(() => { bed.btype = b.dataset.btype; }, 'bedtype');
+        this.render();
       });
     }
-    el.querySelector('[data-act="bloom"]').addEventListener('click', () => this.setMonth(null));
-    el.querySelector('[data-act="prev"]').addEventListener('click', () => this.setMonth(this.month ? ((this.month + 10) % 12) + 1 : 1));
-    el.querySelector('[data-act="next"]').addEventListener('click', () => this.setMonth(this.month ? (this.month % 12) + 1 : 1));
+    for (const b of el.querySelectorAll('[data-tool]')) {
+      b.addEventListener('click', () => {
+        this.app.state.plantMode = b.dataset.tool;
+        this.app.persistSettings();
+        if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
+        this.app.toast('Teken een plantvak in de tekening (vorm kiezen onderin).', 3000);
+      });
+    }
+  }
+
+  /** Lijst met plantvakken om er een te kiezen. */
+  bindBedList(el, beds, bed) {
+    const bl = $('.bedlist', el);
+    if (!bl) return;
+    if (!beds.length) bl.innerHTML = '<li class="hint">Nog geen plantvakken. Kies een type en teken een vak.</li>';
+    for (const { item: b2, area } of beds) {
+      const li = document.createElement('li');
+      li.className = 'bedrow' + (bed && bed.id === b2.id ? ' active' : '');
+      const bt = BED_TYPES[b2.btype];
+      const n = (b2.planting?.mix || []).length;
+      li.innerHTML = `<i style="background:${bt ? bt.color : '#cdb9a4'}"></i><span><b>${esc(b2.name || 'Plantvak')}</b><small>${bt ? esc(bt.name) : 'type nog open'} · ${area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area)} m² · ${n ? `${n} soort${n > 1 ? 'en' : ''}` : 'nog leeg'}</small></span>`;
+      li.addEventListener('click', () => {
+        if (this.app.state.tool !== 'lasso') this.app.setTool('lasso');
+        this.app.setSelection(new Set([b2.id]));
+        if (this.el.hidden) this.open(); else this.render();
+      });
+      bl.appendChild(li);
+    }
   }
 
   mutate(fn) {
@@ -733,6 +622,8 @@ export class PlantPanel {
 
   /** Het geselecteerde plantvak: type, inhoud (mix) met aandelen, plant toevoegen en combinaties. */
   renderBed(el, bed) {
+    this.bindBedConditions(el, bed);
+    if (!$('.mixlist', el)) return;
     const roles = this.ensure().roles;
     const byId = Object.fromEntries(roles.map((r) => [r.id, r]));
     const mix = bed.planting?.mix || [];
@@ -760,6 +651,10 @@ export class PlantPanel {
       }, 'mix'));
       li.appendChild(w);
       const pct = document.createElement('span'); pct.className = 'u'; pct.textContent = '%'; li.appendChild(pct);
+      const ed = document.createElement('button');
+      ed.type = 'button'; ed.title = 'Plant bewerken (kleur, bloei, blad …)'; ed.innerHTML = icon('pen', 16);
+      ed.addEventListener('click', (e) => { e.stopPropagation(); this.editRole(r.id); });
+      li.appendChild(ed);
       const del = document.createElement('button');
       del.type = 'button'; del.title = 'Uit dit vak halen'; del.innerHTML = icon('trash', 16);
       del.addEventListener('click', (e) => { e.stopPropagation(); this.app.store.mutate(() => { bed.planting.mix = bed.planting.mix.filter((x) => x.role !== m.role); }, 'mix'); });
@@ -768,17 +663,6 @@ export class PlantPanel {
     }
     const ctx = this.bedCtx(bed);
     this.fillChecks($('.checks', el), checkPlanting(mix.map((m) => ({ role: byId[m.role], w: m.w })), ctx));
-    el.querySelector('[data-k="bedtype"]').addEventListener('change', (e) => this.app.store.mutate(() => {
-      if (e.target.value) bed.btype = e.target.value; else delete bed.btype;
-    }, 'bedtype'));
-    el.querySelector('[data-k="bedlight"]').addEventListener('change', (e) => this.app.store.mutate(() => {
-      if (e.target.value) bed.light = e.target.value; else delete bed.light;
-      delete bed.sunHours;
-    }, 'bedlight'));
-    el.querySelector('[data-k="bedmoist"]').addEventListener('change', (e) => this.app.store.mutate(() => {
-      if (e.target.value) bed.moisture = e.target.value; else delete bed.moisture;
-    }, 'bedmoist'));
-    el.querySelector('[data-act="measure"]').addEventListener('click', () => this.measureSun(bed));
     el.querySelector('[data-act="compose"]').addEventListener('click', () => this.showProposal(el, bed, 1));
     el.querySelector('[data-act="addplant"]').addEventListener('click', () => this.openPicker({
       title: `Plant toevoegen aan ${bed.name ? bed.name : 'dit vak'}`,
@@ -810,9 +694,24 @@ export class PlantPanel {
     });
   }
 
+  /** Type, zon en grond van het vak (stap 1). */
+  bindBedConditions(el, bed) {
+    el.querySelector('[data-k="bedtype"]')?.addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.btype = e.target.value; else delete bed.btype;
+    }, 'bedtype'));
+    el.querySelector('[data-k="bedlight"]')?.addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.light = e.target.value; else delete bed.light;
+      delete bed.sunHours;
+    }, 'bedlight'));
+    el.querySelector('[data-k="bedmoist"]')?.addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.moisture = e.target.value; else delete bed.moisture;
+    }, 'bedmoist'));
+    el.querySelector('[data-act="measure"]')?.addEventListener('click', () => this.measureSun(bed));
+  }
+
   /** Omstandigheden van een vak voor samenstellen en controleren. */
   bedCtx(bed) {
-    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: this.ensure().scheme };
+    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: this.ensure().scheme, source: this.app.plantSource() };
   }
 
   fillChecks(ul, checks) {
@@ -940,12 +839,14 @@ export class PlantPanel {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
-    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
+    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '' };
+    const esvOn = ESVELD.loaded;
     dlg.innerHTML = `
       <form method="dialog" class="dlg wide picker">
         <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
-        <input type="search" data-f="q" placeholder="Zoek op Nederlandse of Latijnse naam" autocomplete="off">
+        <input type="search" data-f="q" placeholder="Zoek op naam of cultivar, bijv. salvia caradonna" autocomplete="off">
         <div class="filters">
+          ${esvOn ? `<select data-f="source" title="Uit welke bron"><option value="esveld" ${f.source === 'esveld' ? 'selected' : ''}>Esveld (${ESVELD.count.toLocaleString('nl-NL')} cultivars)</option><option value="" ${f.source === '' ? 'selected' : ''}>Alle planten</option><option value="eigen">Alleen de basislijst</option></select>` : ''}
           <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
           <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), f.height, 'Elke hoogte')}</select>
           <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, f.light, 'Elke standplaats')}</select>
@@ -973,7 +874,10 @@ export class PlantPanel {
         t.className = 'ptxt';
         const tags = [p.native ? 'inheems' : '', p.bees ? 'bijen' : '', p.evergreen ? 'wintergroen' : ''].filter(Boolean);
         const sun = p.light.map((l) => ({ zon: '☀', half: '◐', schaduw: '●' }[l])).join('');
-        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${p.h >= 300 ? `${Math.round(p.h / 100)} m` : `${p.h} cm`} hoog · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>`;
+        const e = p.esv;
+        const size = (cm) => (cm >= 300 ? `${String(Math.round(cm / 10) / 10).replace('.', ',')} m` : `${cm} cm`);
+        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${size(p.h)} hoog, ${size(p.w)} breed · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${e?.perM2 ? ` · ${String(e.perM2).replace('.', ',')}/m²` : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>${e ? `<small class="esv">Esveld${e.price != null ? ` · vanaf ${e.price.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}` : ''}${e.sizes.length ? ` · ${esc(e.sizes.slice(0, 3).join(', '))}` : ''}${e.hard ? ` · ${esc(e.hard)}` : ''} · <a href="${e.url}" target="_blank" rel="noopener">bekijk ↗</a></small>` : ''}`;
+        t.querySelector('a')?.addEventListener('click', (ev) => ev.stopPropagation());
         li.appendChild(t);
         const sw = document.createElement('i');
         sw.className = 'pcolor'; sw.style.background = p.bloom.length ? p.color : 'transparent';
@@ -1137,19 +1041,19 @@ export class PlantPanel {
   }
 }
 
-function bloomText(r) {
+export function bloomText(r) {
   if (!r.bloom?.length) return 'geen';
   const b = [...r.bloom].sort((a, c) => a - c);
   return b.length === 1 ? MONTHS[b[0] - 1] : `${MONTHS[b[0] - 1]}–${MONTHS[b[b.length - 1] - 1]}`;
 }
 
-function hueKey(c) {
+export function hueKey(c) {
   const [h, s] = hexToHsl(c);
   return s < 0.18 ? 999 : h;
 }
 
 /** Adviezen over afwisseling in rol, hoogte, groeivorm en bloeivorm (op oppervlak). */
-function mixAdvice(roles, areas) {
+export function mixAdvice(roles, areas) {
   const tot = roles.reduce((s, r) => s + (areas[r.id] || 0), 0);
   if (!tot) return [];
   const share = (key) => {
@@ -1170,4 +1074,26 @@ function mixAdvice(roles, areas) {
   if (Object.values(hs).filter((v) => v > 0.05).length < 2) out.push('Alles is ongeveer even hoog; varieer in hoogte voor diepte en ritme.');
   if (!out.length) out.push('Goede afwisseling in rol, hoogte, groeivorm en bloeivorm.');
   return out;
+}
+
+/** Staafjes per maand: hoeveel er te zien is en in welke kleuren. onClick(m) maakt ze aanklikbaar. */
+export function yearBars(year, yr, month, onClick) {
+  for (const m of yr.months) {
+    const col = document.createElement(onClick ? 'button' : 'div');
+    if (onClick) col.type = 'button';
+    col.className = 'ymonth' + (month === m.m ? ' on' : '') + (yr.total && m.score < 0.3 ? ' low' : '') + (onClick ? '' : ' ro');
+    col.title = `${MONTH_NAMES[m.m - 1]}: ${Math.round(m.score * 100)}% interessant`;
+    const bar = document.createElement('span');
+    bar.className = 'ybar';
+    const tot = Object.values(m.colors).reduce((s, v) => s + v, 0) || 1;
+    bar.style.height = `${Math.max(2, Math.round(m.score * 100))}%`;
+    bar.innerHTML = Object.entries(m.colors).sort((a, b) => hueKey(a[0]) - hueKey(b[0]))
+      .map(([c, v]) => `<i style="background:${c};flex:${v / tot}"></i>`).join('');
+    col.appendChild(bar);
+    const lab = document.createElement('small');
+    lab.textContent = MONTHS[m.m - 1];
+    col.appendChild(lab);
+    if (onClick) col.addEventListener('click', () => onClick(m.m));
+    year.appendChild(col);
+  }
 }

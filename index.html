@@ -93,6 +93,12 @@
   </aside>
 
   <aside id="plant-panel" class="side-panel" hidden></aside>
+  <aside id="garden-panel" class="side-panel" hidden></aside>
+  <div id="plant-menu" class="popmenu" role="menu" hidden>
+    <button type="button" data-pm="bed" role="menuitem"><b>Plantvak inrichten</b><small>type, standplaats, wensen en planten van één vak</small></button>
+    <button type="button" data-pm="garden" role="menuitem"><b>Hele ontwerp</b><small>weergave, maand, kleurenschema, alle planten</small></button>
+    <button type="button" data-pm="list" role="menuitem"><b>Plantenlijst</b><small>boodschappenlijst van de hele tuin</small></button>
+  </div>
   <aside id="pave-panel" class="side-panel" hidden></aside>
 
   <footer id="optionsbar"></footer>
@@ -228,6 +234,18 @@
         <option value="1">1 m</option><option value="2">2 m</option><option value="5">5 m</option>
       </select>
     </label>
+    <label>Plantenbron en leverancier
+      <select id="set-source">
+        <option value="esveld">Esveld (primaire leverancier)</option>
+        <option value="alle">Alle planten (ook de basislijst zonder leverancier)</option>
+      </select>
+    </label>
+    <p class="hint" id="set-source-info"></p>
+    <div class="row">
+      <button type="button" id="set-esveld-import">Esveld-catalogus importeren…</button>
+      <button type="button" id="set-esveld-remove" hidden>Verwijderen</button>
+      <input type="file" id="set-esveld-file" accept=".json,application/json" hidden>
+    </div>
     <p class="hint">Gebaren: twee vingers tikken = ongedaan maken, drie vingers tikken = opnieuw. Tik op een liniaal, driehoek of gradenboog om de hoek, maat of diameter in te stellen.</p>
     <p class="hint" id="app-version"></p>
   </form>

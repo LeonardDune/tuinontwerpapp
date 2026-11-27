@@ -32,15 +32,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Weergaven');
   await page.click('#btn-planting');
-  const views = await page.evaluate(() => [...document.querySelectorAll('#plant-panel [data-view]')].map((b) => b.dataset.view).join());
-  assert(views === 'planten,symbolen,groepen', 'paneel: Impressie, Symbolen en Groepen');
+  await page.click('#plant-menu [data-pm="garden"]');
+  const views = await page.evaluate(() => [...document.querySelectorAll('#garden-panel [data-view]')].map((b) => b.dataset.view).join());
+  assert(views === 'planten,symbolen,groepen', 'Hele ontwerp: Impressie, Symbolen en Groepen voor alle vakken');
   const imp = await sample(0, 4);
   assert(imp.tones > 120 && imp.green > 0.25, `impressie: blad in veel tinten (${imp.tones} tinten, ${Math.round(imp.green * 100)}% groen)`);
   assert(imp.blue > 0.03, `bloeiende aren in de bloeikleur te zien (${(imp.blue * 100).toFixed(1)}%)`);
-  await page.click('#plant-panel [data-view="symbolen"]');
+  await page.click('#garden-panel [data-view="symbolen"]');
   const sym = await sample(0, 4);
   assert(sym.tones < imp.tones * 0.7, `symbolen: technisch en vlakker (${sym.tones} tinten)`);
-  await page.click('#plant-panel [data-view="planten"]');
+  await page.click('#garden-panel [data-view="planten"]');
 
   console.log('Maanden');
   await page.evaluate(() => window.app.plantPanel.setMonth(1));

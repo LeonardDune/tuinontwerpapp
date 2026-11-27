@@ -86,6 +86,7 @@ export function candidates(ctx) {
   const out = [];
   for (const p of PLANTS.values()) {
     if (['boom', 'haag', 'klimmer'].includes(p.type)) continue;
+    if (ctx.source === 'esveld' && !p.esv) continue;
     if (ctx.btype === 'heesters' ? p.type !== 'heester' && p.type !== 'bol' : p.type === 'heester') continue;
     if (!fitsBedType(heightClass(p), ctx.btype, p.kind || p.type)) continue;
     if (ctx.light && !p.light.includes(ctx.light)) continue;

@@ -91,9 +91,12 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('In het paneel');
   await page.evaluate(() => { const a = window.app; a.setTool('lasso'); a.setSelection(new Set(['N'])); });
+  await page.evaluate(() => { window.app.state.plantStep = 1; });
   await page.click('#btn-planting');
+  await page.click('#plant-menu [data-pm="bed"]');
   assert(/3|4|5/.test(await page.inputValue('#plant-panel [data-k="bedlight"]').then(() => page.textContent('#plant-panel .sunh'))) && (await page.inputValue('#plant-panel [data-k="bedlight"]')) === 'half', 'standplaats en gemeten zonuren in "Dit vak"');
   await page.selectOption('#plant-panel [data-k="bedmoist"]', 'vochtig');
+  await page.click('#plant-panel .steps [data-step="3"]');
   await page.click('#plant-panel [data-act="compose"]');
   const prop = await page.evaluate(() => [...document.querySelectorAll('#plant-panel .proposal .checks li')].map((li) => li.className + ':' + li.textContent.trim()));
   assert(prop.length >= 6 && prop.filter((x) => /^(hoogte|zon|grond)/i.test(x.split(':')[1].replace(/^[✓✗?]\s*/, ''))).every((x) => x.startsWith('ok')), `voorstel met checklist (${prop.map((x) => x.split(':')[1].slice(0, 9)).join(', ')})`);

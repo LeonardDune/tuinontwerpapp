@@ -1,7 +1,7 @@
 // Opslag van tekeningen in IndexedDB (lokaal op het apparaat).
 
 const DB_NAME = 'tuinontwerp';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -13,6 +13,8 @@ function open() {
       const db = req.result;
       if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('index')) db.createObjectStore('index', { keyPath: 'id' });
+      // plantencatalogi van leveranciers (bijv. Esveld), alleen op dit apparaat
+      if (!db.objectStoreNames.contains('catalog')) db.createObjectStore('catalog', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -37,6 +39,20 @@ function pruneAssets(doc) {
   const assets = {};
   for (const id of Object.keys(doc.assets)) if (used.has(id)) assets[id] = doc.assets[id];
   return assets;
+}
+
+/** Plantencatalogus op dit apparaat bewaren (id bijv. 'esveld'). */
+export function saveCatalog(id, data) {
+  return tx('catalog', 'readwrite', (s) => s.put({ id, data, saved: Date.now() }));
+}
+
+export async function loadCatalog(id) {
+  const rec = await tx('catalog', 'readonly', (s) => s.get(id));
+  return rec ? rec.data : null;
+}
+
+export function deleteCatalog(id) {
+  return tx('catalog', 'readwrite', (s) => s.delete(id));
 }
 
 export async function saveDoc(doc, thumb) {

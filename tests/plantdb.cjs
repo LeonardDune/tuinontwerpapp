@@ -45,12 +45,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.openDoc(d, true); a.cam.zoom = 100; a.cam.rot = 0; a.cam.x = 80; a.cam.y = 120; a.cameraChanged(); a.settings.grid = false;
     a.setTool('lasso'); a.setSelection(new Set(['B']));
   });
+  await page.evaluate(() => { window.app.state.plantStep = 3; });
   await page.click('#btn-planting');
-  assert(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]'), 'paneel: blok "Dit vak" bij een geselecteerd plantvak');
+  assert(await page.isVisible('#plant-menu'), 'Beplanting opent een menu: plantvak, hele ontwerp, plantenlijst');
+  await page.click('#plant-menu [data-pm="bed"]');
+  assert(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]'), 'paneel: de basis van het geselecteerde plantvak');
   await page.click('#plant-panel [data-act="addplant"]');
   assert(await page.isVisible('#dlg-plants'), 'venster "Plant kiezen"');
   const fitOnly = await page.evaluate(() => [...document.querySelectorAll('#dlg-plants .plant')].every((li) => !li.classList.contains('unfit')));
   assert(fitOnly, 'standaard alleen planten die passen bij een laag vak');
+  if (await page.locator('#dlg-plants [data-f="source"]').count()) await page.selectOption('#dlg-plants [data-f="source"]', 'eigen'); // deze test gaat over de basislijst
   await page.fill('#dlg-plants [data-f="q"]', 'kattenkruid');
   await page.click('#dlg-plants .plant >> nth=0');
   let st = await page.evaluate(() => { const a = window.app; const bed = a.store.findItem('B').item; const roles = a.store.doc.planting.roles; return { mix: bed.planting.mix.map((m) => roles.find((r) => r.id === m.role)?.label), role: roles[0] }; });
@@ -70,8 +74,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Route in drie stappen');
   const steps = await page.evaluate(() => [...document.querySelectorAll('#plant-panel .steps [data-step]')].map((b) => b.textContent.trim()));
-  assert(steps.length === 3 && /Schetsen/.test(steps[0]) && /Invullen/.test(steps[1]) && /Verfijnen/.test(steps[2]), `stappen: ${steps.join(' → ')}`);
-  assert(await page.evaluate(() => window.app.state.plantStep) === 2, 'paneel geopend met een vak geselecteerd: stap 2 Invullen');
+  assert(steps.length === 3 && /Vak/.test(steps[0]) && /Wensen/.test(steps[1]) && /Planten/.test(steps[2]), `stappen: ${steps.join(' → ')}`);
   await page.click('#plant-panel .steps [data-step="1"]');
   assert(await page.isVisible('#plant-panel .btypes') && !(await page.isVisible('#plant-panel .bedlist')) && !(await page.isVisible('#plant-panel .bedsec [data-act="addplant"]')), 'stap 1 met een vak gekozen: het type van dat vak, geen lijst met alle vakken, geen invullen');
   await page.click('#plant-panel .btypes [data-btype="middel"]');
@@ -81,9 +84,9 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(await page.evaluate(() => window.app.state.tool === 'plant' && window.app.state.plantMode === 'vak'), '"Plantvak tekenen" kiest het juiste gereedschap');
   await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set(['B'])); });
   await page.click('#plant-panel .steps [data-step="3"]');
-  assert(await page.isVisible('#plant-panel [data-rtab="wens"]') && await page.isVisible('#plant-panel [data-wact="draw"]') && await page.isVisible('#plant-panel .year'), 'stap 3: wensvakjes en het hele jaar');
-  await page.click('#plant-panel [data-rtab="groep"]');
-  assert(await page.isVisible('#plant-panel [data-plan="suggest"]'), 'stap 3, tweede tab: groepen voorstellen en solitairen');
+  assert(await page.isVisible('#plant-panel .wishes') && await page.isVisible('#plant-panel .bedsec .mixlist') && await page.isVisible('#plant-panel .year'), 'stap 3: wensvakjes, de basis en het jaar van dit vak');
+  await page.click('#plant-panel .refine-more > summary');
+  assert(await page.isVisible('#plant-panel [data-plan="suggest"]'), 'stap 3, uitklappen: groepjes voorstellen en losse planten');
   await page.click('#plant-panel [data-plan="suggest"]');
   assert(await page.evaluate(() => window.app.store.doc.layers[0].items.some((i) => i.group && i.bedId === 'B')), 'groepen voorgesteld in het vak');
   await page.screenshot({ path: path.join(OUT, 'plantdb-stap3.png') });

@@ -127,12 +127,13 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   console.log('Weergave Groepen');
   await page.click('#btn-planting');
-  assert(/dit plantvak/.test(await page.locator('#plant-panel .scope').innerText()), 'paneel: overzicht van het geselecteerde vak');
+  await page.click('#plant-menu [data-pm="bed"]');
+  assert(/Weergave van/.test(await page.locator('#plant-panel').innerText()) && await page.isVisible('#plant-panel .focus'), 'paneel: over het geselecteerde vak');
   await page.click('#plant-panel [data-view="groepen"]');
   assert(await page.evaluate((id) => window.app.state.plantViews?.[id], leftBed.id) === 'groepen', 'weergave Groepen (voor dit vak)');
   await page.screenshot({ path: path.join(OUT, 'vakken-groepen.png') });
   await page.click('#plant-panel [data-view="planten"]');
-  await page.click('#btn-planting');
+  await page.evaluate(() => window.app.plantPanel.close());
 
   console.log('Verplaatsen en verwijderen');
   const gBefore = (await items()).filter((i) => i.group && i.bedId === leftBed.id).map((g) => g.points[0]);

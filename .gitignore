@@ -1,3 +1,6 @@
 tests/out/
 node_modules/
 .DS_Store
+# plantencatalogi van leveranciers: alleen op het eigen apparaat, niet in de repository
+data/esveld*.json
+esveld*.json

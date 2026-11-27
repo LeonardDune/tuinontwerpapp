@@ -21,7 +21,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.openDoc(d, true); a.cam.zoom = 90; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 200; a.cameraChanged();
     a.state.plantShape = 'boog'; // oude instelling die vroeger een halve cirkel gaf
     a.setTool('lasso'); a.setSelection(new Set(['V']));
-    a.state.plantStep = 3; a.state.refineTab = 'groep'; a.plantPanel.open();
+    a.state.plantStep = 3; a.state.refineOpen = true; a.plantPanel.open();
   });
   const box = await page.locator('#canvas').boundingBox();
   const S = (x, y) => page.evaluate(([x, y]) => window.app.cam.toScreen([x, y]), [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);
@@ -88,15 +88,16 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.evaluate(() => { window.app.state.plantStep = 1; window.app.plantPanel.render(); });
   assert(await page.locator('#plant-panel').getByText('Type van Voortuin').isVisible(), 'stap 1 zegt ook over welk vak het gaat');
   await page.locator('#plant-panel [data-act="unfocus"]').click();
-  assert(await page.locator('#plant-panel').getByText('Alle plantvakken').isVisible() && !(await page.evaluate(() => window.app.selection.size)) && await page.locator('#plant-panel .bedlist li').count() === 2, '"Alle vakken" gaat terug naar het overzicht, met de lijst om een vak te kiezen');
+  assert(await page.locator('#plant-panel h3', { hasText: 'Kies een plantvak' }).isVisible() && !(await page.evaluate(() => window.app.selection.size)) && await page.locator('#plant-panel .bedlist li').count() === 2, '"Alle vakken": zonder vak toont het paneel alleen de keuze van een vak');
+  assert(!(await page.locator('#plant-panel [data-k="scheme"], #plant-panel .wheel, #plant-panel [data-layer]').count()), 'geen instellingen voor het hele ontwerp in het plantvak-paneel');
   // weergave (Impressie / Symbolen / Groepen) per vak
   const views = await page.evaluate(() => {
     const a = window.app;
     a.setTool('lasso'); a.setSelection(new Set(['V'])); a.state.plantStep = 3; a.plantPanel.render();
     document.querySelector('#plant-panel [data-view="symbolen"]').click();
-    return { v: a.state.plantViews?.V, w: a.state.plantViews?.W, glob: a.state.plantView || 'planten', label: document.querySelector('#plant-panel .scope')?.textContent };
+    return { v: a.state.plantViews?.V, w: a.state.plantViews?.W, glob: a.state.plantView || 'planten', label: [...document.querySelectorAll('#plant-panel h3')].map((h) => h.textContent).join('|') };
   });
-  assert(views.v === 'symbolen' && !views.w && views.glob === 'planten' && /Weergave van/.test(views.label), 'Symbolen geldt alleen voor het gekozen vak, de andere vakken blijven een impressie');
+  assert(views.v === 'symbolen' && !views.w && views.glob === 'planten' && /Weergave van Plantvak|Weergave van dit vak/.test(views.label), 'Symbolen geldt alleen voor het gekozen vak, de andere vakken blijven een impressie');
 
   // groepjes automatisch leggen houdt de samengestelde beplanting aan
   const auto = await page.evaluate(async () => {

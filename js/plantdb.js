@@ -380,7 +380,8 @@ export function roleFromPlant(p) {
     plant: p.id,
     label: p.nl,
     height: heightClass(p),
-    d: Math.max(0.12, (p.w || 40) / 100),
+    // bij Esveld: de plantafstand volgt uit het aanbevolen aantal per m² (de planten groeien aaneen)
+    d: Math.max(0.12, (p.w || 40) / 100, p.esv?.perM2 ? Math.sqrt(1 / (0.866 * p.esv.perM2)) / 0.85 : 0),
     habit: p.habit,
     form: p.form,
     color: p.color,
@@ -421,14 +422,14 @@ export function colorFamily(hex) {
 }
 
 /**
- * Planten zoeken. f: { q, type, height (klasse), light, soil, color (familie), month, native, bees, evergreen, btype }.
+ * Planten zoeken. f: { q, type, height (klasse), light, soil, color (familie), month, native, bees, evergreen, btype, source ('esveld' | 'eigen') }.
  * Geeft de planten die passen, met wat er niet aan past (voor "past niet bij dit vak").
  */
 export function searchPlants(f = {}) {
   const q = (f.q || '').trim().toLowerCase();
   const out = [];
   for (const p of PLANTS.values()) {
-    if (q && !(`${p.nl} ${p.lat}`.toLowerCase().includes(q))) continue;
+    if (q && !q.split(/\s+/).every((w) => `${p.nl} ${p.lat}`.toLowerCase().replace(/[‘’]/g, "'").includes(w))) continue;
     if (f.type && p.type !== f.type) continue;
     if (f.height && heightClass(p) !== f.height) continue;
     if (f.light && !p.light.includes(f.light)) continue;
@@ -438,6 +439,8 @@ export function searchPlants(f = {}) {
     if (f.native && !p.native) continue;
     if (f.bees && !p.bees) continue;
     if (f.evergreen && !p.evergreen) continue;
+    if (f.source === 'esveld' && !p.esv) continue;
+    if (f.source === 'eigen' && p.src === 'esveld') continue;
     const fits = fitsBedType(heightClass(p), f.btype, p.kind || p.type);
     if (f.onlyFit && !fits) continue;
     out.push({ p, fits });

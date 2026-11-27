@@ -62,7 +62,10 @@ export function plantList(doc, bedId = null) {
     const p = r.plant ? plantById(r.plant) : null;
     const amount = Math.max(1, Math.round(n));
     const tree = roleLayer(r) === 'bomen';
-    const price = Number(r.price) > 0 ? Number(r.price) : null;
+    // Esveld is de primaire leverancier: zijn prijs (kleinste maat) geldt tot je zelf iets invult
+    const e = p?.esv || null;
+    const own = Number(r.price) > 0 ? Number(r.price) : null;
+    const price = own ?? (e?.price ?? null);
     rows.push({
       id,
       role: r,
@@ -82,8 +85,12 @@ export function plantList(doc, bedId = null) {
       perM2: tree ? null : perM2(r),
       count: amount,
       where: [...(where[id] || [])],
-      supplier: r.supplier || '',
+      supplier: r.supplier || (e ? 'Esveld' : ''),
+      ownSupplier: !!r.supplier,
       price,
+      ownPrice: own != null,
+      url: e?.url || '',
+      pot: e?.sizes?.[0] || '',
       total: price != null ? price * amount : null,
       note: [r.note, p?.native ? 'inheems' : '', p?.bees ? 'bijen en vlinders' : '', p?.evergreen ? 'wintergroen' : ''].filter(Boolean).join(', '),
     });
@@ -124,7 +131,7 @@ function fmtCm(cm) {
 /** CSV voor Excel/Numbers (puntkomma, decimale komma, UTF-8 met BOM). */
 export function plantListCsv(list) {
   const head = ['Nr', 'Nederlandse naam', 'Latijnse naam', 'Categorie', 'Standplaats', 'Grond', 'Hoogte (cm)', 'Breedte (cm)',
-    'Bloeitijd', ...MONTHS, 'Seizoenen', 'Per m²', 'Aantal', 'Waar', 'Leverancier', 'Prijs per stuk', 'Totaal', 'Bijzonderheden'];
+    'Bloeitijd', ...MONTHS, 'Seizoenen', 'Per m²', 'Aantal', 'Waar', 'Leverancier', 'Maat', 'Prijs per stuk', 'Totaal', 'Bijzonderheden', 'Link'];
   const q = (v) => {
     const s = v == null ? '' : String(v);
     return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -136,11 +143,11 @@ export function plantListCsv(list) {
       lines.push([
         r.code, r.nl, r.lat, g.layer.name, r.light.join(', '), r.soil.join(', '), r.h ?? r.hRange, r.w,
         bloomRange(r.bloom), ...MONTHS.map((_, i) => (r.bloom.includes(i + 1) ? 'x' : '')), r.seasons,
-        r.perM2 != null ? dec(r.perM2, 1) : '', r.count, r.where.join(', '), r.supplier, dec(r.price), dec(r.total), r.note,
+        r.perM2 != null ? dec(r.perM2, 1) : '', r.count, r.where.join(', '), r.supplier, r.pot, dec(r.price), dec(r.total), r.note, r.url,
       ].map(q).join(';'));
     }
   }
-  lines.push(['', 'Totaal', '', '', '', '', '', '', '', ...MONTHS.map(() => ''), '', '', list.total, '', '', '', dec(list.price), ''].map(q).join(';'));
+  lines.push(['', 'Totaal', '', '', '', '', '', '', '', ...MONTHS.map(() => ''), '', '', list.total, '', '', '', '', dec(list.price), '', ''].map(q).join(';'));
   return new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
 }
 
@@ -330,12 +337,12 @@ export function openPlantList(app, bedId = null, { share, safeFilename } = {}) {
             <td class="r">${r.perM2 != null ? num(r.perM2, 1) : '–'}</td>
             <td class="r"><b>${r.count}</b></td>
             <td><small>${esc(r.where.join(', '))}</small></td>
-            <td><input type="text" data-f="supplier" value="${esc(r.supplier)}" placeholder="bijv. kwekerij"></td>
-            <td class="r"><input type="text" inputmode="decimal" data-f="price" value="${r.price != null ? num(r.price, 2) : ''}" placeholder="€"></td>
+            <td><input type="text" data-f="supplier" value="${r.ownSupplier ? esc(r.supplier) : ''}" placeholder="${esc(r.supplier || 'bijv. kwekerij')}">${r.url ? `<small><a href="${esc(r.url)}" target="_blank" rel="noopener">bij Esveld${r.pot ? `, ${esc(r.pot)}` : ''} ↗</a></small>` : ''}</td>
+            <td class="r"><input type="text" inputmode="decimal" data-f="price" value="${r.ownPrice ? num(r.price, 2) : ''}" placeholder="${r.price != null ? num(r.price, 2) : '€'}"></td>
             <td class="r tot">${euro(r.total)}</td></tr>`).join('')}`).join('')}</tbody>
           <tfoot><tr><th colspan="7">Totaal</th><th class="r">${list.total}</th><th colspan="3"></th><th class="r gtot">${euro(list.price)}</th></tr></tfoot>
         </table></div>` : '<p class="hint">Nog geen planten in het ontwerp. Vul eerst een plantvak (stap 2 van Beplanting) of zet losse planten.</p>'}
-        <p class="hint">In de volgorde van de beplantingspiramide: grote planten eerst. Aantallen zijn geschat op het oppervlak en de plantafstand. Leverancier en prijs worden bij de plant in het ontwerp bewaard.</p>
+        <p class="hint">In de volgorde van de beplantingspiramide: grote planten eerst. Aantallen zijn geschat op het oppervlak en de plantafstand (bij Esveld-planten hun aanbevolen aantal per m²). Leverancier is standaard Esveld met hun prijs voor de kleinste maat; vul je zelf iets in, dan wordt dat bij de plant bewaard.</p>
         <footer>
           <button type="button" data-act="csv" ${list.rows.length ? '' : 'disabled'}>CSV (Excel)</button>
           <button type="button" class="primary" data-act="pdf" ${list.rows.length ? '' : 'disabled'}>PDF maken</button>
@@ -365,7 +372,7 @@ export function openPlantList(app, bedId = null, { share, safeFilename } = {}) {
         const tr = inp.closest('tr');
         if (row) {
           tr.querySelector('.tot').textContent = euro(row.total);
-          if (f === 'price') inp.value = row.price != null ? num(row.price, 2) : '';
+          if (f === 'price') { inp.value = row.ownPrice ? num(row.price, 2) : ''; inp.placeholder = row.price != null ? num(row.price, 2) : '€'; }
         }
         dlg.querySelector('.gtot').textContent = euro(l.price);
         updateSum(l);
