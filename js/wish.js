@@ -8,6 +8,7 @@
 import { PYRAMID, HEIGHTS, HEIGHT_ORDER, plantLayer, roleLayer, layerIndex, inScheme, hexToHsl } from './planting.js';
 import { PLANTS, heightClass, colorFamily } from './plantdb.js';
 import { meetsAll, plantTraits, TRAITS, FUNCTIONS } from './traits.js';
+import { lightFits, siteProblems } from './site.js';
 
 export const WISH_COLORS = {
   wit: { name: 'Wit', hex: '#f1eee4' },
@@ -149,7 +150,7 @@ export function wishCandidates(wish, ctx = {}) {
     const hc = HEIGHT_ORDER.indexOf(heightClass(p));
     const dh = Math.abs(hc - want);
     if (dh > 1) continue;
-    if (ctx.light && !p.light.includes(ctx.light)) { excluded.light++; continue; }
+    if (ctx.light && !lightFits(p.light, ctx.light)) { excluded.light++; continue; }
     if (ctx.moisture && !p.soil.includes(ctx.moisture)) { excluded.moisture++; continue; }
     let score = dh === 0 ? 3 : 1;
     const good = [], bad = [];
@@ -168,6 +169,8 @@ export function wishCandidates(wish, ctx = {}) {
     }
     // meer seizoenen is meer waard, zeker in een kleine tuin
     score += Math.max(0, ps.size - 1) * 0.3;
+    // grondsoort, zuurgraad en ligging van het vak
+    for (const why of ctx.site ? siteProblems(p, ctx.site) : []) { score -= 3; bad.push(why); }
     // rol en functie van de wens
     const tr = plantTraits(p);
     if (w.role === 'structuur') { if (tr.has('structuur')) { score += 3; good.push(tr.get('structuur')); } else { score -= 2; bad.push('geen structuurplant'); } }
@@ -218,7 +221,7 @@ export function wishControlsHtml(wish, { size = null, palette = null, schemeName
     <select data-wl title="Wat voor plant (laag van de beplantingspiramide)">${opt(PYRAMID.map((l) => [l.key, l.wish]), w.layer)}</select>
     <select data-wh title="Hoe hoog">${opt(LAYER_HEIGHTS[w.layer].map((h) => [h, `${HEIGHTS[h].name} (${HEIGHTS[h].range})`]), w.height)}</select>
     <select data-wr title="Welke rol heeft de plant hier?">${opt([['', 'Rol: geen voorkeur'], ...Object.entries(WISH_ROLES).map(([k, v]) => [k, v.name])], w.role)}</select>
-    <select data-wf title="Welke functie moet de plant hier vervullen?">${opt([['', 'Functie: geen'], ...(functions?.length ? functions.map((k) => [k, `★ ${TRAITS[k].name}`]) : []), ...FUNCTIONS.filter((k) => !functions?.includes(k)).map((k) => [k, TRAITS[k].name])], w.fn)}</select>
+    <select data-wf title="Welke eigenschap moet de plant hier hebben?">${opt([['', 'Eigenschap: geen voorkeur'], ...(functions?.length ? functions.map((k) => [k, `★ ${TRAITS[k].name}`]) : []), ...FUNCTIONS.filter((k) => !functions?.includes(k)).map((k) => [k, TRAITS[k].name])], w.fn)}</select>
     ${colors}
     <span class="seg" title="Wanneer moet het mooi zijn?">${Object.entries(SEASONS).map(([k, v]) => `<button type="button" data-ws="${k}" class="${w.seasons.includes(k) ? 'on' : ''}">${v.name}</button>`).join('')}</span>
     ${size != null ? `<span class="seg" title="Grootte van een nieuw vakje als je tikt (slepen = eigen vorm)">${WISH_SIZES.map((a) => `<button type="button" data-wsize="${a}" class="${size === a ? 'on' : ''}">${String(a).replace('.', ',')} m²</button>`).join('')}</span>` : ''}

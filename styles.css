@@ -816,3 +816,5 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .side-panel .aims .aimrow .seg button { padding: 4px 8px; font-size: 13px; }
 .side-panel .aims .fns .chips { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; }
 .side-panel .aims .fns .chip { font-size: 12px; padding: 4px 8px; }
+.side-panel canvas.elevation { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfaf6; display: block; margin-bottom: 6px; }
+.side-panel .elev .seg button { padding: 4px 8px; font-size: 13px; }

@@ -56,8 +56,24 @@ export const TRAITS = {
 
 /** Eisen die je voor een heel plantvak kunt stellen (harde filters). */
 export const REQUIREMENTS = ['eetbaar', 'klimmer', 'leiden', 'wintergroen', 'inheems', 'bijen', 'windvast', 'geur'];
-/** Functies die een plant in een vak kan vervullen. */
-export const FUNCTIONS = ['structuur', 'blikvanger', 'achtergrond', 'inkijk', 'schaduw', 'geur', 'bijen', 'vogels', 'eetbaar', 'ritselend', 'bodem', 'weef'];
+/** Eigenschappen die je bij een wens kunt vragen (wat de plant moet kunnen). */
+export const FUNCTIONS = ['structuur', 'blikvanger', 'achtergrond', 'inkijk', 'schaduw', 'geur', 'bijen', 'vogels', 'eetbaar', 'windvast', 'ritselend', 'bodem', 'weef', 'wintergroen'];
+
+/**
+ * Functies van een plantvak in de tuin (Elisabeth Scholt, 'Planten en functie'): wat het vak moet doen.
+ * traits: welke plant-eigenschappen daarvoor nodig zijn (minstens één plant met een ervan); all: alle nodig.
+ */
+export const BED_FUNCTIONS = {
+  inkijk: { name: 'Afscherming tegen inkijk', hint: 'hoge, dichte planten, liefst groenblijvend', traits: ['inkijk'] },
+  schaduw: { name: 'Schaduw bij terras of zitplek', hint: 'een boom of grote heester met een kroon', traits: ['schaduw'] },
+  decor: { name: 'Decor voor de bloeiers ervoor', hint: 'een rustige, hoge achtergrond (backdrop)', traits: ['achtergrond'] },
+  zichtlijn: { name: 'Blikvanger in een zichtlijn', hint: 'iets dat opvalt, gezien vanuit huis of terras', traits: ['blikvanger'] },
+  geurplek: { name: 'Geurplek bij de zitplek', hint: 'geurende bloemen of blad (ook tegen muggen)', traits: ['geur'] },
+  voedsel: { name: 'Voedsel oogsten', hint: 'fruit, noten, kruiden of groente', traits: ['eetbaar'] },
+  natuur: { name: 'Natuur: bijen, vlinders, vogels', hint: 'nectar en bessen', traits: ['bijen', 'vogels'] },
+  windscherm: { name: 'Windscherm', hint: 'hoog en windvast', traits: ['windvast', 'inkijk'], all: true },
+  geluid: { name: 'Tegengeluid', hint: 'ritselende grassen of bamboe tegen verkeersgeluid', traits: ['ritselend'] },
+};
 
 const genusOf = (p) => String(p.lat || '').replace(/^[×x]\s+/, '').split(/\s+/)[0];
 const speciesKey = (p) => String(p.lat || '').toLowerCase().split(/\s+/).slice(0, 2).join('-').replace(/[^a-z-]/g, '');

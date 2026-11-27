@@ -5,14 +5,10 @@ import { meetsAll } from './traits.js';
 import { PLANTS, fitsBedType, heightClass, defaultRole, colorFamily, plantById } from './plantdb.js';
 import { inScheme, ROLES } from './planting.js';
 
-export const LIGHTS = { zon: 'Zon (6 uur of meer)', half: 'Halfschaduw (3 tot 6 uur)', schaduw: 'Schaduw (minder dan 3 uur)' };
-export const MOISTURES = { droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' };
-const SEASON = [3, 4, 5, 6, 7, 8, 9, 10, 11]; // maanden waarin je bloei verwacht (maart t/m november)
+import { LIGHTS, MOISTURES, lightFromHours, lightFits, siteProblems, SOIL_TYPES, EXPOSURE } from './site.js';
 
-/** Standplaats bij een aantal zonuren per dag. */
-export function lightFromHours(h) {
-  return h >= 6 ? 'zon' : h >= 3 ? 'half' : 'schaduw';
-}
+export { LIGHTS, MOISTURES, lightFromHours };
+const SEASON = [3, 4, 5, 6, 7, 8, 9, 10, 11]; // maanden waarin je bloei verwacht (maart t/m november)
 
 /** Licht van een bouwsteen in de termen van de database (zon, half, schaduw). */
 function roleLight(r) {
@@ -44,11 +40,17 @@ export function checkPlanting(entries, ctx) {
   const highLow = items.filter((e) => !fitsBedType(e.role.height, ctx.btype, e.role.kind));
   out.push({ key: 'hoogte', label: 'Hoogte', ok: ctx.btype ? !highLow.length : null, text: !ctx.btype ? 'type vak nog open' : highLow.length ? `te hoog of te laag: ${names(highLow)}` : 'past bij het type vak' });
   // zon
-  const darkSun = ctx.light ? items.filter((e) => !roleLight(e.role).includes(ctx.light)) : [];
+  const darkSun = ctx.light ? items.filter((e) => !lightFits(roleLight(e.role), ctx.light)) : [];
   out.push({ key: 'zon', label: 'Zon', ok: ctx.light ? !darkSun.length : null, text: !ctx.light ? 'standplaats nog onbekend' : darkSun.length ? `wil ${ctx.light === 'zon' ? 'minder zon' : 'meer zon'}: ${names(darkSun)}` : `alles kan tegen ${LIGHTS[ctx.light].split(' (')[0].toLowerCase()}` });
   // grond
   const wrongSoil = ctx.moisture ? items.filter((e) => { const s = roleSoil(e.role); return s && !s.includes(ctx.moisture); }) : [];
-  out.push({ key: 'grond', label: 'Grond', ok: ctx.moisture ? !wrongSoil.length : null, text: !ctx.moisture ? 'grond nog onbekend' : wrongSoil.length ? `past niet bij ${ctx.moisture}e grond: ${names(wrongSoil)}` : `alles kan tegen ${ctx.moisture}e grond` });
+  out.push({ key: 'grond', label: 'Vocht', ok: ctx.moisture ? !wrongSoil.length : null, text: !ctx.moisture ? 'vocht nog onbekend' : wrongSoil.length ? `past niet bij ${ctx.moisture}e grond: ${names(wrongSoil)}` : `alles kan tegen ${ctx.moisture}e grond` });
+  // grondsoort, zuurgraad en ligging (alleen bij planten waarvan dat bekend is)
+  if (ctx.site && (ctx.site.soilType || ctx.site.ph || ctx.site.exposure)) {
+    const probs = items.map((e) => ({ e, why: siteProblems(e.role.plant && plantById(e.role.plant), ctx.site) })).filter((x) => x.why.length);
+    const what = [ctx.site.soilType && SOIL_TYPES[ctx.site.soilType].toLowerCase(), ctx.site.ph && `${ctx.site.ph}e grond`, ctx.site.exposure && EXPOSURE[ctx.site.exposure].toLowerCase(), ctx.site.warmWall && 'warme muur'].filter(Boolean).join(', ');
+    out.push({ key: 'plek', label: 'Plek', ok: !probs.length, text: probs.length ? probs.map((x) => `${x.e.role.label || x.e.role.code} (${x.why.join(', ')})`).join('; ') : `past bij ${what}` });
+  }
   // bloei door het jaar
   const bloom = new Set(items.flatMap((e) => e.role.bloom || []));
   const gaps = SEASON.filter((m) => !bloom.has(m));
@@ -91,8 +93,9 @@ export function candidates(ctx) {
     if (ctx.require?.length && !meetsAll(p, ctx.require)) continue;
     if (ctx.btype === 'heesters' ? p.type !== 'heester' && p.type !== 'bol' : p.type === 'heester') continue;
     if (!fitsBedType(heightClass(p), ctx.btype, p.kind || p.type)) continue;
-    if (ctx.light && !p.light.includes(ctx.light)) continue;
+    if (ctx.light && !lightFits(p.light, ctx.light)) continue;
     if (ctx.moisture && !p.soil.includes(ctx.moisture)) continue;
+    if (ctx.site && siteProblems(p, ctx.site).length) continue;
     if (ctx.scheme && ctx.scheme.type !== 'vrij' && p.bloom.length && p.form !== 'blad' && !inScheme(p.color, ctx.scheme)) continue;
     out.push(p);
   }

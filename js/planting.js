@@ -602,7 +602,7 @@ export function yearRound(doc, bedId = null) {
 
 // ------------------------------------------------------------------ groepen voorstellen
 
-function principalAngle(poly) {
+export function principalAngle(poly) {
   let cx = 0, cy = 0;
   for (const p of poly) { cx += p[0]; cy += p[1]; }
   cx /= poly.length; cy /= poly.length;

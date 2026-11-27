@@ -8,6 +8,8 @@ import {
 } from './planting.js';
 import { icon } from './icons.js';
 import { yearBars, bloomText, mixAdvice } from './plantpanel.js';
+import { gardenBalance } from './checks.js';
+import { HATCHES } from './patterns.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -162,6 +164,26 @@ export class GardenPanel {
     const off = p.roles.filter((r) => !inScheme(r.color, p.scheme));
     if (off.length && p.scheme.type !== 'vrij') adv.push(`Buiten het kleurenschema: <b>${off.map((r) => esc(r.code)).join(', ')}</b>.`);
     adv.push(...mixAdvice(p.roles, yr.areas));
+    // herhaling en te weinig per soort (valkuilen uit Scholt)
+    const bedItems = beds.map((b) => b.item);
+    if (bedItems.length >= 2) {
+      const inBeds = {};
+      for (const b of bedItems) {
+        const ids = new Set((b.planting?.fullMix || b.planting?.mix || []).map((m) => m.role));
+        for (const l of this.doc.layers) for (const gr of l.items) if (gr.group && gr.bedId === b.id) for (const m of gr.planting?.mix || []) ids.add(m.role);
+        for (const id of ids) inBeds[id] = (inBeds[id] || 0) + 1;
+      }
+      const once = p.roles.filter((r) => r.role === 'structuur' && inBeds[r.id] === 1 && !['boom', 'haag'].includes(r.kind));
+      if (once.length) adv.push(`<b>Herhaling:</b> ${once.slice(0, 4).map((r) => esc(r.label || r.code)).join(', ')} ${once.length > 1 ? 'staan' : 'staat'} maar in één vak. Herhaal structuurplanten in meer vakken, dat geeft samenhang.`);
+    }
+    const few = p.roles.filter((r) => counts[r.id] > 0 && counts[r.id] < 3 && !['boom', 'heester', 'haag', 'klimmer'].includes(r.kind) && r.height !== 'xhoog' && r.role !== 'accent');
+    if (few.length) adv.push(`<b>Te weinig van een soort:</b> ${few.slice(0, 4).map((r) => `${esc(r.label || r.code)} (${counts[r.id]})`).join(', ')}. Eén of twee plantjes van een soort vallen weg; zet ze in groepjes van 3, 5 of meer.`);
+    // balans: minstens 2/3 groen, de helft daarvan hoger dan 90 cm (Elisabeth Scholt)
+    const bal = gardenBalance(this.doc, HATCHES);
+    if (bal) {
+      const pc = (v) => `${Math.round(v * 100)}%`;
+      adv.push(`<b>Balans:</b> ${pc(bal.share)} groen (${Math.round(bal.green)} m²) en ${pc(1 - bal.share)} verhard (${Math.round(bal.paved)} m²); ${pc(bal.highShare)} van het groen wordt hoger dan 90 cm. ${bal.share < 2 / 3 ? 'Vuistregel: minstens 2/3 groen.' : bal.highShare < 0.5 ? 'Vuistregel: de helft van het groen hoger dan 90 cm (heesters, hoge vaste planten, grassen).' : 'Dat voldoet aan de vuistregel (2/3 groen, de helft hoger dan 90 cm).'}`);
+    }
     $('.advice', el).innerHTML = adv.map((t) => `<p>${t}</p>`).join('');
 
     // gebeurtenissen

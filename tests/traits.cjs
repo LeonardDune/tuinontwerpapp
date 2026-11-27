@@ -69,13 +69,13 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
   // uitgangspunten in stap 2
   await panel.locator('.steps [data-step="2"]').click();
-  await panel.locator('[data-aimfn="geur"]').click();
+  await panel.locator('[data-aimfn="geurplek"]').click();
   await panel.locator('[data-aim="structure"][data-v="veel"]').click();
   await panel.locator('[data-aim="maintenance"][data-v="laag"]').click();
   const aims = await page.evaluate(() => window.app.store.findItem('B').item.aims);
-  assert(aims.functions.includes('geur') && aims.structure === 'veel' && aims.maintenance === 'laag', 'stap 2: uitgangspunten (functie geur, veel structuur, weinig onderhoud)');
+  assert(aims.functions.includes('geurplek') && aims.structure === 'veel' && aims.maintenance === 'laag', 'stap 2: uitgangspunten (functie van het vak: geurplek bij de zitplek; veel structuur, weinig onderhoud)');
   const fnOpts = await panel.locator('.wnew [data-wf] option').allInnerTexts();
-  assert(/★ Geurend/.test(fnOpts[1]), 'bij de wens staat de gekozen functie bovenaan');
+  assert(/★ Geurend/.test(fnOpts[1]), 'bij de wens staat de eigenschap die de geurplek nodig heeft bovenaan (★ Geurend)');
   await panel.locator('.wnew [data-wr]').selectOption('structuur');
   const rol = await page.evaluate(async () => {
     const { wishCandidates } = await import('./js/wish.js'); const { plantTraits } = await import('./js/traits.js');
@@ -92,7 +92,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(['Februari', 'Mei', 'Augustus', 'November'].every((m) => txt.includes(m)), 'controle op de 4 momenten: februari, mei, augustus, november');
   assert(/Groene soep[^|]*Kattenkruid[^|]*lijken op elkaar/.test(txt), 'groene soep: twee soorten kattenkruid lijken te veel op elkaar');
   assert(/✗ Structuur/.test(txt), 'structuur: te weinig voor "veel structuur"');
-  assert(/✓ Geurend/.test(txt), 'functie geur is gedekt (kattenkruid)');
+  assert(/✓ Geurplek bij de zitplek[^|]*Kattenkruid/.test(txt.replace(/\n/g, ' ')), 'functie van het vak "geurplek" wordt waargemaakt door kattenkruid');
   assert(/✗ Eisen[^|]*Kattenkruid/.test(txt.replace(/\n/g, ' ')) || /Eisen/.test(txt), 'eisen: kattenkruid is niet eetbaar');
   await page.screenshot({ path: path.join(OUT, 'controle.png') });
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));

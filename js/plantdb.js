@@ -8,6 +8,7 @@
 // native (inheems), bees (goed voor bijen en vlinders), evergreen, stencil (bijbehorend stencil), climb (klimplantsoort).
 
 import { meetsAll, hasTrait } from './traits.js';
+import { lightFits } from './site.js';
 
 const LIGHT = { z: 'zon', h: 'half', s: 'schaduw' };
 const SOIL = { d: 'droog', n: 'normaal', v: 'vochtig' };
@@ -435,7 +436,7 @@ export function searchPlants(f = {}) {
     if (q && !q.split(/\s+/).every((w) => `${p.nl} ${p.lat}`.toLowerCase().replace(/[‘’]/g, "'").includes(w))) continue;
     if (f.type && p.type !== f.type) continue;
     if (f.height && heightClass(p) !== f.height) continue;
-    if (f.light && !p.light.includes(f.light)) continue;
+    if (f.light && !lightFits(p.light, f.light)) continue;
     if (f.soil && !p.soil.includes(f.soil)) continue;
     if (f.color && colorFamily(p.color) !== f.color) continue;
     if (f.month && !p.bloom.includes(Number(f.month))) continue;

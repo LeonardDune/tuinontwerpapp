@@ -13,11 +13,13 @@ import {
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
 import { combosFor } from './combos.js';
 import { ESVELD } from './esveld.js';
-import { TRAITS, REQUIREMENTS, FUNCTIONS, plantTraits } from './traits.js';
+import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits } from './traits.js';
 import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE } from './checks.js';
 import { drawPlant } from './plantdraw.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { checkPlanting, compose, adaptItems, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
+import { SOIL_TYPES, PH, EXPOSURE, siteProblems } from './site.js';
+import { drawElevation } from './elevation.js';
 import { collectCasters, computeSunHours } from './shadows.js';
 import { pointInPolygon } from './geom.js';
 import { polygonArea } from './geom.js';
@@ -181,7 +183,9 @@ export class PlantPanel {
   wishColorOpts(bed, withSize = false) {
     const sch = bedScheme(bed, this.doc);
     const o = sch.type && sch.type !== 'vrij' ? { palette: schemePalette(sch), schemeName: SCHEMES[sch.type]?.name.split(' (')[0] } : {};
-    o.functions = bed?.aims?.functions || null;
+    // eigenschappen die de functies van het vak nodig hebben, bovenaan bij de wens
+    const need = [...new Set((bed?.aims?.functions || []).flatMap((k) => BED_FUNCTIONS[k]?.traits || []))];
+    o.functions = need.length ? need : null;
     if (withSize) o.size = this.app.wishSize();
     return o;
   }
@@ -202,8 +206,8 @@ export class PlantPanel {
         <div class="aimrow"><span>Mooi in</span><span class="seg">${['lente', 'zomer', 'herfst', 'winter'].map((k) => `<button type="button" data-aimseason="${k}" class="${(aims.seasons || []).includes(k) ? 'on' : ''}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</span></div>
         <div class="aimrow"><span>Structuur</span>${seg('structure', Object.fromEntries(Object.entries(STRUCTURE_LEVELS).map(([k, v]) => [k, v.name])), aims.structure || 'gemiddeld')}</div>
         <div class="aimrow"><span>Onderhoud</span>${seg('maintenance', MAINTENANCE, aims.maintenance || 'gemiddeld')}</div>
-        <div class="aimrow fns"><span>Functies</span><div class="chips">${FUNCTIONS.map((k) => `<button type="button" class="chip${(aims.functions || []).includes(k) ? ' on' : ''}" data-aimfn="${k}" title="${esc(TRAITS[k].hint)}">${esc(TRAITS[k].name)}</button>`).join('')}</div></div>
-        <p class="hint">Wat moet dit vak doen en wanneer moet het mooi zijn? De functies staan bovenaan bij de wensen, en de controle in stap 3 kijkt of ze gedekt zijn.</p>
+        <div class="aimrow fns"><span>Wat moet dit vak doen?</span><div class="chips">${Object.entries(BED_FUNCTIONS).map(([k, v]) => `<button type="button" class="chip${(aims.functions || []).includes(k) ? ' on' : ''}" data-aimfn="${k}" title="${esc(v.hint)}">${esc(v.name)}</button>`).join('')}</div></div>
+        <p class="hint">De functie van het vak in de tuin. Bij de wensen staan de eigenschappen die daarvoor nodig zijn bovenaan (★), en de controle in stap 3 kijkt of het vak het waarmaakt.</p>
       </section>
       <section class="scheme">
         <h3>Kleurencombinatie van ${esc(bed.name || 'dit vak')}</h3>
@@ -308,6 +312,7 @@ export class PlantPanel {
         title: `Plant voor vakje: ${wishText(nw)}`,
         btype: null, light: ctx.light, moisture: ctx.moisture, height: nw.height, color: nw.color === 'blad' ? '' : nw.color,
         traits: bed.require || [],
+        site: bed,
         onPick: (pl) => this.fillWish(id, pl),
       });
     });
@@ -339,7 +344,7 @@ export class PlantPanel {
 
   wishCtx(bed) {
     const used = new Set((this.doc.planting?.roles || []).map((r) => r.plant).filter(Boolean));
-    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: bedScheme(bed, this.doc), used, source: this.app.plantSource(), require: bed?.require || [], maintenance: bed?.aims?.maintenance || null };
+    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: bedScheme(bed, this.doc), used, source: this.app.plantSource(), require: bed?.require || [], maintenance: bed?.aims?.maintenance || null, site: bed || null };
   }
 
   /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
@@ -491,9 +496,18 @@ export class PlantPanel {
           <button type="button" data-act="measure" title="Meet de zonuren in dit vak met de zonnestudie (gemiddeld per dag, april t/m september)">☀ Meet</button>
         </label>
         ${bed.sunHours != null ? `<p class="hint sunh">Zonnestudie: gemiddeld <b>${String(bed.sunHours).replace('.', ',')} uur</b> zon per dag (apr–sep).</p>` : ''}
-        <label class="row">Grond
+        <label class="row">Vocht
           <select data-k="bedmoist">${[['', 'nog onbekend'], ...Object.entries(MOISTURES)].map(([k, n]) => `<option value="${k}" ${(bed.moisture || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
         </label>
+        <label class="row">Grondsoort
+          <select data-k="bedsoiltype">${[['', 'nog onbekend'], ...Object.entries(SOIL_TYPES)].map(([k, n]) => `<option value="${k}" ${(bed.soilType || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <select data-k="bedph" title="Zuurgraad">${[['', 'zuurgraad?'], ...Object.entries(PH)].map(([k, n]) => `<option value="${k}" ${(bed.ph || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+        <label class="row">Ligging
+          <select data-k="bedexposure">${[['', 'nog onbekend'], ...Object.entries(EXPOSURE)].map(([k, n]) => `<option value="${k}" ${(bed.exposure || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+        <label class="check"><input type="checkbox" data-k="bedwarm" ${bed.warmWall ? 'checked' : ''}> Tegen een warme muur (zuid of west): meer kans voor minder winterharde planten</label>
+        <p class="hint">Grondsoort, zuurgraad en ligging houden planten tegen die er niet willen groeien, zoals zuurminnaars op kalk of windgevoelige planten op een winderige plek.</p>
         <h3>Eisen voor alle planten in ${name}</h3>
         <div class="chips reqs">${REQUIREMENTS.map((k) => `<button type="button" class="chip${(bed.require || []).includes(k) ? ' on' : ''}" data-req="${k}" title="${esc(TRAITS[k].hint)}">${esc(TRAITS[k].name)}</button>`).join('')}</div>
         <p class="hint">Bijvoorbeeld alleen eetbare planten in een moestuinvak, of alleen klimplanten langs een hek. Deze eisen gelden bij kiezen, samenstellen en de wensvakjes; afwijken kan per keer in de plantkeuze.</p>
@@ -514,6 +528,11 @@ export class PlantPanel {
         <div class="combos" hidden></div>
       </section>
       <details class="refine-more" ${this.app.state.refineOpen ? 'open' : ''}><summary>Groepjes en losse planten</summary>${this.refineHtml(bed)}</details>
+      <section class="elev">
+        <h3>Vooraanzicht van ${name}</h3>
+        <canvas class="elevation" width="640" height="300"></canvas>
+        <div class="row"><span class="seg">${[[null, 'Bloei'], [2, 'Feb'], [5, 'Mei'], [8, 'Aug'], [11, 'Nov']].map(([m, n]) => `<button type="button" data-elm="${m ?? ''}" class="${(this.elevMonth ?? null) === m ? 'on' : ''}">${n}</button>`).join('')}</span><button type="button" data-act="elevflip" title="Bekijk het vak van de andere kant">⇄ Andere kant</button></div>
+      </section>
       <section class="control">
         <h3>Controle van ${name} <small>4 momenten, groene soep, structuur, functies</small></h3>
         <ul class="checks bedchecks"></ul>
@@ -535,6 +554,12 @@ export class PlantPanel {
       ${step < 3 ? `<div class="row next"><button type="button" class="primary" data-step="${step + 1}">Verder: ${step === 1 ? '2 Invullen' : '3 Verfijnen'} ›</button></div>` : ''}`;
 
     yearBars($('.year', el), yr, this.month, null);
+    const ec = $('canvas.elevation', el);
+    if (ec) {
+      drawElevation(ec, this.doc, bed, { month: this.elevMonth ?? null, back: !!this.elevBack });
+      for (const b of el.querySelectorAll('[data-elm]')) b.addEventListener('click', () => { this.elevMonth = b.dataset.elm ? Number(b.dataset.elm) : null; this.render(); });
+      el.querySelector('[data-act="elevflip"]').addEventListener('click', () => { this.elevBack = !this.elevBack; this.render(); });
+    }
     const bc = $('.bedchecks', el);
     if (bc) {
       // standplaats en type (per plant in het vak) en de controles van het hele vak in één lijst
@@ -543,7 +568,7 @@ export class PlantPanel {
       const all = new Map();
       for (const m of bedPlan(bed).mix) all.set(m.role, m.w);
       for (const l of this.doc.layers) for (const g of l.items) if (isGroup(g) && g.bedId === bed.id) for (const m of g.planting?.mix || []) if (!all.has(m.role)) all.set(m.role, m.w);
-      const base = checkPlanting([...all].map(([id, w]) => ({ role: byId[id], w })), this.bedCtx(bed)).filter((c) => ['hoogte', 'zon', 'grond', 'vormen', 'kleur'].includes(c.key));
+      const base = checkPlanting([...all].map(([id, w]) => ({ role: byId[id], w })), this.bedCtx(bed)).filter((c) => ['hoogte', 'zon', 'grond', 'plek', 'vormen', 'kleur'].includes(c.key));
       const list = all.size ? [...base, ...bedChecks(this.doc, bed)] : [];
       if (list.length) this.fillChecks(bc, list); else bc.innerHTML = '<li class="open">Nog geen planten in dit vak.</li>';
     }
@@ -736,6 +761,7 @@ export class PlantPanel {
       light: bed.light,
       moisture: bed.moisture,
       traits: bed.require || [],
+      site: bed,
       onPick: (pl) => this.addPlantToBed(bed, pl),
     }));
     const cbox = $('.combos', el);
@@ -781,11 +807,16 @@ export class PlantPanel {
       if (e.target.value) bed.moisture = e.target.value; else delete bed.moisture;
     }, 'bedmoist'));
     el.querySelector('[data-act="measure"]')?.addEventListener('click', () => this.measureSun(bed));
+    const setSite = (k, v) => this.app.store.mutate(() => { if (v) bed[k] = v; else delete bed[k]; }, 'bed-site');
+    el.querySelector('[data-k="bedsoiltype"]')?.addEventListener('change', (e) => setSite('soilType', e.target.value));
+    el.querySelector('[data-k="bedph"]')?.addEventListener('change', (e) => setSite('ph', e.target.value));
+    el.querySelector('[data-k="bedexposure"]')?.addEventListener('change', (e) => setSite('exposure', e.target.value));
+    el.querySelector('[data-k="bedwarm"]')?.addEventListener('change', (e) => setSite('warmWall', e.target.checked));
   }
 
   /** Omstandigheden van een vak voor samenstellen en controleren. */
   bedCtx(bed) {
-    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: bedScheme(bed, this.doc), source: this.app.plantSource(), require: bed.require || [] };
+    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: bedScheme(bed, this.doc), source: this.app.plantSource(), require: bed.require || [], site: bed };
   }
 
   fillChecks(ul, checks) {
@@ -909,7 +940,7 @@ export class PlantPanel {
   // ---------------------------------------------------------------- plant kiezen
 
   /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
-  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], onPick }) {
+  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], site = null, onPick }) {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
@@ -923,7 +954,7 @@ export class PlantPanel {
           ${esvOn ? `<select data-f="source" title="Uit welke bron"><option value="esveld" ${f.source === 'esveld' ? 'selected' : ''}>Esveld (${ESVELD.count.toLocaleString('nl-NL')} cultivars)</option><option value="" ${f.source === '' ? 'selected' : ''}>Alle planten</option><option value="eigen">Alleen de basislijst</option></select>` : ''}
           <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
           <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), f.height, 'Elke hoogte')}</select>
-          <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, f.light, 'Elke standplaats')}</select>
+          <select data-f="light">${opt({ zon: 'Zon', halfzon: 'Halfzon', half: 'Halfschaduw', schaduw: 'Schaduw' }, f.light, 'Elke standplaats')}</select>
           <select data-f="soil">${opt({ droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' }, f.soil, 'Elke grond')}</select>
           <select data-f="color">${opt({ wit: 'Wit', geel: 'Geel', oranje: 'Oranje', rood: 'Rood', roze: 'Roze', paars: 'Paars', blauw: 'Blauw', groen: 'Groen' }, f.color, 'Elke bloeikleur')}</select>
           <select data-f="month">${opt(Object.fromEntries(MONTH_NAMES.map((m, i) => [String(i + 1), `Bloeit in ${m}`])), '', 'Elke bloeitijd')}</select>
@@ -950,7 +981,7 @@ export class PlantPanel {
         const sun = p.light.map((l) => ({ zon: '☀', half: '◐', schaduw: '●' }[l])).join('');
         const e = p.esv;
         const size = (cm) => (cm >= 300 ? `${String(Math.round(cm / 10) / 10).replace('.', ',')} m` : `${cm} cm`);
-        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${size(p.h)} hoog, ${size(p.w)} breed · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${e?.perM2 ? ` · ${String(e.perM2).replace('.', ',')}/m²` : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>${e ? `<small class="esv">Esveld${e.price != null ? ` · vanaf ${e.price.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}` : ''}${e.sizes.length ? ` · ${esc(e.sizes.slice(0, 3).join(', '))}` : ''}${e.hard ? ` · ${esc(e.hard)}` : ''} · <a href="${e.url}" target="_blank" rel="noopener">bekijk ↗</a></small>` : p.esvSearch ? `<small class="esv">Esveld heeft ${p.esvSearch.n} cultivar${p.esvSearch.n > 1 ? 's' : ''} van deze ${p.esvSearch.what} · <a href="${p.esvSearch.url}" target="_blank" rel="noopener">aanbod ↗</a></small>` : ''}`;
+        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${size(p.h)} hoog, ${size(p.w)} breed · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${e?.perM2 ? ` · ${String(e.perM2).replace('.', ',')}/m²` : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}${site ? siteProblems(p, site).map((x) => ` · <em>${esc(x)}</em>`).join('') : ''}</small>${e ? `<small class="esv">Esveld${e.price != null ? ` · vanaf ${e.price.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}` : ''}${e.sizes.length ? ` · ${esc(e.sizes.slice(0, 3).join(', '))}` : ''}${e.hard ? ` · ${esc(e.hard)}` : ''} · <a href="${e.url}" target="_blank" rel="noopener">bekijk ↗</a></small>` : p.esvSearch ? `<small class="esv">Esveld heeft ${p.esvSearch.n} cultivar${p.esvSearch.n > 1 ? 's' : ''} van deze ${p.esvSearch.what} · <a href="${p.esvSearch.url}" target="_blank" rel="noopener">aanbod ↗</a></small>` : ''}`;
         t.querySelector('a')?.addEventListener('click', (ev) => ev.stopPropagation());
         li.appendChild(t);
         const sw = document.createElement('i');

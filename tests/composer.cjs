@@ -86,7 +86,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     const N = a.store.findItem('N').item, V = a.store.findItem('V').item;
     return { nh: N.sunHours, nl: N.light, vh: V.sunHours, vl: V.light };
   });
-  assert(sun.nl === 'half' && sun.nh >= 3 && sun.nh < 6, `vak pal ten noorden van een huis van 8 m: ${sun.nh} uur, halfschaduw`);
+  assert(sun.nh > 2 && sun.nh < 6 && sun.nl === (sun.nh >= 4 ? 'halfzon' : 'half'), `vak pal ten noorden van een huis van 8 m: ${sun.nh} uur, ${sun.nl === 'halfzon' ? 'halfzon (4–6 uur)' : 'halfschaduw (2–4 uur)'}`);
   assert(sun.vl === 'zon' && sun.vh > 12, `vak vrij in de tuin: ${sun.vh} uur, zon`);
 
   console.log('In het paneel');
@@ -94,7 +94,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.evaluate(() => { window.app.state.plantStep = 1; });
   await page.click('#btn-planting');
   await page.click('#plant-menu [data-pm="bed"]');
-  assert(/3|4|5/.test(await page.inputValue('#plant-panel [data-k="bedlight"]').then(() => page.textContent('#plant-panel .sunh'))) && (await page.inputValue('#plant-panel [data-k="bedlight"]')) === 'half', 'standplaats en gemeten zonuren in "Dit vak"');
+  assert(/3|4|5/.test(await page.inputValue('#plant-panel [data-k="bedlight"]').then(() => page.textContent('#plant-panel .sunh'))) && (await page.inputValue('#plant-panel [data-k="bedlight"]')) === sun.nl, 'standplaats en gemeten zonuren in stap 1 Vak');
   await page.selectOption('#plant-panel [data-k="bedmoist"]', 'vochtig');
   await page.click('#plant-panel .steps [data-step="3"]');
   await page.click('#plant-panel [data-act="compose"]');
