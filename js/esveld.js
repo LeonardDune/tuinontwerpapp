@@ -11,9 +11,39 @@ const SOIL = { d: 'droog', n: 'normaal', v: 'vochtig' };
 
 export const ESVELD = { loaded: false, count: 0, date: null, base: 'https://esveld.nl/a/product/' };
 
-/** Latijnse naam vergelijkbaar maken: kleine letters, zonder ×, aanhalingstekens en dubbele spaties. */
+/** Latijnse naam vergelijkbaar maken: kleine letters, zonder accenten, ×, aanhalingstekens, handelsnamen en dubbele spaties. */
 export function latKey(s) {
-  return String(s || '').toLowerCase().replace(/[‘’'"`]/g, '').replace(/\s[×x]\s/g, ' ').replace(/×/g, '').replace(/\s+/g, ' ').trim();
+  return String(s || '').toLowerCase()
+    .replace(/ö/g, 'oe').replace(/ä/g, 'ae').replace(/ü/g, 'ue')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[‘’'"`]/g, '').replace(/\s[×x]\s/g, ' ').replace(/×/g, '')
+    .replace(/[-–]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Esveld gebruikt soms de oudere (of juist nieuwere) geslachtsnaam
+const SYNONYMS = {
+  hylotelephium: 'sedum', symphyotrichum: 'aster', eurybia: 'aster', eutrochium: 'eupatorium', lamprocapnos: 'dicentra',
+  bistorta: 'persicaria', 'salvia rosmarinus': 'rosmarinus officinalis', 'stachys monieri': 'betonica officinalis', anemanthele: 'stipa', hyacinthoides: 'endymion',
+};
+
+function synonym(key) {
+  for (const [a, b] of Object.entries(SYNONYMS)) if (key === a || key.startsWith(a + ' ')) return b + key.slice(a.length);
+  return key;
+}
+
+/** Delen van een naam: geslacht, soort (zonder cultivar) en cultivar. */
+function nameParts(lat) {
+  const m = /[‘'](.+)[’']/.exec(lat);
+  const cv = m ? latKey(m[1]) : '';
+  const base = latKey(m ? lat.slice(0, m.index) : lat);
+  const words = base.split(' ').filter((w) => w && !['var.', 'subsp.', 'ssp.', 'f.'].includes(w));
+  return { genus: words[0] || '', species: words.slice(0, 2).join(' '), cv };
+}
+
+/** Zoeklink in de webshop van Esveld. */
+export function esveldSearch(q) {
+  return `https://esveld.nl/a/webshop/?q=${encodeURIComponent(q)}`;
 }
 
 /** Plant uit de compacte vorm van data/esveld.json. */
@@ -61,18 +91,52 @@ export async function removeEsveld() {
 
 export function useEsveld(data) {
   const list = data.plants.map((r) => fromRecord(r, data.date));
-  // ingebouwde planten met dezelfde Latijnse naam: verwijzing naar het Esveld-artikel
-  const byLat = new Map(list.map((p) => [latKey(p.lat), p]));
-  for (const p of PLANTS.values()) {
-    if (p.src === 'esveld') continue;
-    const e = byLat.get(latKey(p.lat));
-    if (e) p.esv = e.esv;
-  }
+  linkBuiltins(list);
   addPlants(list);
   ESVELD.loaded = true;
   ESVELD.count = list.length;
   ESVELD.date = data.date;
   return ESVELD;
+}
+
+/**
+ * Planten uit de basislijst koppelen aan Esveld:
+ *  1. dezelfde naam; 2. geslacht + cultivar (Esveld laat de soort vaak weg: Nepeta 'Walker's Low');
+ *  3. dezelfde soort zonder cultivar; anders een zoeklink naar het aanbod van die soort of dat geslacht.
+ */
+function linkBuiltins(list) {
+  const full = new Map(), byCv = new Map(), bySpecies = new Map(), countGenus = new Map(), countSpecies = new Map();
+  for (const p of list) {
+    const k = synonym(latKey(p.lat));
+    if (!full.has(k)) full.set(k, p);
+    const n = nameParts(p.lat);
+    const sp = synonym(n.species), g = sp.split(' ')[0];
+    if (n.cv && !byCv.has(`${g}|${n.cv}`)) byCv.set(`${g}|${n.cv}`, p);
+    // handelsnaam tussen haakjes ('Speciosa' (FIRETAIL)) telt ook als cultivarnaam
+    const trade = /\(([^)]+)\)/.exec(p.lat);
+    if (trade && !byCv.has(`${g}|${latKey(trade[1])}`)) byCv.set(`${g}|${latKey(trade[1])}`, p);
+    if (!n.cv && !bySpecies.has(sp)) bySpecies.set(sp, p);
+    countGenus.set(g, (countGenus.get(g) || 0) + 1);
+    countSpecies.set(sp, (countSpecies.get(sp) || 0) + 1);
+  }
+  for (const p of PLANTS.values()) {
+    if (p.src === 'esveld') continue;
+    delete p.esv; delete p.esvSearch;
+    const n = nameParts(p.lat);
+    const sp = synonym(n.species), g = sp.split(' ')[0];
+    const e = full.get(synonym(latKey(p.lat))) || (n.cv ? byCv.get(`${g}|${n.cv}`) : bySpecies.get(sp));
+    if (e) { p.esv = e.esv; continue; }
+    // geen artikel met precies deze naam: het aanbod van de soort (of het geslacht) bij Esveld
+    const nSp = countSpecies.get(sp) || 0, nG = countGenus.get(g) || 0;
+    if (nSp || nG) {
+      // zoekterm: de (Esveld-)naam van de soort, of alleen het geslacht
+      const words = synonym(latKey(p.lat.replace(/[‘'].*$/, ''))).split(' ');
+      const q = nSp ? p.lat.replace(/[‘'].*$/, '').replace(/×\s*/g, '').trim().split(/\s+/).slice(0, 2).join(' ') : words[0];
+      const syn = Object.entries(SYNONYMS).find(([a]) => !a.includes(' ') && latKey(q).startsWith(a + ' '));
+      const qq = syn ? syn[1] + q.slice(syn[0].length) : q;
+      p.esvSearch = { url: esveldSearch(qq.charAt(0).toUpperCase() + qq.slice(1)), n: nSp || nG, what: nSp ? 'soort' : 'geslacht' };
+    }
+  }
 }
 
 /** Is deze plant bij Esveld te koop (eigen Esveld-plant of gekoppelde ingebouwde plant)? */

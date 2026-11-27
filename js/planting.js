@@ -110,10 +110,12 @@ export function hslToHex(h, s, l) {
 export const SCHEMES = {
   vrij: { name: 'Vrij (geen schema)' },
   monochroom: { name: 'Monochroom (één kleur in tinten)' },
-  verwant: { name: 'Verwant (buurkleuren)' },
+  verwant: { name: 'Analoog (buurkleuren op het wiel)' },
   complementair: { name: 'Complementair (tegenover elkaar)' },
-  splitcompl: { name: 'Gesplitst complementair' },
-  drieklank: { name: 'Drieklank' },
+  splitcompl: { name: 'Gespleten complementair' },
+  drieklank: { name: 'Triadisch (drieklank)' },
+  tetradisch: { name: 'Tetradisch (twee paren)' },
+  pastel: { name: 'Pastel (zachte tinten)' },
   warm: { name: 'Warm (rood, oranje, geel)' },
   koel: { name: 'Koel (blauw, paars, roze, wit)' },
   wit: { name: 'Wit en zilver' },
@@ -131,11 +133,18 @@ export function schemePalette(scheme) {
     case 'complementair': return [...tints(h).slice(0, 3), ...tints(h + 180).slice(0, 3)];
     case 'splitcompl': return [...tints(h).slice(0, 2), ...tints(h + 150).slice(0, 2), ...tints(h + 210).slice(0, 2)];
     case 'drieklank': return [0, 120, 240].flatMap((d) => [hslToHex(h + d, s, 0.45), hslToHex(h + d, s * 0.8, 0.68)]);
+    case 'tetradisch': return [0, 60, 180, 240].flatMap((d) => [hslToHex(h + d, s, 0.45), hslToHex(h + d, s * 0.8, 0.68)]);
+    case 'pastel': return [0, 40, 200, 260, 300, 330].map((d) => hslToHex(h + d, 0.55, 0.8)).concat(['#f6f1e3']);
     case 'warm': return ['#b0392b', '#d9542b', '#e8822e', '#f0a830', '#f2cd4a', '#f5e08a', '#8a2f3b', '#fff3d6'];
     case 'koel': return ['#2f4e9e', '#4a6fc2', '#7a6fc8', '#8e5bb5', '#b07ac8', '#d7a2d6', '#e7b6c8', '#f4f4f0'];
     case 'wit': return ['#ffffff', '#f6f1e3', '#efe9d0', '#e3e6df', '#c9d1c9', '#aeb8b0'];
     default: return ['#ffffff', '#f2cd4a', '#e8822e', '#c0392b', '#d77fa1', '#8e5bb5', '#4a6fc2', '#8fc1e3', '#6fa84a'];
   }
+}
+
+/** Kleurencombinatie van een plantvak: een eigen keuze, anders de standaard van het hele ontwerp. */
+export function bedScheme(bed, doc) {
+  return bed?.scheme?.type ? bed.scheme : doc?.planting?.scheme || { type: 'vrij', base: '#8e5bb5' };
 }
 
 /** Past een kleur binnen het schema? (wit, crème en grijs passen altijd) */

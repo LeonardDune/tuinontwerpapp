@@ -5,7 +5,7 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, plantCount, rolesMap,
+  isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, plantCount, rolesMap, bedScheme, SCHEMES,
 } from './planting.js';
 import {
   wishOrder, wishText, wishHex, wishCandidates, normalizeWish, wishControlsHtml, bindWishControls, isWish,
@@ -175,20 +175,43 @@ export class PlantPanel {
     }).join('')}</ol>`;
   }
 
+  /** Kleuren voor de wenskeuze: het palet van de kleurencombinatie van het vak (niet bij 'vrij'). */
+  wishColorOpts(bed, withSize = false) {
+    const sch = bedScheme(bed, this.doc);
+    const o = sch.type && sch.type !== 'vrij' ? { palette: schemePalette(sch), schemeName: SCHEMES[sch.type]?.name.split(' (')[0] } : {};
+    if (withSize) o.size = this.app.wishSize();
+    return o;
+  }
+
   /** Stap 2: wensvakjes tekenen, alleen met wensen (nog geen planten). */
   wishDrawHtml(bed) {
     const st = this.app.state;
     const drawing = st.tool === 'plant' && st.plantMode === 'wens';
     const wishes = this.wishesOf(bed);
     const active = this.scopeWish(bed);
-    return `<section class="wishes">
+    const own = !!bed.scheme?.type;
+    const sch = bedScheme(bed, this.doc);
+    const glob = this.ensure().scheme;
+    return `<section class="scheme">
+        <h3>Kleurencombinatie van ${esc(bed.name || 'dit vak')}</h3>
+        <div class="row">
+          <select data-k="bedscheme">
+            <option value="" ${own ? '' : 'selected'}>Zoals het hele ontwerp (${esc(SCHEMES[glob.type]?.name.split(' (')[0] || 'vrij')})</option>
+            ${Object.entries(SCHEMES).map(([k, v]) => `<option value="${k}" ${own && sch.type === k ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}
+          </select>
+          <input type="color" data-k="bedbase" value="${sch.base || '#8e5bb5'}" title="Basiskleur op het kleurenwiel" ${['vrij', 'warm', 'koel', 'wit'].includes(sch.type) ? 'hidden' : ''}>
+        </div>
+        <div class="palette">${schemePalette(sch).map((c) => `<i style="background:${c}" title="${c}"></i>`).join('')}</div>
+        <p class="hint">Bij de wensen hieronder zie je eerst deze kleuren. Afwijken kan met <b>Andere kleur…</b>.</p>
+      </section>
+      <section class="wishes">
         <h3>Wat wil je hier?</h3>
-        <div class="wnew">${wishControlsHtml(st.wish, { size: this.app.wishSize() })}</div>
+        <div class="wnew">${wishControlsHtml(st.wish, this.wishColorOpts(bed, true))}</div>
         <div class="row add"><button type="button" class="${drawing ? 'on' : 'primary'}" data-wact="draw">${drawing ? 'Bezig: tik in het vak' : 'Wensvakjes tekenen'}</button></div>
         ${drawing ? '<p class="hint">Tik in het plantvak voor een vakje met deze wens, of sleep een eigen vorm. Verander de wens hierboven tussendoor.</p>' : ''}
         <h3>Wensvakjes <small>${wishes.length ? `${wishes.length}, in de volgorde van de piramide` : 'nog geen'}</small></h3>
         ${wishes.length ? this.wishListHtml(wishes, active) : '<p class="hint">Nog geen wensvakjes. Je mag deze stap ook overslaan en in stap 3 meteen de basis van het vak kiezen.</p>'}
-        ${active ? `<div class="wcard"><h4>Wens van vakje ${wishes.indexOf(active) + 1} aanpassen</h4><div class="wedit">${wishControlsHtml(active.wish)}</div></div>` : ''}
+        ${active ? `<div class="wcard"><h4>Wens van vakje ${wishes.indexOf(active) + 1} aanpassen</h4><div class="wedit">${wishControlsHtml(active.wish, this.wishColorOpts(bed))}</div></div>` : ''}
       </section>`;
   }
 
@@ -215,7 +238,7 @@ export class PlantPanel {
     const r = mix.length ? roles[mix[0].role] : null;
     return `<div class="wcard">
         <h4>Vakje ${nr} <small>${area.toFixed(1).replace('.', ',')} m²${n ? ` · ±${n} plant${n > 1 ? 'en' : ''}` : ''}</small></h4>
-        <div class="wedit">${wishControlsHtml(w.wish)}</div>
+        <div class="wedit">${wishControlsHtml(w.wish, this.wishColorOpts(this.app.store.findItem(w.bedId)?.item))}</div>
         ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
         <h5>${r ? 'Of een andere plant' : 'Passende planten'}</h5>
         <ul class="wcands"></ul>
@@ -225,6 +248,13 @@ export class PlantPanel {
 
   /** Gebeurtenissen van het deel 'Wensvakjes'. */
   bindWish(el, bed) {
+    el.querySelector('[data-k="bedscheme"]')?.addEventListener('change', (e) => this.app.store.mutate(() => {
+      if (e.target.value) bed.scheme = { type: e.target.value, base: bed.scheme?.base || this.ensure().scheme.base || '#8e5bb5' };
+      else delete bed.scheme;
+    }, 'bedscheme'));
+    el.querySelector('[data-k="bedbase"]')?.addEventListener('change', (e) => this.app.store.mutate(() => {
+      bed.scheme = { ...bedScheme(bed, this.doc), base: e.target.value };
+    }, 'bedscheme'));
     const box = $('.wnew', el);
     if (box) {
       bindWishControls(box, this.app.state.wish, (w) => { this.app.state.wish = w; this.app.persistSettings(); this.app.renderOptions(); this.render(); this.app.requestRender(); },
@@ -291,7 +321,7 @@ export class PlantPanel {
 
   wishCtx(bed) {
     const used = new Set((this.doc.planting?.roles || []).map((r) => r.plant).filter(Boolean));
-    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: this.ensure().scheme, used, source: this.app.plantSource() };
+    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: bedScheme(bed, this.doc), used, source: this.app.plantSource() };
   }
 
   /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
@@ -711,7 +741,7 @@ export class PlantPanel {
 
   /** Omstandigheden van een vak voor samenstellen en controleren. */
   bedCtx(bed) {
-    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: this.ensure().scheme, source: this.app.plantSource() };
+    return { btype: bed.btype || null, light: bed.light || null, moisture: bed.moisture || null, scheme: bedScheme(bed, this.doc), source: this.app.plantSource() };
   }
 
   fillChecks(ul, checks) {
@@ -876,7 +906,7 @@ export class PlantPanel {
         const sun = p.light.map((l) => ({ zon: '☀', half: '◐', schaduw: '●' }[l])).join('');
         const e = p.esv;
         const size = (cm) => (cm >= 300 ? `${String(Math.round(cm / 10) / 10).replace('.', ',')} m` : `${cm} cm`);
-        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${size(p.h)} hoog, ${size(p.w)} breed · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${e?.perM2 ? ` · ${String(e.perM2).replace('.', ',')}/m²` : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>${e ? `<small class="esv">Esveld${e.price != null ? ` · vanaf ${e.price.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}` : ''}${e.sizes.length ? ` · ${esc(e.sizes.slice(0, 3).join(', '))}` : ''}${e.hard ? ` · ${esc(e.hard)}` : ''} · <a href="${e.url}" target="_blank" rel="noopener">bekijk ↗</a></small>` : ''}`;
+        t.innerHTML = `<b>${esc(p.nl)}</b> <i>${esc(p.lat)}</i><small>${PLANT_TYPES[p.type]} · ${size(p.h)} hoog, ${size(p.w)} breed · <span title="Standplaats">${sun}</span> · bloei ${bloomText(p)}${e?.perM2 ? ` · ${String(e.perM2).replace('.', ',')}/m²` : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[btype].label.toLowerCase())}</em>`}</small>${e ? `<small class="esv">Esveld${e.price != null ? ` · vanaf ${e.price.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })}` : ''}${e.sizes.length ? ` · ${esc(e.sizes.slice(0, 3).join(', '))}` : ''}${e.hard ? ` · ${esc(e.hard)}` : ''} · <a href="${e.url}" target="_blank" rel="noopener">bekijk ↗</a></small>` : p.esvSearch ? `<small class="esv">Esveld heeft ${p.esvSearch.n} cultivar${p.esvSearch.n > 1 ? 's' : ''} van deze ${p.esvSearch.what} · <a href="${p.esvSearch.url}" target="_blank" rel="noopener">aanbod ↗</a></small>` : ''}`;
         t.querySelector('a')?.addEventListener('click', (ev) => ev.stopPropagation());
         li.appendChild(t);
         const sw = document.createElement('i');

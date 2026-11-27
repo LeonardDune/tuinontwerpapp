@@ -7,11 +7,14 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
 
 // Kleine verzonnen catalogus in het formaat van tools/esveld.py (de echte staat alleen op het apparaat van de gebruiker).
 const FAKE = {
-  source: 'Esveld', url: 'https://esveld.nl/a/product/', date: '2026-11-27', count: 4,
+  source: 'Esveld', url: 'https://esveld.nl/a/product/', date: '2026-11-27', count: 7,
   plants: [
     { id: 'esv:geranium-test-blauw', lat: 'Geranium ‘Testblauw’', nl: 'Ooievaarsbek', cv: 'Testblauw', t: 'vaste', h: 45, w: 50, ha: 'kussen', f: 'schijf', c: '#5a6ad0', b: [6, 7, 8, 9], l: 'zh', s: 'dn', u: 'geranium-test-blauw', m2: 5, p: 435, sz: ['pot 9 cm'] },
     { id: 'esv:geranium-test-laag', lat: 'Geranium ‘Testlaag’', nl: 'Ooievaarsbek', cv: 'Testlaag', t: 'vaste', h: 25, w: 40, ha: 'kussen', f: 'schijf', c: '#e48ab8', b: [5, 6], l: 'zh', s: 'n', u: 'geranium-test-laag', m2: 9, p: 395, sz: ['pot 9 cm'] },
     { id: 'esv:salvia-test', lat: 'Salvia nemorosa ‘Testpaars’', nl: 'Salie', cv: 'Testpaars', t: 'vaste', h: 50, w: 40, ha: 'rechtop', f: 'aar', c: '#7a4aa8', b: [6, 7, 8], l: 'z', s: 'd', u: 'salvia-test', m2: 7, p: 375, pm: 900, sz: ['pot 9 cm', 'pot 2 liter'], bee: 1 },
+    { id: 'esv:nepeta-walkers-low', lat: 'Nepeta ‘Walker’s Low’', nl: 'Kattenkruid', cv: 'Walker’s Low', t: 'vaste', h: 60, w: 60, ha: 'kussen', f: 'aar', c: '#7a72c9', b: [5, 6, 7, 8, 9], l: 'z', s: 'dn', u: 'nepeta-walkers-low', m2: 5, p: 395, sz: ['pot 9 cm'] },
+    { id: 'esv:delphinium-testblauw', lat: 'Delphinium ‘Testblauw’', nl: 'Ridderspoor', cv: 'Testblauw', t: 'vaste', h: 160, w: 60, ha: 'rechtop', f: 'aar', c: '#4a6ad8', b: [6, 7], l: 'z', s: 'n', u: 'delphinium-testblauw', m2: 3, p: 650, sz: ['pot 2 liter'] },
+    { id: 'esv:sedum-herbstfreude', lat: 'Sedum ‘Herbstfreude’', nl: 'Hemelsleutel', cv: 'Herbstfreude', t: 'vaste', h: 50, w: 50, ha: 'bol', f: 'scherm', c: '#c06a8a', b: [8, 9, 10], l: 'z', s: 'd', u: 'sedum-herbstfreude', m2: 5, p: 375, sz: ['pot 9 cm'] },
     { id: 'esv:viburnum-test', lat: 'Viburnum ‘Testwit’', nl: 'Sneeuwbal', cv: 'Testwit', t: 'heester', h: 200, w: 150, ha: 'bol', f: 'scherm', c: '#f6f4ee', b: [5], l: 'zh', s: 'n', u: 'viburnum-test', m2: 1, p: 1495, sz: ['pot 3 liter'], a: 'rood' },
   ],
 };
@@ -29,7 +32,7 @@ const FAKE = {
   assert(/Nog geen Esveld-catalogus/.test(await page.textContent('#set-source-info')), 'Instellingen zegt dat er nog geen catalogus is');
   await page.setInputFiles('#set-esveld-file', { name: 'esveld.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(FAKE)) });
   await page.waitForFunction(async () => (await import('./js/esveld.js')).ESVELD.loaded);
-  assert(/4 cultivars/.test(await page.textContent('#set-source-info')) && await page.isVisible('#set-esveld-remove'), 'importeren: catalogus geladen (4 cultivars), met knop Verwijderen');
+  assert(/7 cultivars/.test(await page.textContent('#set-source-info')) && await page.isVisible('#set-esveld-remove'), 'importeren: catalogus geladen (7 cultivars), met knop Verwijderen');
   await page.keyboard.press('Escape');
   // een verkeerd bestand wordt geweigerd
   await page.setInputFiles('#set-esveld-file', { name: 'iets.json', mimeType: 'application/json', buffer: Buffer.from('{"hallo":1}') });
@@ -44,8 +47,18 @@ const FAKE = {
     const ger = searchPlants({ q: 'geranium', source: 'esveld' }).map((r) => r.p);
     return { loaded: ESVELD.loaded, n: ESVELD.count, source: window.app.plantSource(), ger: ger.map((p) => `${p.nl} ${p.h}`) };
   });
-  assert(db.loaded && db.n === 4 && db.source === 'esveld', 'na herladen staat de catalogus er nog: Esveld is de standaardbron');
+  assert(db.loaded && db.n === 7 && db.source === 'esveld', 'na herladen staat de catalogus er nog: Esveld is de standaardbron');
   assert(db.ger.length === 2 && db.ger.includes("Ooievaarsbek 'Testblauw' 45") && db.ger.includes("Ooievaarsbek 'Testlaag' 25"), `cultivars met hun eigen naam en maat (${db.ger.join(', ')})`);
+
+  // planten uit de basislijst krijgen de koppeling, ook als Esveld de naam anders schrijft
+  const links = await page.evaluate(async () => {
+    const { plantById } = await import('./js/plantdb.js');
+    const k = plantById('kattenkruid'), h = plantById('hemelsleutel'), r = plantById('ridderspoor');
+    return { k: [k.lat, k.esv?.url], h: [h.lat, h.esv?.url], r: [r.lat, r.esv?.url, r.esvSearch?.url, r.esvSearch?.n] };
+  });
+  assert(/nepeta-walkers-low/.test(links.k[1]), `${links.k[0]} → het Esveld-artikel (Esveld laat de soortnaam weg)`);
+  assert(/sedum-herbstfreude/.test(links.h[1]), `${links.h[0]} → Sedum 'Herbstfreude' (oudere geslachtsnaam bij Esveld)`);
+  assert(!links.r[1] && /webshop\/\?q=Delphinium/.test(links.r[2]), `${links.r[0]}: geen kale soort te koop, dus een link naar het Esveld-aanbod (${links.r[3]} cultivar)`);
 
   // plantafstand volgt het aanbevolen aantal per m²
   const sp = await page.evaluate(async () => {

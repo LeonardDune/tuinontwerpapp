@@ -5,7 +5,7 @@
 // Een wensvakje is een groep (group: true, bedId) met wish: { layer, height, color, seasons } en een lege
 // mix zolang er nog geen plant gekozen is.
 
-import { PYRAMID, HEIGHTS, HEIGHT_ORDER, plantLayer, roleLayer, layerIndex, inScheme } from './planting.js';
+import { PYRAMID, HEIGHTS, HEIGHT_ORDER, plantLayer, roleLayer, layerIndex, inScheme, hexToHsl } from './planting.js';
 import { PLANTS, heightClass, colorFamily } from './plantdb.js';
 
 export const WISH_COLORS = {
@@ -47,9 +47,29 @@ export function normalizeWish(w) {
   if (!PYRAMID.some((l) => l.key === out.layer)) out.layer = 'vaste';
   const hs = LAYER_HEIGHTS[out.layer];
   if (!hs.includes(out.height)) out.height = hs[0];
-  if (out.color && !WISH_COLORS[out.color]) out.color = '';
+  // kleur: een familie (roze, blauw …), 'blad', of een precieze kleur uit de kleurencombinatie (#rrggbb)
+  if (out.color && !WISH_COLORS[out.color] && !isHex(out.color)) out.color = '';
   out.seasons = (out.seasons || []).filter((s) => SEASONS[s]);
   return out;
+}
+
+const isHex = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
+
+/** Naam van een gewenste kleur: familie, of de familie van een precieze kleur ('roze (uit de combinatie)'). */
+export function wishColorName(c) {
+  if (!c) return '';
+  if (WISH_COLORS[c]) return WISH_COLORS[c].name.toLowerCase();
+  return isHex(c) ? colorFamily(c) : '';
+}
+
+/** Lijkt een bloeikleur op de gewenste precieze kleur? (zelfde tint, of allebei wit/crème) */
+export function colorMatches(color, want) {
+  if (!color || !want) return false;
+  const [h, s, l] = hexToHsl(color), [wh, ws, wl] = hexToHsl(want);
+  const pale = (sat, lig) => sat < 0.18 || lig > 0.88;
+  if (pale(ws, wl) || pale(s, l)) return pale(ws, wl) && pale(s, l);
+  const d = Math.abs(((h - wh + 540) % 360) - 180);
+  return d < 24 && Math.abs(l - wl) < 0.35;
 }
 
 /** In welke seizoenen heeft een plant (of bouwsteen) iets te bieden? */
@@ -70,12 +90,13 @@ export function wishText(w, short = false) {
   const layer = PYRAMID.find((l) => l.key === w.layer);
   const h = HEIGHTS[w.height];
   const parts = short
-    ? [h ? h.range : '', w.color ? WISH_COLORS[w.color].name.split(' ')[0].toLowerCase() : '', w.seasons.map((s) => SEASONS[s].short).join('')]
-    : [layer?.wish, h ? h.range : '', w.color ? WISH_COLORS[w.color].name.toLowerCase() : '', w.seasons.map((s) => SEASONS[s].name.toLowerCase()).join(', ')];
+    ? [h ? h.range : '', wishColorName(w.color).split(' ')[0], w.seasons.map((s) => SEASONS[s].short).join('')]
+    : [layer?.wish, h ? h.range : '', wishColorName(w.color), w.seasons.map((s) => SEASONS[s].name.toLowerCase()).join(', ')];
   return parts.filter(Boolean).join(' · ');
 }
 
 export function wishHex(w) {
+  if (isHex(w?.color)) return w.color;
   return (w?.color && WISH_COLORS[w.color]?.hex) || '#b9a77f';
 }
 
@@ -124,8 +145,10 @@ export function wishCandidates(wish, ctx = {}) {
     if (w.color === 'blad') {
       if (p.form === 'blad' || !p.bloom.length) { score += 3; good.push('bladplant'); } else if (p.foliage && p.foliage !== 'groen') { score += 2; good.push(`${p.foliage} blad`); } else { score -= 1; bad.push('bloeit opvallend'); }
     } else if (w.color) {
-      const fam = p.bloom.length && p.form !== 'blad' ? colorFamily(p.color) : null;
-      if (fam === w.color) { score += 3; good.push(WISH_COLORS[w.color].name.toLowerCase()); } else { score -= 3; bad.push(fam ? `bloeit ${fam}` : 'geen opvallende bloei'); }
+      const blooms = p.bloom.length && p.form !== 'blad';
+      const fam = blooms ? colorFamily(p.color) : null;
+      const ok = isHex(w.color) ? blooms && colorMatches(p.color, w.color) : fam === w.color;
+      if (ok) { score += 3; good.push(isHex(w.color) ? `${fam}, als gekozen` : WISH_COLORS[w.color].name.toLowerCase()); } else { score -= 3; bad.push(fam ? `bloeit ${fam}` : 'geen opvallende bloei'); }
     }
     const ps = plantSeasons(p);
     for (const s of w.seasons) {
@@ -145,14 +168,31 @@ export function wishCandidates(wish, ctx = {}) {
 
 const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** Keuzes voor een wens: soort, hoogte, kleur, seizoenen en (optioneel) de grootte van een nieuw vakje. */
-export function wishControlsHtml(wish, { size = null } = {}) {
+/**
+ * Keuzes voor een wens: soort, hoogte, kleur, seizoenen en (optioneel) de grootte van een nieuw vakje.
+ * palette: de kleuren van de kleurencombinatie van het vak; die staan voorop, 'Andere kleur…' wijkt ervan af.
+ */
+export function wishControlsHtml(wish, { size = null, palette = null, schemeName = '' } = {}) {
   const w = normalizeWish(wish);
   const opt = (pairs, cur) => pairs.map(([k, n]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${escH(n)}</option>`).join('');
+  const pal = palette && palette.length ? palette : Object.entries(WISH_COLORS).filter(([k]) => k !== 'blad').map(([, v]) => v.hex);
+  const famHex = Object.fromEntries(Object.entries(WISH_COLORS).map(([k, v]) => [k, v.hex]));
+  const inPal = !w.color || w.color === 'blad' || pal.some((c) => c.toLowerCase() === (famHex[w.color] || w.color).toLowerCase());
+  const chip = (val, inner, title, on) => `<button type="button" class="wc${on ? ' on' : ''}" data-wcol="${val}" title="${escH(title)}">${inner}</button>`;
+  const colors = `<div class="wcolors" title="${palette ? `Kleuren uit de kleurencombinatie${schemeName ? ` (${escH(schemeName)})` : ''}` : 'Bloeikleur'}">
+      ${chip('', 'Geen voorkeur', 'Geen voorkeur voor de kleur', !w.color)}
+      ${pal.map((c) => {
+        const fam = palette ? c : Object.keys(famHex).find((k) => famHex[k] === c);
+        return chip(fam, `<i style="background:${c}"></i>`, palette ? `${colorFamily(c)} (uit de combinatie)` : WISH_COLORS[fam].name, w.color && (famHex[w.color] || w.color).toLowerCase() === c.toLowerCase());
+      }).join('')}
+      ${chip('blad', 'Blad', 'Geen opvallende bloei: een bladplant', w.color === 'blad')}
+      ${palette ? chip('meer', 'Andere kleur…', 'Afwijken van de kleurencombinatie', !inPal) : ''}
+    </div>
+    ${palette ? `<select data-wc title="Een kleur buiten de combinatie" ${inPal ? 'hidden' : ''}>${opt([['', 'Kies een andere kleur'], ...Object.entries(WISH_COLORS).filter(([k]) => k !== 'blad').map(([k, v]) => [k, v.name])], inPal ? '' : w.color)}</select>` : ''}`;
   return `<div class="wishctl">
     <select data-wl title="Wat voor plant (laag van de beplantingspiramide)">${opt(PYRAMID.map((l) => [l.key, l.wish]), w.layer)}</select>
     <select data-wh title="Hoe hoog">${opt(LAYER_HEIGHTS[w.layer].map((h) => [h, `${HEIGHTS[h].name} (${HEIGHTS[h].range})`]), w.height)}</select>
-    <select data-wc title="Bloeikleur (of juist blad)">${opt([['', 'Kleur: geen voorkeur'], ...Object.entries(WISH_COLORS).map(([k, v]) => [k, v.name])], w.color)}</select>
+    ${colors}
     <span class="seg" title="Wanneer moet het mooi zijn?">${Object.entries(SEASONS).map(([k, v]) => `<button type="button" data-ws="${k}" class="${w.seasons.includes(k) ? 'on' : ''}">${v.name}</button>`).join('')}</span>
     ${size != null ? `<span class="seg" title="Grootte van een nieuw vakje als je tikt (slepen = eigen vorm)">${WISH_SIZES.map((a) => `<button type="button" data-wsize="${a}" class="${size === a ? 'on' : ''}">${String(a).replace('.', ',')} m²</button>`).join('')}</span>` : ''}
   </div>`;
@@ -164,7 +204,18 @@ export function bindWishControls(root, wish, onChange, onSize = null) {
   const set = (patch) => { w = normalizeWish({ ...w, ...patch }); onChange(w); };
   root.querySelector('[data-wl]')?.addEventListener('change', (e) => set({ layer: e.target.value, height: LAYER_HEIGHTS[e.target.value][0] }));
   root.querySelector('[data-wh]')?.addEventListener('change', (e) => set({ height: e.target.value }));
-  root.querySelector('[data-wc]')?.addEventListener('change', (e) => set({ color: e.target.value }));
+  root.querySelector('[data-wc]')?.addEventListener('change', (e) => { if (e.target.value) set({ color: e.target.value }); });
+  for (const b of root.querySelectorAll('[data-wcol]')) {
+    b.addEventListener('click', () => {
+      if (b.dataset.wcol === 'meer') {
+        const sel = root.querySelector('[data-wc]');
+        if (sel) { sel.hidden = false; sel.focus(); }
+        b.classList.add('on');
+        return;
+      }
+      set({ color: b.dataset.wcol });
+    });
+  }
   for (const b of root.querySelectorAll('[data-ws]')) {
     b.addEventListener('click', () => {
       const s = b.dataset.ws;

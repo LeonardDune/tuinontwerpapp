@@ -85,11 +85,13 @@ export function plantList(doc, bedId = null) {
       perM2: tree ? null : perM2(r),
       count: amount,
       where: [...(where[id] || [])],
-      supplier: r.supplier || (e ? 'Esveld' : ''),
+      supplier: r.supplier || (e || p?.esvSearch ? 'Esveld' : ''),
       ownSupplier: !!r.supplier,
       price,
       ownPrice: own != null,
-      url: e?.url || '',
+      url: e?.url || p?.esvSearch?.url || '',
+      // geen artikel met precies deze naam: link naar het aanbod (kies daar een cultivar)
+      choose: !e && p?.esvSearch ? p.esvSearch.n : 0,
       pot: e?.sizes?.[0] || '',
       total: price != null ? price * amount : null,
       note: [r.note, p?.native ? 'inheems' : '', p?.bees ? 'bijen en vlinders' : '', p?.evergreen ? 'wintergroen' : ''].filter(Boolean).join(', '),
@@ -337,7 +339,7 @@ export function openPlantList(app, bedId = null, { share, safeFilename } = {}) {
             <td class="r">${r.perM2 != null ? num(r.perM2, 1) : '–'}</td>
             <td class="r"><b>${r.count}</b></td>
             <td><small>${esc(r.where.join(', '))}</small></td>
-            <td><input type="text" data-f="supplier" value="${r.ownSupplier ? esc(r.supplier) : ''}" placeholder="${esc(r.supplier || 'bijv. kwekerij')}">${r.url ? `<small><a href="${esc(r.url)}" target="_blank" rel="noopener">bij Esveld${r.pot ? `, ${esc(r.pot)}` : ''} ↗</a></small>` : ''}</td>
+            <td><input type="text" data-f="supplier" value="${r.ownSupplier ? esc(r.supplier) : ''}" placeholder="${esc(r.supplier || 'bijv. kwekerij')}">${r.url ? `<small><a href="${esc(r.url)}" target="_blank" rel="noopener">${r.choose ? `${r.choose} cultivar${r.choose > 1 ? 's' : ''} bij Esveld: kies er een` : `bij Esveld${r.pot ? `, ${esc(r.pot)}` : ''}`} ↗</a></small>` : ''}</td>
             <td class="r"><input type="text" inputmode="decimal" data-f="price" value="${r.ownPrice ? num(r.price, 2) : ''}" placeholder="${r.price != null ? num(r.price, 2) : '€'}"></td>
             <td class="r tot">${euro(r.total)}</td></tr>`).join('')}`).join('')}</tbody>
           <tfoot><tr><th colspan="7">Totaal</th><th class="r">${list.total}</th><th colspan="3"></th><th class="r gtot">${euro(list.price)}</th></tr></tfoot>

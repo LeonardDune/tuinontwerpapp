@@ -802,3 +802,9 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 :is(#plant-panel, #garden-panel) details.refine-more > summary { font-weight: 600; }
 .plantlist .ptxt small.esv { color: #2f5d3a; }
 .plantlist .ptxt small.esv a, .shoplist a { color: #2f5d3a; }
+.wishctl .wcolors { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: 100%; }
+.wishctl .wcolors .wc { border: 1px solid var(--line); background: #fff; border-radius: 16px; padding: 4px 9px; font-size: 13px; min-height: 30px; cursor: pointer; }
+.wishctl .wcolors .wc i { display: block; width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
+.wishctl .wcolors .wc:has(i) { padding: 5px; }
+.wishctl .wcolors .wc.on { border-color: #2f5d3a; box-shadow: 0 0 0 2px #2f5d3a inset; background: #eef5ea; }
+.side-panel .scheme .palette, .side-panel .palette { display: flex; gap: 3px; margin: 6px 0; }

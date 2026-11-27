@@ -1615,7 +1615,7 @@ class App {
     if (mode === 'wens' && beds) {
       // wensvakje: alleen wat je hier wilt; de plant kies je later (grote planten eerst)
       const box = document.createElement('div');
-      box.innerHTML = wishControlsHtml(this.state.wish, { size: this.wishSize() });
+      box.innerHTML = wishControlsHtml(this.state.wish, this.plantPanel.wishColorOpts(this.plantPanel.scopeBed(), true));
       bindWishControls(box, this.state.wish, (w) => { this.state.wish = w; this.persistSettings(); this.renderOptions(); this.plantPanel.refresh(); this.requestRender(); }, (a) => { this.state.wishSize = a; this.persistSettings(); this.renderOptions(); this.requestRender(); });
       wrap.appendChild(box.firstElementChild);
       wrap.appendChild(this.hint('Tik in een plantvak voor een vakje met deze wens, of sleep een eigen vorm. De plant kies je daarna per vakje in het paneel Beplanting (stap 3), de grote planten eerst.'));

@@ -30,7 +30,31 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(/Vak/.test(steps[0]) && /Wensen/.test(steps[1]) && /Planten/.test(steps[2]), `stappen in de volgorde van de werkwijze: ${steps.join(' → ').replace(/\s+/g, ' ')}`);
   assert(await panel.getByText('Wat wil je hier?').isVisible() && !(await panel.locator('[data-act="compose"]').count()), 'stap 2 Wensen: alleen wensen, nog geen planten kiezen');
   // wens: vaste plant, middelhoog, roze, zomer
+  // kleurencombinatie per vak: eerst de combinatie, dan kies je bij de wens uit die kleuren
+  await panel.locator('[data-k="bedscheme"]').selectOption('complementair');
+  const sch = await page.evaluate(() => window.app.store.findItem('B').item.scheme);
+  assert(sch && sch.type === 'complementair' && !(await page.evaluate(() => window.app.store.doc.planting.scheme.type !== 'vrij')), 'kleurencombinatie gekozen voor dit vak (het hele ontwerp blijft vrij)');
+  const pal = await panel.locator('.scheme .palette i').count();
+  const chips = await panel.locator('.wnew .wcolors [data-wcol^="#"]').count();
+  assert(pal === 6 && chips === pal, `bij de wens staan de ${chips} kleuren van de combinatie voorop`);
+  assert(await panel.locator('.wnew [data-wcol="meer"]').isVisible() && !(await panel.locator('.wnew [data-wc]').isVisible()), 'met "Andere kleur…" om af te wijken (keuzelijst nog verborgen)');
+  await panel.locator('.wnew .wcolors [data-wcol^="#"]').first().click();
+  const hex = await page.evaluate(() => window.app.state.wish.color);
+  assert(/^#[0-9a-f]{6}$/i.test(hex), `een kleur uit de combinatie gekozen (${hex})`);
+  const match = await page.evaluate(async (hex) => {
+    const { wishCandidates, colorMatches } = await import('./js/wish.js');
+    const r = wishCandidates({ layer: 'vaste', height: 'middel', color: hex }, {});
+    const top = r.list.slice(0, 5);
+    return top.length && top.every((c) => colorMatches(c.p.color, hex));
+  }, hex);
+  assert(match, 'de voorgestelde planten hebben die kleur');
+  await panel.locator('.wnew [data-wcol="meer"]').click();
+  assert(await panel.locator('.wnew [data-wc]').isVisible(), '"Andere kleur…" toont alle kleuren');
   await panel.locator('.wnew [data-wc]').selectOption('roze');
+  assert(await page.evaluate(() => window.app.state.wish.color) === 'roze', 'afwijken: roze, buiten de combinatie');
+  await page.screenshot({ path: path.join(OUT, 'wens-kleuren.png') });
+  await panel.locator('[data-k="bedscheme"]').selectOption('');
+  assert(!(await page.evaluate(() => window.app.store.findItem('B').item.scheme)), 'terug naar de combinatie van het hele ontwerp');
   await panel.locator('.wnew [data-ws="zomer"]').click();
   await panel.locator('[data-wact="draw"]').click();
   const st = await page.evaluate(() => ({ tool: window.app.state.tool, mode: window.app.state.plantMode, wish: window.app.state.wish }));

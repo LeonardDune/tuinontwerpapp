@@ -87,12 +87,13 @@ export class GardenPanel {
         <div class="seg layers">${[[null, 'Alles'], ...PYRAMID.slice(0, 4).map((l, i) => [i, `t/m ${l.wish.toLowerCase()}`])].map(([v, n]) => `<button type="button" data-layer="${v ?? ''}" class="${(pp.layerMax ?? null) === v ? 'on' : ''}">${n}</button>`).join('')}</div>
       </section>
       <section>
-        <h3>Kleurenschema <small>${esc(SCHEMES[p.scheme.type]?.name || '')}</small></h3>
+        <h3>Standaard kleurencombinatie <small>${esc(SCHEMES[p.scheme.type]?.name || '')}</small></h3>
         <div class="row">
           <select data-k="scheme">${Object.entries(SCHEMES).map(([k, v]) => `<option value="${k}" ${p.scheme.type === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>
           <input type="color" data-k="base" value="${p.scheme.base}" title="Basiskleur" ${['vrij', 'warm', 'koel', 'wit'].includes(p.scheme.type) ? 'hidden' : ''}>
         </div>
         <div class="palette">${palette.map((c) => `<i style="background:${c}" title="${c}"></i>`).join('')}</div>
+        <p class="hint">Voor plantvakken zonder eigen keuze. Een eigen combinatie per vak kies je bij Plantvak ▸ 2 Wensen.</p>
       </section>
       <section>
         <h3>Plantvakken <small>${beds.length ? `${beds.length} in de tekening` : ''}</small></h3>
