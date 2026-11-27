@@ -9,6 +9,7 @@ import {
 import { icon } from './icons.js';
 import { yearBars, bloomText, mixAdvice } from './plantpanel.js';
 import { gardenBalance } from './checks.js';
+import { roleEsveldLinkHtml } from './esveld.js';
 import { HATCHES } from './patterns.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -138,7 +139,7 @@ export class GardenPanel {
       const txt = document.createElement('div');
       txt.className = 'rtxt';
       const a = yr.areas[r.id], n = counts[r.id];
-      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role]?.name || 'Plant'} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}</small>`;
+      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role]?.name || 'Plant'} · bloei ${bloomText(r)}${a ? ` · ${a < 10 ? a.toFixed(1).replace('.', ',') : Math.round(a)} m²` : ''}${n ? ` · ${n} st.` : ''}${inScheme(r.color, p.scheme) ? '' : ' · <em>buiten schema</em>'}${roleEsveldLinkHtml(r) ? ` · ${roleEsveldLinkHtml(r)}` : ''}</small>`;
       li.appendChild(txt);
       const edit = document.createElement('button');
       edit.type = 'button'; edit.title = 'Bewerken'; edit.innerHTML = icon('pen', 18);
@@ -146,6 +147,7 @@ export class GardenPanel {
       li.appendChild(edit);
       // tikken: deze plant los neerzetten
       li.title = 'Tik om deze plant los in de tekening te zetten';
+      li.querySelector('a.esvlink')?.addEventListener('click', (ev) => ev.stopPropagation());
       li.addEventListener('click', () => {
         this.app.state.plantRole = r.id;
         if (!['plant', 'groep'].includes(this.app.state.plantMode)) this.app.state.plantMode = 'plant';

@@ -10,9 +10,9 @@ import {
 import {
   wishOrder, wishText, wishHex, wishCandidates, normalizeWish, wishControlsHtml, bindWishControls, isWish,
 } from './wish.js';
-import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
+import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant, colorFamily } from './plantdb.js';
 import { combosFor } from './combos.js';
-import { ESVELD } from './esveld.js';
+import { ESVELD, esveldLinkHtml, roleEsveldLinkHtml } from './esveld.js';
 import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits } from './traits.js';
 import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE } from './checks.js';
 import { drawPlant } from './plantdraw.js';
@@ -256,7 +256,7 @@ export class PlantPanel {
     return `<div class="wcard">
         <h4>Vakje ${nr} <small>${area.toFixed(1).replace('.', ',')} m²${n ? ` · ±${n} plant${n > 1 ? 'en' : ''}` : ''}</small></h4>
         <div class="wedit">${wishControlsHtml(w.wish, this.wishColorOpts(this.app.store.findItem(w.bedId)?.item))}</div>
-        ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
+        ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen ${roleEsveldLinkHtml(r)}</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
         <h5>${r ? 'Of een andere plant' : 'Passende planten'}</h5>
         <ul class="wcands"></ul>
         <div class="row add"><button type="button" data-wact="more">Meer planten…</button></div>
@@ -328,11 +328,12 @@ export class PlantPanel {
       li.appendChild(this.thumb(c.p, 34));
       const t = document.createElement('div');
       t.className = 'rtxt';
-      t.innerHTML = `<b>${esc(c.p.nl)}</b> <i>${esc(c.p.lat)}</i><small>${c.p.h >= 300 ? `${Math.round(c.p.h / 100)} m` : `${c.p.h} cm`} · bloei ${bloomText(c.p)}${c.good.length ? ` · <span class="good">${esc(c.good.join(', '))}</span>` : ''}${c.bad.length ? ` · <em>${esc(c.bad.join(', '))}</em>` : ''}</small>`;
+      t.innerHTML = `<b>${esc(c.p.nl)}</b> <i>${esc(c.p.lat)}</i><small>${c.p.h >= 300 ? `${Math.round(c.p.h / 100)} m` : `${c.p.h} cm`} · bloei ${bloomText(c.p)}${c.good.length ? ` · <span class="good">${esc(c.good.join(', '))}</span>` : ''}${c.bad.length ? ` · <em>${esc(c.bad.join(', '))}</em>` : ''}${esveldLinkHtml(c.p) ? ` · ${esveldLinkHtml(c.p)}` : ''}</small>`;
       li.appendChild(t);
       const sw = document.createElement('i');
       sw.className = 'pcolor'; sw.style.background = c.p.bloom.length ? c.p.color : 'transparent';
       li.appendChild(sw);
+      li.querySelector('a.esvlink')?.addEventListener('click', (ev) => ev.stopPropagation());
       li.addEventListener('click', () => this.fillWish(id, c.p));
       ul.appendChild(li);
     }
@@ -748,7 +749,7 @@ export class PlantPanel {
       li.appendChild(this.thumb(r, 34, this.month));
       const txt = document.createElement('div');
       txt.className = 'rtxt';
-      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · ${HEIGHTS[r.height]?.range || ''} · bloei ${bloomText(r)}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[bed.btype].label.toLowerCase())}</em>`}</small>`;
+      txt.innerHTML = `<b>${esc(r.code)}</b> ${esc(describeRole(r))}<small>${ROLES[r.role].name} · ${HEIGHTS[r.height]?.range || ''} · bloei ${bloomText(r)}${fits ? '' : ` · <em>past niet bij ${esc(BED_TYPES[bed.btype].label.toLowerCase())}</em>`}${roleEsveldLinkHtml(r) ? ` · ${roleEsveldLinkHtml(r)}` : ''}</small>`;
       li.appendChild(txt);
       const w = document.createElement('input');
       w.type = 'number'; w.min = '0'; w.max = '100'; w.step = '5'; w.value = String(Math.round(((Number(m.w) || 0) / tot) * 100));
@@ -963,11 +964,13 @@ export class PlantPanel {
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
     const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '', traits: [...traits] };
+    // een precieze kleur (uit een kleurencombinatie) zoeken als kleurnaam
+    if (/^#[0-9a-f]{6}$/i.test(f.color)) f.color = colorFamily(f.color) || '';
     const esvOn = ESVELD.loaded;
     dlg.innerHTML = `
       <form method="dialog" class="dlg wide picker">
         <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
-        <input type="search" data-f="q" placeholder="Zoek op naam of cultivar, bijv. salvia caradonna" autocomplete="off">
+        <div class="searchrow"><input type="search" data-f="q" placeholder="Naam of cultivar, bijv. salvia caradonna" autocomplete="off" enterkeyhint="search"><button type="button" class="primary" data-act="search">${icon('search', 18)} Zoek</button></div>
         <div class="filters">
           ${esvOn ? `<select data-f="source" title="Uit welke bron"><option value="esveld" ${f.source === 'esveld' ? 'selected' : ''}>Esveld (${ESVELD.count.toLocaleString('nl-NL')} cultivars)</option><option value="" ${f.source === '' ? 'selected' : ''}>Alle planten</option><option value="eigen">Alleen de basislijst</option></select>` : ''}
           <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
@@ -980,13 +983,60 @@ export class PlantPanel {
         </div>
         <div class="tfilters" title="Alleen planten met al deze eigenschappen">${['structuur', 'eetbaar', 'klimmer', 'leiden', 'wintergroen', 'geur', 'bijen', 'vogels', 'inheems', 'windvast', 'inkijk', 'bodem', 'weef'].map((k) => `<button type="button" class="chip${f.traits.includes(k) ? ' on' : ''}" data-tf="${k}" title="${esc(TRAITS[k].hint)}">${esc(TRAITS[k].name)}</button>`).join('')}</div>
         ${traits.length ? `<p class="hint">Eisen van dit vak staan aan: ${traits.map((k) => esc(TRAITS[k].short)).join(', ')}. Zet ze uit om ervan af te wijken.</p>` : ''}
+        <div class="activef"></div>
         <p class="hint count"></p>
         <ul class="plantlist"></ul>
+        <footer><span class="spacer"></span><button value="close">Annuleren</button></footer>
       </form>`;
     const list = $('.plantlist', dlg);
+    const FILTER_NAMES = { q: 'zoekwoord', type: 'soort', height: 'hoogte', light: 'standplaats', soil: 'grond', color: 'bloeikleur', month: 'bloeitijd', onlyFit: 'past bij het vak', source: 'alleen Esveld' };
+    // bediening en de balk met actieve filters laten zien wat er nu geldt
+    const sync = () => {
+      for (const inp of dlg.querySelectorAll('[data-f]')) {
+        const key = inp.dataset.f;
+        if (inp.type === 'checkbox') inp.checked = !!f[key]; else if (inp.value !== (f[key] ?? '')) inp.value = f[key] ?? '';
+        if (inp.tagName === 'SELECT') inp.classList.toggle('active', !!f[key] && key !== 'source');
+      }
+      for (const tb of dlg.querySelectorAll('[data-tf]')) tb.classList.toggle('on', f.traits.includes(tb.dataset.tf));
+      const label = (key) => { const sel = dlg.querySelector(`select[data-f="${key}"]`); return sel ? sel.options[sel.selectedIndex]?.text : f[key]; };
+      const chips = [];
+      if (f.q) chips.push(['q', `“${f.q}”`]);
+      for (const key of ['type', 'height', 'light', 'soil', 'color', 'month']) if (f[key]) chips.push([key, label(key)]);
+      if (f.onlyFit && btype) chips.push(['onlyFit', `past bij ${BED_TYPES[btype].label.toLowerCase()}`]);
+      for (const k of f.traits) chips.push([`t:${k}`, TRAITS[k].name]);
+      const af = $('.activef', dlg);
+      af.innerHTML = chips.length
+        ? `<span>Actieve filters:</span>${chips.map(([k, t]) => `<button type="button" class="chip on" data-clear="${k}" title="Dit filter weghalen">${esc(t)} ×</button>`).join('')}<button type="button" class="link" data-clear="all">Alle filters wissen</button>`
+        : `<span>Geen filters${f.source === 'esveld' ? ' (alleen de Esveld-catalogus)' : ''}.</span>`;
+      for (const b of af.querySelectorAll('[data-clear]')) b.addEventListener('click', () => clear(b.dataset.clear));
+    };
+    const clear = (k) => {
+      if (k === 'all') { f.q = ''; for (const x of ['type', 'height', 'light', 'soil', 'color', 'month']) f[x] = ''; f.traits = []; f.onlyFit = false; }
+      else if (k.startsWith('t:')) f.traits = f.traits.filter((x) => x !== k.slice(2));
+      else f[k] = k === 'onlyFit' ? false : '';
+      show();
+    };
     const show = () => {
+      sync();
       const res = searchPlants(f);
-      $('.count', dlg).textContent = `${res.length} planten${res.length > 150 ? ', de eerste 150 getoond' : ''}. Tik op een plant om hem te kiezen.`;
+      const cnt = $('.count', dlg);
+      if (res.length) {
+        cnt.textContent = `${res.length} planten${res.length > 150 ? ', de eerste 150 getoond' : ''}. Tik op een plant om hem te kiezen.`;
+      } else {
+        // welk filter is te streng? Laat zien wat er overblijft zonder elk filter apart
+        const loose = [];
+        for (const k of ['color', 'height', 'light', 'soil', 'month', 'type', 'onlyFit', 'source', 'q']) {
+          if (!f[k]) continue;
+          const n = searchPlants({ ...f, [k]: k === 'onlyFit' ? false : '' }).length;
+          if (n) loose.push({ k, n, name: FILTER_NAMES[k] });
+        }
+        for (const k of f.traits) {
+          const n = searchPlants({ ...f, traits: f.traits.filter((x) => x !== k) }).length;
+          if (n) loose.push({ k: `t:${k}`, n, name: TRAITS[k].short });
+        }
+        cnt.innerHTML = `Geen planten met al deze filters. ${loose.length ? `Laat er een los: ${loose.map((x) => `<button type="button" class="link" data-loose="${x.k}">zonder ${esc(x.name)} (${x.n})</button>`).join(' · ')} · ` : ''}<button type="button" class="link" data-loose="all">alle filters wissen</button>`;
+        for (const b of cnt.querySelectorAll('[data-loose]')) b.addEventListener('click', () => clear(b.dataset.loose));
+      }
       list.innerHTML = '';
       for (const { p, fits } of res.slice(0, 150)) {
         const li = document.createElement('li');
@@ -1023,6 +1073,11 @@ export class PlantPanel {
     }
     show();
     dlg.showModal();
+    // Enter in het zoekveld sluit het venster niet (de lijst filtert al bij het typen)
+    const search = () => { f.q = $('[data-f="q"]', dlg).value; show(); $('[data-f="q"]', dlg).blur(); list.scrollTop = 0; };
+    $('[data-f="q"]', dlg).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+    $('[data-act="search"]', dlg).addEventListener('click', search);
+    $('form', dlg).addEventListener('submit', (e) => { if (e.submitter?.value !== 'close') e.preventDefault(); });
     setTimeout(() => $('[data-f="q"]', dlg)?.focus(), 50);
   }
 

@@ -59,6 +59,35 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   const lei = await page.locator('#dlg-plants .plant b').allInnerTexts();
   assert(lei.length >= 2, `filter "te leiden": ${lei.slice(0, 5).join(', ')}`);
   await page.screenshot({ path: path.join(OUT, 'eigenschappen-filter.png') });
+  // Enter in het zoekveld sluit het venster niet
+  await page.fill('#dlg-plants [data-f="q"]', 'appel');
+  await page.click('#dlg-plants [data-act="search"]');
+  assert(await page.isVisible('#dlg-plants') && /Appelboom/.test(await page.locator('#dlg-plants .plantlist').innerText()), 'knop Zoek zoekt (en het venster blijft open)');
+  await page.press('#dlg-plants [data-f="q"]', 'Enter');
+  assert(await page.isVisible('#dlg-plants') && /Appelboom/.test(await page.locator('#dlg-plants .plantlist').innerText()), 'Enter in het zoekveld laat het venster open (de lijst filtert al bij het typen)');
+  // geen resultaten: laat zien welk filter te streng is
+  await page.fill('#dlg-plants [data-f="q"]', '');
+  await page.selectOption('#dlg-plants [data-f="type"]', 'bol');
+  const none = await page.locator('#dlg-plants .count').innerText();
+  assert(/Geen planten/.test(none) && /zonder te leiden/.test(none) && /alle filters wissen/.test(none), `0 planten: ${none.replace(/\s+/g, ' ')}`);
+  await page.locator('#dlg-plants [data-loose="t:leiden"]').click();
+  assert(await page.locator('#dlg-plants .plant').count() > 0 && !(await page.locator('#dlg-plants [data-tf="leiden"].on').count()), '"zonder te leiden" laat dat filter los en toont weer planten');
+  await page.keyboard.press('Escape');
+  // een precieze kleur uit een kleurencombinatie wordt de kleurnaam
+  await page.evaluate(() => window.app.plantPanel.openPicker({ title: 'Annuleren', onPick() {} }));
+  await page.click('#dlg-plants footer button[value="close"]');
+  assert(!(await page.isVisible('#dlg-plants')), 'Annuleren sluit het venster zonder iets te kiezen');
+  await page.evaluate(() => window.app.plantPanel.openPicker({ title: 'Kleur', color: '#f6f4ee', onPick() {} }));
+  assert(await page.inputValue('#dlg-plants [data-f="color"]') === 'wit' && await page.locator('#dlg-plants .plant').count() > 0, 'een precieze kleur (wit uit de combinatie) staat als "Wit" in het kleurfilter, met resultaten');
+  await page.keyboard.press('Escape');
+  // filters zijn altijd zichtbaar, en met één tik weg
+  await page.evaluate(() => window.app.plantPanel.openPicker({ title: 'Filters', height: 'hoog', light: 'half', moisture: 'normaal', color: '#f6f4ee', onPick() {} }));
+  const af = await page.locator('#dlg-plants .activef').innerText();
+  const before = await page.locator('#dlg-plants .plant').count();
+  assert(/Actieve filters/.test(af) && /Hoog/.test(af) && /Halfschaduw/.test(af) && /Wit/.test(af) && await page.locator('#dlg-plants select.active').count() >= 4, `de filters van de wens staan zichtbaar bovenaan (${af.replace(/\s+/g, ' ')})`);
+  await page.click('#dlg-plants [data-clear="all"]');
+  const after = await page.locator('#dlg-plants .plant').count();
+  assert(/Geen filters/.test(await page.locator('#dlg-plants .activef').innerText()) && after > before && !(await page.locator('#dlg-plants select.active').count()), `"Alle filters wissen": ${before} → ${after} planten`);
   await page.keyboard.press('Escape');
   // samenstellen houdt de eis aan
   const comp = await page.evaluate(async () => {

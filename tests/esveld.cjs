@@ -84,6 +84,11 @@ const FAKE = {
   assert(/Esveld/.test(row) && /€/.test(row) && /per m²|\/m²/.test(row), `met prijs, maat en aantal per m² (${row.replace(/\s+/g, ' ').slice(0, 110)}…)`);
   await page.screenshot({ path: path.join(OUT, 'esveld-kiezen.png') });
   await page.locator('#dlg-plants .plant').first().click();
+  assert(await page.locator('#plant-panel .mixlist a.esvlink[href*="esveld.nl"]').count() === 1, 'in de basis van het vak een link naar Esveld bij de plant');
+  await page.evaluate(() => window.app.gardenPanel.open());
+  await page.evaluate(() => { document.querySelector('#garden-panel details.allroles').open = true; });
+  assert(await page.locator('#garden-panel .roles a.esvlink[href*="esveld.nl"]').count() >= 1, 'ook bij Hele ontwerp ▸ Alle planten');
+  await page.evaluate(() => window.app.plantPanel.open());
   await page.click('#plant-panel [data-act="plantlist"]');
   const list = await page.evaluate(async () => {
     const { plantList, plantListCsv } = await import('./js/plantlist.js');

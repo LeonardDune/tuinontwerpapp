@@ -55,6 +55,7 @@ const P = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   points: '<path d="M5 18 9 6l10 4-4 9Z" stroke-dasharray="2 2"/><rect x="3" y="16" width="4" height="4" rx="1" fill="currentColor"/><rect x="7" y="4" width="4" height="4" rx="1" fill="currentColor"/><rect x="17" y="8" width="4" height="4" rx="1" fill="currentColor"/><rect x="13" y="17" width="4" height="4" rx="1" fill="currentColor"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   rotCcw: '<path d="M4 5v5h5"/><path d="M4.6 14a8 8 0 1 0 1.8-8.3L4 10"/>',

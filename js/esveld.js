@@ -147,3 +147,16 @@ function linkBuiltins(list) {
 export function atEsveld(p) {
   return !!p?.esv;
 }
+
+/** Link naar Esveld voor een plant uit de database (artikel, of het aanbod van de soort), als HTML; anders ''. */
+export function esveldLinkHtml(p) {
+  if (!p) return '';
+  if (p.esv?.url) return `<a class="esvlink" href="${p.esv.url}" target="_blank" rel="noopener" title="Bekijk bij Esveld${p.esv.price != null ? `, vanaf € ${p.esv.price.toFixed(2).replace('.', ',')}` : ''}">Esveld ↗</a>`;
+  if (p.esvSearch?.url) return `<a class="esvlink" href="${p.esvSearch.url}" target="_blank" rel="noopener" title="${p.esvSearch.n} cultivar${p.esvSearch.n > 1 ? 's' : ''} van deze ${p.esvSearch.what} bij Esveld">aanbod Esveld ↗</a>`;
+  return '';
+}
+
+/** Zelfde voor een bouwsteen (via de plant waar hij op gebaseerd is). */
+export function roleEsveldLinkHtml(r) {
+  return r?.plant ? esveldLinkHtml(PLANTS.get(r.plant)) : '';
+}

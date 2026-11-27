@@ -820,3 +820,11 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .side-panel .elev .seg button { padding: 4px 8px; font-size: 13px; }
 .side-panel .wnav { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 6px 0; }
 .side-panel .wnav span { font-size: 12px; color: var(--muted); }
+.side-panel a.esvlink { color: #2f5d3a; white-space: nowrap; }
+.picker .searchrow { display: flex; gap: 6px; align-items: stretch; }
+.picker .searchrow input { flex: 1; min-width: 0; }
+.picker .searchrow button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 6px 14px; }
+.picker select.active { border-color: #2f5d3a; box-shadow: 0 0 0 1px #2f5d3a inset; background: #eef5ea; }
+.picker .activef { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 8px 0 0; font-size: 13px; }
+.picker .activef > span { color: var(--muted); margin-right: 4px; }
+.picker .activef .chip { font-size: 12px; padding: 3px 9px; }
