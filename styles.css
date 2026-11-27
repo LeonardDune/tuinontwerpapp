@@ -830,3 +830,5 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .picker .activef .chip { font-size: 12px; padding: 3px 9px; }
 .plantlist li.more { list-style: none; text-align: center; padding: 8px; }
 .plantlist li.more button { width: 100%; }
+.plantlist li.unfit { opacity: .55; }
+.plantlist li.sep { list-style: none; padding: 8px 4px 2px; font-size: 12px; font-weight: 600; color: var(--muted, #777); text-transform: uppercase; letter-spacing: .04em; cursor: default; }

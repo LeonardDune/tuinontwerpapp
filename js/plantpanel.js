@@ -8,17 +8,17 @@ import {
   isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, plantCount, rolesMap, bedScheme, SCHEMES,
 } from './planting.js';
 import {
-  wishOrder, wishText, wishHex, wishCandidates, normalizeWish, wishControlsHtml, bindWishControls, isWish,
+  wishOrder, wishText, wishHex, wishCandidates, wishScore, normalizeWish, wishControlsHtml, bindWishControls, isWish,
 } from './wish.js';
-import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant, colorFamily } from './plantdb.js';
+import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant, colorFamily, heightClass } from './plantdb.js';
 import { combosFor } from './combos.js';
 import { ESVELD, esveldLinkHtml, roleEsveldLinkHtml } from './esveld.js';
-import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits } from './traits.js';
-import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE } from './checks.js';
+import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits, meetsAll } from './traits.js';
+import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE, rolePlant } from './checks.js';
 import { drawPlant } from './plantdraw.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { checkPlanting, compose, adaptItems, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
-import { SOIL_TYPES, PH, EXPOSURE, siteProblems } from './site.js';
+import { SOIL_TYPES, PH, EXPOSURE, siteProblems, lightFits } from './site.js';
 import { drawElevation } from './elevation.js';
 import { collectCasters, computeSunHours } from './shadows.js';
 import { pointInPolygon } from './geom.js';
@@ -259,7 +259,7 @@ export class PlantPanel {
         ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen ${roleEsveldLinkHtml(r)}</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
         <h5>${r ? 'Of een andere plant' : 'Passende planten'}</h5>
         <ul class="wcands"></ul>
-        <div class="row add"><button type="button" data-wact="more">Meer planten…</button></div>
+        <div class="row add"><button type="button" data-wact="more">Meer planten…</button><button type="button" data-wact="chosen" title="Alle planten die al in het ontwerp staan, de best passende bovenaan">Al gekozen planten</button></div>
         ${this.wishNavHtml(w, wishes)}
       </div>`;
   }
@@ -315,9 +315,15 @@ export class PlantPanel {
         btype: null, light: ctx.light, moisture: ctx.moisture, height: nw.height, color: nw.color === 'blad' ? '' : nw.color,
         traits: bed.require || [],
         site: bed,
+        prefer: ctx.used,
         onPick: (pl) => this.fillWish(id, pl),
       });
     });
+    el.querySelector('[data-wact="chosen"]')?.addEventListener('click', () => this.openChosen({
+      title: `Al gekozen planten voor vakje: ${wishText(w.wish)}`,
+      rank: (p) => wishScore(p, w.wish, ctx),
+      onPick: (r) => this.fillWishRole(id, r),
+    }));
     const { list, excluded } = wishCandidates(w.wish, ctx);
     const ul = $('.wcands', el);
     const top = list.slice(0, 8);
@@ -345,12 +351,104 @@ export class PlantPanel {
     }
   }
 
+  /** Bouwstenen die ergens in het ontwerp staan: Map(rol-id → namen van de vakken waar ze staan). */
+  usedRoles() {
+    const roles = rolesMap(this.doc);
+    const out = new Map();
+    const add = (id, where) => { if (!roles[id]) return; if (!out.has(id)) out.set(id, new Set()); if (where) out.get(id).add(where); };
+    const beds = this.beds().map((b) => b.item);
+    const nameOf = (b) => (b ? (b.name || '').trim() || `vak ${beds.indexOf(b) + 1}` : '');
+    const byId = Object.fromEntries(beds.map((b) => [b.id, b]));
+    for (const l of this.doc.layers) {
+      for (const it of l.items) {
+        if (isBed(it)) for (const m of bedPlan(it).mix) add(m.role, nameOf(it));
+        else if (isGroup(it)) for (const m of it.planting?.mix || []) add(m.role, nameOf(byId[it.bedId]));
+        else if ((it.type === 'plant' || it.type === 'stencil') && it.role) add(it.role, 'los');
+      }
+    }
+    return out;
+  }
+
+  /** Plant-id's die al in het ontwerp gekozen zijn. */
+  usedPlantIds() {
+    const roles = rolesMap(this.doc);
+    return new Set([...this.usedRoles().keys()].map((id) => roles[id]?.plant).filter(Boolean));
+  }
+
   wishCtx(bed) {
-    const used = new Set((this.doc.planting?.roles || []).map((r) => r.plant).filter(Boolean));
+    const used = this.usedPlantIds();
     return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: bedScheme(bed, this.doc), used, source: this.app.plantSource(), require: bed?.require || [], maintenance: bed?.aims?.maintenance || null, site: bed || null };
   }
 
   /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
+  /** Een bouwsteen die al in het ontwerp staat in een wensvakje zetten. */
+  fillWishRole(id, r) {
+    this.app.store.mutate(() => {
+      const it = this.app.store.findItem(id)?.item;
+      if (it) it.planting = { mix: [{ role: r.id, w: 100 }] };
+    }, 'wish-fill');
+    const bed = this.app.store.findItem(this.app.store.findItem(id)?.item?.bedId)?.item;
+    this.nextWish(bed, id, r.label || r.code);
+  }
+
+  /** Past een plant in de basis van dit vak? Zelfde soort uitkomst als wishScore. */
+  basisScore(p, bed) {
+    const ctx = this.bedCtx(bed);
+    if (ctx.require?.length && !meetsAll(p, ctx.require)) return { ok: false, why: `niet ${ctx.require.filter((k) => !plantTraits(p).has(k)).map((k) => TRAITS[k].short).join(', ')}` };
+    if (!fitsBedType(heightClass(p), bed.btype, p.kind || p.type)) return { ok: false, why: `past niet bij ${BED_TYPES[bed.btype].label.toLowerCase()}` };
+    if (ctx.light && p.light && !lightFits(p.light, ctx.light)) return { ok: false, why: 'andere standplaats (zon)' };
+    if (ctx.moisture && p.soil && !p.soil.includes(ctx.moisture)) return { ok: false, why: `wil geen ${ctx.moisture}e grond` };
+    const bad = siteProblems(p, bed);
+    if (ctx.scheme?.type && ctx.scheme.type !== 'vrij' && p.bloom.length && p.form !== 'blad' && !inScheme(p.color, ctx.scheme)) bad.push('buiten kleurenschema');
+    return { ok: true, score: 5 - bad.length * 2, good: [], bad };
+  }
+
+  /**
+   * Overzicht van alle planten die al in het ontwerp staan, de best passende bovenaan (wat niet past onderaan,
+   * met de reden). rank(p) geeft { ok, score, good, bad, why }; onPick(bouwsteen).
+   */
+  openChosen({ title, rank, onPick }) {
+    let dlg = document.getElementById('dlg-chosen');
+    if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-chosen'; document.body.appendChild(dlg); }
+    const used = this.usedRoles();
+    const roles = rolesMap(this.doc);
+    const rows = [...used.keys()].map((id) => {
+      const r = roles[id];
+      const p = rolePlant(r);
+      return { r, p, where: [...used.get(id)], res: rank(p) };
+    });
+    rows.sort((a, b) => (b.res.ok - a.res.ok) || ((b.res.score || 0) - (a.res.score || 0)) || (a.r.label || a.r.code).localeCompare(b.r.label || b.r.code, 'nl'));
+    const fit = rows.filter((x) => x.res.ok).length;
+    dlg.innerHTML = `
+      <form method="dialog" class="dlg wide picker chosen">
+        <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
+        <p class="hint">${rows.length ? `${rows.length} planten staan al in dit ontwerp; ${fit} daarvan ${fit === 1 ? 'past' : 'passen'} hier. Tik op een plant om hem te kiezen.` : 'Er staan nog geen planten in dit ontwerp.'}</p>
+        <ul class="plantlist"></ul>
+        <footer><span class="spacer"></span><button value="close">Annuleren</button></footer>
+      </form>`;
+    const list = $('.plantlist', dlg);
+    let sep = false;
+    for (const { r, p, where, res } of rows) {
+      if (!res.ok && !sep && fit) { sep = true; const h = document.createElement('li'); h.className = 'sep'; h.textContent = 'Past hier niet'; list.appendChild(h); }
+      const li = document.createElement('li');
+      li.className = 'plant' + (res.ok ? '' : ' unfit');
+      li.appendChild(this.thumb(r, 44));
+      const t = document.createElement('div');
+      t.className = 'ptxt';
+      const link = roleEsveldLinkHtml(r);
+      t.innerHTML = `<b>${esc(r.label || r.code)}</b> ${p.lat ? `<i>${esc(p.lat)}</i>` : ''}<small>staat in ${esc(where.join(', ') || 'het ontwerp')} · ${HEIGHTS[r.height]?.range || ''} · bloei ${bloomText(r)}${res.ok ? `${res.good?.filter((g) => g !== 'al gekozen in dit ontwerp').length ? ` · <span class="good">${esc(res.good.filter((g) => g !== 'al gekozen in dit ontwerp').join(', '))}</span>` : ''}${res.bad?.length ? ` · <em>${esc(res.bad.join(', '))}</em>` : ''}` : ` · <em>${esc(res.why)}</em>`}${link ? ` · ${link}` : ''}</small>`;
+      t.querySelector('a.esvlink')?.addEventListener('click', (ev) => ev.stopPropagation());
+      li.appendChild(t);
+      li.addEventListener('click', () => {
+        if (!res.ok && !confirm(`${r.label || r.code} past hier eigenlijk niet (${res.why}). Toch kiezen?`)) return;
+        dlg.close();
+        onPick(r);
+      });
+      list.appendChild(li);
+    }
+    dlg.showModal();
+  }
+
   fillWish(id, pl) {
     const roles = this.ensure().roles;
     const { role, created } = roleForPlant(roles, pl);
@@ -541,6 +639,7 @@ export class PlantPanel {
         <div class="row add">
           <button type="button" class="primary" data-act="compose" title="Laat de app planten kiezen die passen bij hoogte, zon, grond en kleurenschema, met bloei door het jaar en afwisseling in vorm">Stel een basis samen</button>
           <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in de basis van dit vak">+ Plant toevoegen</button>
+          <button type="button" data-act="chosen" title="Alle planten die al in het ontwerp staan, de best passende bovenaan">Al gekozen planten</button>
           <button type="button" data-act="combos" title="Vul de basis met een kant-en-klare plantcombinatie (aangepast aan dit vak)">Combinatie</button>
         </div>
         <div class="proposal" hidden></div>
@@ -781,7 +880,16 @@ export class PlantPanel {
       moisture: bed.moisture,
       traits: bed.require || [],
       site: bed,
+      prefer: this.usedPlantIds(),
       onPick: (pl) => this.addPlantToBed(bed, pl),
+    }));
+    el.querySelector('[data-act="chosen"]')?.addEventListener('click', () => this.openChosen({
+      title: `Al gekozen planten voor de basis van ${bed.name || 'dit vak'}`,
+      rank: (p) => this.basisScore(p, bed),
+      onPick: (r) => this.app.store.mutate(() => {
+        bed.planting = bed.planting || { mix: [] };
+        if (!bed.planting.mix.some((m) => m.role === r.id)) bed.planting.mix.push({ role: r.id, w: ROLES[r.role]?.weight || 30 });
+      }, 'mix'),
     }));
     const cbox = $('.combos', el);
     el.querySelector('[data-act="combos"]').addEventListener('click', () => {
@@ -959,11 +1067,11 @@ export class PlantPanel {
   // ---------------------------------------------------------------- plant kiezen
 
   /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
-  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], site = null, onPick }) {
+  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], site = null, prefer = null, onPick }) {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
-    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '', traits: [...traits] };
+    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '', traits: [...traits], prefer: prefer || this.usedPlantIds() };
     // een precieze kleur (uit een kleurencombinatie) zoeken als kleurnaam
     if (/^#[0-9a-f]{6}$/i.test(f.color)) f.color = colorFamily(f.color) || '';
     const esvOn = ESVELD.loaded;

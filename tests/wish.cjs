@@ -125,6 +125,34 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await panel.locator('.wcands li.role').first().click();
   assert(await page.evaluate(() => window.app.store.doc.layers[0].items.filter((i) => i.group && i.planting.mix.length).length === 2), 'alle vakjes hebben een plant');
 
+  // al gekozen planten: voorrang en een eigen overzicht
+  const vasteRole = await page.evaluate(() => window.app.store.doc.layers[0].items.find((i) => i.group && i.wish.layer === 'vaste').planting.mix[0].role);
+  await page.evaluate(() => { const a = window.app; const g = a.store.doc.layers[0].items.find((i) => i.group && i.wish.layer === 'vaste'); const role = g.planting.mix[0].role; const bed = a.store.findItem('B').item; a.store.mutate(() => { g.planting = { mix: [] }; bed.planting = bed.planting || { mix: [] }; bed.planting.mix.push({ role, w: 30 }); }, 't'); a.setSelection(new Set([g.id])); a.plantPanel.render(); });
+  const pri = await page.evaluate(async () => {
+    const { wishCandidates } = await import('./js/wish.js');
+    const pp = window.app.plantPanel; const g = window.app.store.doc.layers[0].items.find((i) => i.group && i.wish.layer === 'vaste');
+    const bed = window.app.store.findItem('B').item;
+    const used = pp.usedPlantIds();
+    const withU = wishCandidates(g.wish, pp.wishCtx(bed)).list;
+    return { used: used.size, firstUsed: used.has(withU[0].p.id), tag: withU[0].good.includes('al gekozen in dit ontwerp') };
+  });
+  assert(pri.used >= 2 && pri.firstUsed && pri.tag, `een plant die al in het ontwerp staat krijgt voorrang bij de passende planten`);
+  await panel.locator('.wcard [data-wact="chosen"]').click();
+  const cdlg = page.locator('#dlg-chosen');
+  assert(await cdlg.isVisible(), 'knop "Al gekozen planten" opent het overzicht');
+  const crow = await cdlg.locator('li.plant').allInnerTexts();
+  const unfit = await cdlg.locator('li.plant.unfit').count();
+  assert(crow.length === pri.used && unfit === 1 && /staat in/.test(crow[0]) && /geen/.test(crow[crow.length - 1]), `alle planten uit het ontwerp, passend bovenaan (${crow.map((t) => t.split('\n')[0]).join(' | ')})`);
+  await page.screenshot({ path: path.join(OUT, 'al-gekozen.png') });
+  await cdlg.locator('li.plant').first().click();
+  const refill = await page.evaluate(() => window.app.store.doc.layers[0].items.find((i) => i.group && i.wish.layer === 'vaste').planting.mix[0]?.role);
+  assert(!(await cdlg.isVisible()) && refill === vasteRole, 'kiezen uit het overzicht zet de plant in het vakje');
+  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.plantPanel.wishId = null; window.app.plantPanel.render(); });
+  await panel.locator('[data-act="chosen"]').first().click();
+  assert(await cdlg.isVisible() && await cdlg.locator('li.plant').count() === pri.used, 'ook vanuit de basis van het vak');
+  await cdlg.locator('button[value="close"]').last().click();
+  await page.evaluate(() => { const bed = window.app.store.findItem('B').item; window.app.store.mutate(() => { bed.planting.mix.pop(); }, 't'); });
+
   // lagen als overtrekpapier: alleen bomen en heesters
   await page.click('#btn-planting');
   await page.click('#plant-menu [data-pm="garden"]');

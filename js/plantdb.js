@@ -450,6 +450,8 @@ export function searchPlants(f = {}) {
     if (f.onlyFit && !fits) continue;
     out.push({ p, fits });
   }
-  out.sort((a, b) => (b.fits - a.fits) || a.p.nl.localeCompare(b.p.nl, 'nl'));
+  // planten die al in het ontwerp staan (f.prefer) eerst
+  const pref = (p) => (f.prefer?.has(p.id) ? 1 : 0);
+  out.sort((a, b) => (b.fits - a.fits) || pref(b.p) - pref(a.p) || a.p.nl.localeCompare(b.p.nl, 'nl'));
   return out;
 }

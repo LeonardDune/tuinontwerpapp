@@ -139,57 +139,72 @@ export function wishOrder(groups) {
  * Geeft { list: [{ p, score, good: [], bad: [] }], excluded: { light, moisture } }.
  */
 export function wishCandidates(wish, ctx = {}) {
-  const w = normalizeWish(wish);
-  const want = HEIGHT_ORDER.indexOf(w.height);
   const list = [];
   const excluded = { light: 0, moisture: 0 };
   for (const p of PLANTS.values()) {
-    if (plantLayer(p) !== w.layer) continue;
     if (ctx.source === 'esveld' && !p.esv) continue;
-    if (ctx.require?.length && !meetsAll(p, ctx.require)) continue;
-    const hc = HEIGHT_ORDER.indexOf(heightClass(p));
-    const dh = Math.abs(hc - want);
-    if (dh > 1) continue;
-    if (ctx.light && !lightFits(p.light, ctx.light)) { excluded.light++; continue; }
-    if (ctx.moisture && !p.soil.includes(ctx.moisture)) { excluded.moisture++; continue; }
-    let score = dh === 0 ? 3 : 1;
-    const good = [], bad = [];
-    if (dh) bad.push(hc > want ? 'iets hoger' : 'iets lager');
-    if (w.color === 'blad') {
-      if (p.form === 'blad' || !p.bloom.length) { score += 3; good.push('bladplant'); } else if (p.foliage && p.foliage !== 'groen') { score += 2; good.push(`${p.foliage} blad`); } else { score -= 1; bad.push('bloeit opvallend'); }
-    } else if (w.color) {
-      const blooms = p.bloom.length && p.form !== 'blad';
-      const fam = blooms ? colorFamily(p.color) : null;
-      const ok = isHex(w.color) ? blooms && colorMatches(p.color, w.color) : fam === w.color;
-      if (ok) { score += 3; good.push(isHex(w.color) ? `${fam}, als gekozen` : WISH_COLORS[w.color].name.toLowerCase()); } else { score -= 3; bad.push(fam ? `bloeit ${fam}` : 'geen opvallende bloei'); }
-    }
-    const ps = plantSeasons(p);
-    for (const s of w.seasons) {
-      if (ps.has(s)) { score += 2; good.push(SEASONS[s].name.toLowerCase()); } else { score -= 1.5; bad.push(`niets in de ${SEASONS[s].name.toLowerCase()}`); }
-    }
-    // meer seizoenen is meer waard, zeker in een kleine tuin
-    score += Math.max(0, ps.size - 1) * 0.3;
-    // grondsoort, zuurgraad en ligging van het vak
-    for (const why of ctx.site ? siteProblems(p, ctx.site) : []) { score -= 3; bad.push(why); }
-    // rol en functie van de wens
-    const tr = plantTraits(p);
-    if (w.role === 'structuur') { if (tr.has('structuur')) { score += 3; good.push(tr.get('structuur')); } else { score -= 2; bad.push('geen structuurplant'); } }
-    else if (w.role === 'blad') { const leafy = p.form === 'blad' || (p.foliage && p.foliage !== 'groen') || (p.facts?.lz || 0) >= 10 || ['gelobd', 'samengesteld', 'rond', 'gestekeld'].includes(p.facts?.lf); if (leafy) { score += 2; good.push('opvallend blad'); } else score -= 1; }
-    else if (w.role === 'bloei') { if (p.bloom.length && p.form !== 'blad') score += 1.5; else { score -= 2; bad.push('geen opvallende bloei'); } }
-    else if (w.role === 'weef') { if (tr.has('weef')) { score += 3; good.push('weefplant'); } else score -= 1; }
-    if (w.fn) { if (tr.has(w.fn)) { score += 3; good.push(`${TRAITS[w.fn].short}: ${tr.get(w.fn)}`); } else { score -= 2.5; bad.push(`niet ${TRAITS[w.fn].short}`); } }
-    // onderhoud: weinig werk = geen woekeraars of kwetsbare planten
-    if (ctx.maintenance === 'laag') {
-      if (p.facts?.k?.includes('woek')) { score -= 2; bad.push('woekert'); }
-      if (/matig|niet|subtrop/.test(p.esv?.hard || '')) { score -= 1.5; bad.push(p.esv.hard); }
-      if (tr.has('wintergroen') || p.type === 'heester') score += 0.5;
-    }
-    if (ctx.scheme && ctx.scheme.type && ctx.scheme.type !== 'vrij' && p.bloom.length && p.form !== 'blad' && !inScheme(p.color, ctx.scheme)) { score -= 1; bad.push('buiten kleurenschema'); }
-    if (ctx.used?.has(p.id)) { score += 1; good.push('komt al terug in de tuin'); }
-    list.push({ p, score, good, bad });
+    const r = wishScore(p, wish, ctx);
+    if (!r.ok) { if (r.key === 'light' || r.key === 'moisture') excluded[r.key]++; continue; }
+    list.push({ p, score: r.score, good: r.good, bad: r.bad });
   }
   list.sort((a, b) => b.score - a.score || a.p.nl.localeCompare(b.p.nl, 'nl'));
   return { list, excluded };
+}
+
+/**
+ * Hoe goed past één plant bij een wens op deze plek? Geeft { ok: false, key, why } als hij er hard niet past
+ * (andere laag van de piramide, te hoog of te laag, zon, vocht, eisen van het vak), anders { ok: true, score, good, bad }.
+ * Planten die al in het ontwerp staan (ctx.used) krijgen voorrang als ze verder goed passen: herhaling geeft samenhang.
+ */
+export function wishScore(p, wish, ctx = {}) {
+  const w = normalizeWish(wish);
+  const want = HEIGHT_ORDER.indexOf(w.height);
+  if (plantLayer(p) !== w.layer) return { ok: false, key: 'layer', why: `geen ${PYRAMID.find((l) => l.key === w.layer)?.wish.toLowerCase()}` };
+  if (ctx.require?.length && !meetsAll(p, ctx.require)) return { ok: false, key: 'require', why: `niet ${ctx.require.filter((k) => !plantTraits(p).has(k)).map((k) => TRAITS[k].short).join(', ')}` };
+  const hc = HEIGHT_ORDER.indexOf(heightClass(p));
+  const dh = Math.abs(hc - want);
+  if (dh > 1) return { ok: false, key: 'height', why: hc > want ? 'te hoog' : 'te laag' };
+  if (ctx.light && p.light && !lightFits(p.light, ctx.light)) return { ok: false, key: 'light', why: 'andere standplaats (zon)' };
+  if (ctx.moisture && p.soil && !p.soil.includes(ctx.moisture)) return { ok: false, key: 'moisture', why: `wil geen ${ctx.moisture}e grond` };
+  let score = dh === 0 ? 3 : 1;
+  const good = [], bad = [];
+  if (dh) bad.push(hc > want ? 'iets hoger' : 'iets lager');
+  if (w.color === 'blad') {
+    if (p.form === 'blad' || !p.bloom.length) { score += 3; good.push('bladplant'); } else if (p.foliage && p.foliage !== 'groen') { score += 2; good.push(`${p.foliage} blad`); } else { score -= 1; bad.push('bloeit opvallend'); }
+  } else if (w.color) {
+    const blooms = p.bloom.length && p.form !== 'blad';
+    const fam = blooms ? colorFamily(p.color) : null;
+    const ok = isHex(w.color) ? blooms && colorMatches(p.color, w.color) : fam === w.color;
+    if (ok) { score += 3; good.push(isHex(w.color) ? `${fam}, als gekozen` : WISH_COLORS[w.color].name.toLowerCase()); } else { score -= 3; bad.push(fam ? `bloeit ${fam}` : 'geen opvallende bloei'); }
+  }
+  const ps = plantSeasons(p);
+  for (const s of w.seasons) {
+    if (ps.has(s)) { score += 2; good.push(SEASONS[s].name.toLowerCase()); } else { score -= 1.5; bad.push(`niets in de ${SEASONS[s].name.toLowerCase()}`); }
+  }
+  // meer seizoenen is meer waard, zeker in een kleine tuin
+  score += Math.max(0, ps.size - 1) * 0.3;
+  // grondsoort, zuurgraad en ligging van het vak
+  for (const why of ctx.site ? siteProblems(p, ctx.site) : []) { score -= 3; bad.push(why); }
+  // rol en functie van de wens
+  const tr = plantTraits(p);
+  if (w.role === 'structuur') { if (tr.has('structuur')) { score += 3; good.push(tr.get('structuur')); } else { score -= 2; bad.push('geen structuurplant'); } }
+  else if (w.role === 'blad') { const leafy = p.form === 'blad' || (p.foliage && p.foliage !== 'groen') || (p.facts?.lz || 0) >= 10 || ['gelobd', 'samengesteld', 'rond', 'gestekeld'].includes(p.facts?.lf); if (leafy) { score += 2; good.push('opvallend blad'); } else score -= 1; }
+  else if (w.role === 'bloei') { if (p.bloom.length && p.form !== 'blad') score += 1.5; else { score -= 2; bad.push('geen opvallende bloei'); } }
+  else if (w.role === 'weef') { if (tr.has('weef')) { score += 3; good.push('weefplant'); } else score -= 1; }
+  if (w.fn) { if (tr.has(w.fn)) { score += 3; good.push(`${TRAITS[w.fn].short}: ${tr.get(w.fn)}`); } else { score -= 2.5; bad.push(`niet ${TRAITS[w.fn].short}`); } }
+  // onderhoud: weinig werk = geen woekeraars of kwetsbare planten
+  if (ctx.maintenance === 'laag') {
+    if (p.facts?.k?.includes('woek')) { score -= 2; bad.push('woekert'); }
+    if (/matig|niet|subtrop/.test(p.esv?.hard || '')) { score -= 1.5; bad.push(p.esv.hard); }
+    if (tr.has('wintergroen') || p.type === 'heester') score += 0.5;
+  }
+  if (ctx.scheme && ctx.scheme.type && ctx.scheme.type !== 'vrij' && p.bloom.length && p.form !== 'blad' && !inScheme(p.color, ctx.scheme)) { score -= 1; bad.push('buiten kleurenschema'); }
+  if (ctx.used?.has(p.id)) {
+    // al gekozen in het ontwerp: voorrang als de plant verder goed past
+    score += bad.length ? 1 : 4;
+    good.unshift('al gekozen in dit ontwerp');
+  }
+  return { ok: true, score, good, bad };
 }
 
 // ---------------------------------------------------------------- invoer (paneel en optiebalk)
