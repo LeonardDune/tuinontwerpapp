@@ -7,6 +7,8 @@
 // light (zon, half, schaduw), soil (droog, normaal, vochtig), foliage, autumn, winter, en vlaggen:
 // native (inheems), bees (goed voor bijen en vlinders), evergreen, stencil (bijbehorend stencil), climb (klimplantsoort).
 
+import { meetsAll, hasTrait } from './traits.js';
+
 const LIGHT = { z: 'zon', h: 'half', s: 'schaduw' };
 const SOIL = { d: 'droog', n: 'normaal', v: 'vochtig' };
 
@@ -367,6 +369,7 @@ export function fitsBedType(heightCls, btype, kind) {
 /** Rol in het vak die meestal bij deze plant hoort. */
 export function defaultRole(p) {
   if (['boom', 'heester', 'haag', 'klimmer'].includes(p.type)) return 'structuur';
+  if (p.type !== 'bol' && hasTrait(p, 'structuur')) return 'structuur';
   if (p.type === 'gras' && p.h >= 60) return 'structuur';
   if (p.type === 'bol' || p.habit === 'ijl' || p.form === 'knop') return 'accent';
   if (p.h >= 100 && p.habit === 'rechtop') return 'structuur';
@@ -440,6 +443,7 @@ export function searchPlants(f = {}) {
     if (f.bees && !p.bees) continue;
     if (f.evergreen && !p.evergreen) continue;
     if (f.source === 'esveld' && !p.esv) continue;
+    if (f.traits?.length && !meetsAll(p, f.traits)) continue;
     if (f.source === 'eigen' && p.src === 'esveld') continue;
     const fits = fitsBedType(heightClass(p), f.btype, p.kind || p.type);
     if (f.onlyFit && !fits) continue;

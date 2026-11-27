@@ -289,6 +289,53 @@ def build(raw, out):
             rec['fr'] = 1
         if 'aanwezig op de kwekerij' in d:
             rec['st'] = 1
+        # ---- eigenschappen voor functies en filters
+        eet = ' '.join(a.get('pa_eetbaarheid') or [])
+        e = ''.join(c for c, w in (('v', 'vruchten'), ('b', 'bladeren'), ('f', 'bloemen'), ('w', 'wortels')) if w in eet)
+        if e:
+            rec['e'] = e
+        geur = ' '.join(a.get('pa_geur') or [])
+        g = ''
+        for c, w in (('f', 'bloemen geuren'), ('l', 'bladeren geuren'), ('v', 'vruchten geuren')):
+            m = re.search(w + r' (licht|sterk)', geur)
+            if m:
+                g += c + ('2' if m.group(1) == 'sterk' else '1')
+        if g:
+            rec['gr'] = g
+        bv = (a.get('pa_bladvorm') or [''])[0]
+        lf = {'blad is rond': 'rond', 'blad is ovaal': 'ovaal', 'blad is eivormig': 'ovaal', 'blad is breed langwerpig': 'breed',
+              'blad is smal langwerpig': 'smal', 'blad is smal, lijnvormig': 'lijn', 'gelobd': 'gelobd', 'gestekeld': 'gestekeld',
+              'naalden': 'naald', 'samengesteld blad': 'samengesteld', 'schubben': 'schub'}.get(bv)
+        if lf:
+            rec['lf'] = lf
+        bg = (a.get('pa_bladgrootte') or [''])[0]
+        nums = [float(x) for x in re.findall(r'\d+', bg)]
+        if nums:
+            rec['lz'] = 60 if 'groter' in bg else 0.5 if 'minder' in bg else round(sum(nums[:2]) / len(nums[:2]), 1)
+        vk = (a.get('pa_vruchtkleur') or [''])[0]
+        if vk and vk not in ('bruin', 'groen'):
+            rec['fc'] = COLORS.get(vk, '#c83a3a')
+        v0, v1 = (a.get('pa_vruchtperiode_begin') or [None])[0], (a.get('pa_vruchtperiode_einde') or [None])[0]
+        fm = months_of(f'{v0} - {v1}') if v0 and v1 and v0.lower() in MONTHS and v1.lower() in MONTHS else months_of((a.get('pa_vruchttijd') or [''])[0])
+        if fm and (vk and vk not in ('bruin', 'groen') or 'Opvallende vruchten' in kenm):
+            rec['fm'] = fm
+        wind = ' '.join(a.get('pa_windgevoeligheid') or [])
+        if 'zeewind' in wind:
+            rec['wi'] = 3
+        elif 'sterk' in wind:
+            rec['wi'] = 2
+        elif 'matig' in wind:
+            rec['wi'] = 1
+        k = [c for c, w in (('stam', 'opvallende stam'), ('woek', 'woekerend'), ('wk', 'bijzondere winterkleur'), ('doorn', 'gestekelde takken')) if w in kenm.lower()]
+        if k:
+            rec['k'] = k
+        if any(re.search(r'leivorm|dakvorm|lei\b|espalier', z.lower()) for z in sizes):
+            rec['lei'] = 1
+        if vorm and vorm != 'niet belangrijk':
+            rec['vm'] = {'bolvormig': 'bol', 'compact': 'compact', 'iets breder dan hoog, spreidend': 'spreidend', 'iets hoger dan breed of losse groei': 'los',
+                         'kegelvormig': 'kegel', 'opgaand': 'opgaand', 'platgroeiend': 'plat', 'treurvorm': 'treur', 'zuilvormig': 'zuil'}.get(vorm, '')
+        if groen == 'halfwintergroen':
+            rec['hw'] = 1
         plants.append(rec)
     data = {'source': 'Esveld', 'url': 'https://esveld.nl/a/product/', 'date': datetime.date.today().isoformat(), 'count': len(plants), 'plants': plants}
     with open(out, 'w') as fh:

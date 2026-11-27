@@ -1,6 +1,7 @@
 // Beplanting samenstellen en controleren voor een plantvak: hoogte (type vak), zon, grond, bloei door het jaar,
 // afwisseling in bloeivorm, verdeling structuur / vulling / accent, iets voor de winter en het kleurenschema.
 
+import { meetsAll } from './traits.js';
 import { PLANTS, fitsBedType, heightClass, defaultRole, colorFamily, plantById } from './plantdb.js';
 import { inScheme, ROLES } from './planting.js';
 
@@ -87,6 +88,7 @@ export function candidates(ctx) {
   for (const p of PLANTS.values()) {
     if (['boom', 'haag', 'klimmer'].includes(p.type)) continue;
     if (ctx.source === 'esveld' && !p.esv) continue;
+    if (ctx.require?.length && !meetsAll(p, ctx.require)) continue;
     if (ctx.btype === 'heesters' ? p.type !== 'heester' && p.type !== 'bol' : p.type === 'heester') continue;
     if (!fitsBedType(heightClass(p), ctx.btype, p.kind || p.type)) continue;
     if (ctx.light && !p.light.includes(ctx.light)) continue;

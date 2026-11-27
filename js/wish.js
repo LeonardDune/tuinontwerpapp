@@ -7,6 +7,7 @@
 
 import { PYRAMID, HEIGHTS, HEIGHT_ORDER, plantLayer, roleLayer, layerIndex, inScheme, hexToHsl } from './planting.js';
 import { PLANTS, heightClass, colorFamily } from './plantdb.js';
+import { meetsAll, plantTraits, TRAITS, FUNCTIONS } from './traits.js';
 
 export const WISH_COLORS = {
   wit: { name: 'Wit', hex: '#f1eee4' },
@@ -38,8 +39,16 @@ export const LAYER_HEIGHTS = {
 };
 
 export function defaultWish() {
-  return { layer: 'vaste', height: 'middel', color: '', seasons: [] };
+  return { layer: 'vaste', height: 'middel', color: '', seasons: [], role: '', fn: '' };
 }
+
+/** Rol van een wens in de border (Studio Ferm: structuur, blad, bloei; plus weefplant). */
+export const WISH_ROLES = {
+  structuur: { name: 'Structuur en hoogte', hint: 'het skelet: groenblijvend, siergras of stevige stengels die in de winter blijven staan' },
+  blad: { name: 'Blad', hint: 'mooi of opvallend blad: vorm, grootte of kleur' },
+  bloei: { name: 'Kleur en bloei', hint: 'bloei als seizoensaccent' },
+  weef: { name: 'Weefplant', hint: 'luchtig, weeft zich tussen de andere planten door' },
+};
 
 /** Wens opschonen: hoogte die bij de laag past, bekende kleur en seizoenen. */
 export function normalizeWish(w) {
@@ -50,6 +59,8 @@ export function normalizeWish(w) {
   // kleur: een familie (roze, blauw …), 'blad', of een precieze kleur uit de kleurencombinatie (#rrggbb)
   if (out.color && !WISH_COLORS[out.color] && !isHex(out.color)) out.color = '';
   out.seasons = (out.seasons || []).filter((s) => SEASONS[s]);
+  if (out.role && !WISH_ROLES[out.role]) out.role = '';
+  if (out.fn && !TRAITS[out.fn]) out.fn = '';
   return out;
 }
 
@@ -91,7 +102,7 @@ export function wishText(w, short = false) {
   const h = HEIGHTS[w.height];
   const parts = short
     ? [h ? h.range : '', wishColorName(w.color).split(' ')[0], w.seasons.map((s) => SEASONS[s].short).join('')]
-    : [layer?.wish, h ? h.range : '', wishColorName(w.color), w.seasons.map((s) => SEASONS[s].name.toLowerCase()).join(', ')];
+    : [layer?.wish, w.role ? WISH_ROLES[w.role].name.toLowerCase() : '', h ? h.range : '', wishColorName(w.color), w.seasons.map((s) => SEASONS[s].name.toLowerCase()).join(', '), w.fn ? TRAITS[w.fn].short : ''];
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -134,6 +145,7 @@ export function wishCandidates(wish, ctx = {}) {
   for (const p of PLANTS.values()) {
     if (plantLayer(p) !== w.layer) continue;
     if (ctx.source === 'esveld' && !p.esv) continue;
+    if (ctx.require?.length && !meetsAll(p, ctx.require)) continue;
     const hc = HEIGHT_ORDER.indexOf(heightClass(p));
     const dh = Math.abs(hc - want);
     if (dh > 1) continue;
@@ -156,6 +168,19 @@ export function wishCandidates(wish, ctx = {}) {
     }
     // meer seizoenen is meer waard, zeker in een kleine tuin
     score += Math.max(0, ps.size - 1) * 0.3;
+    // rol en functie van de wens
+    const tr = plantTraits(p);
+    if (w.role === 'structuur') { if (tr.has('structuur')) { score += 3; good.push(tr.get('structuur')); } else { score -= 2; bad.push('geen structuurplant'); } }
+    else if (w.role === 'blad') { const leafy = p.form === 'blad' || (p.foliage && p.foliage !== 'groen') || (p.facts?.lz || 0) >= 10 || ['gelobd', 'samengesteld', 'rond', 'gestekeld'].includes(p.facts?.lf); if (leafy) { score += 2; good.push('opvallend blad'); } else score -= 1; }
+    else if (w.role === 'bloei') { if (p.bloom.length && p.form !== 'blad') score += 1.5; else { score -= 2; bad.push('geen opvallende bloei'); } }
+    else if (w.role === 'weef') { if (tr.has('weef')) { score += 3; good.push('weefplant'); } else score -= 1; }
+    if (w.fn) { if (tr.has(w.fn)) { score += 3; good.push(`${TRAITS[w.fn].short}: ${tr.get(w.fn)}`); } else { score -= 2.5; bad.push(`niet ${TRAITS[w.fn].short}`); } }
+    // onderhoud: weinig werk = geen woekeraars of kwetsbare planten
+    if (ctx.maintenance === 'laag') {
+      if (p.facts?.k?.includes('woek')) { score -= 2; bad.push('woekert'); }
+      if (/matig|niet|subtrop/.test(p.esv?.hard || '')) { score -= 1.5; bad.push(p.esv.hard); }
+      if (tr.has('wintergroen') || p.type === 'heester') score += 0.5;
+    }
     if (ctx.scheme && ctx.scheme.type && ctx.scheme.type !== 'vrij' && p.bloom.length && p.form !== 'blad' && !inScheme(p.color, ctx.scheme)) { score -= 1; bad.push('buiten kleurenschema'); }
     if (ctx.used?.has(p.id)) { score += 1; good.push('komt al terug in de tuin'); }
     list.push({ p, score, good, bad });
@@ -172,7 +197,7 @@ const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '
  * Keuzes voor een wens: soort, hoogte, kleur, seizoenen en (optioneel) de grootte van een nieuw vakje.
  * palette: de kleuren van de kleurencombinatie van het vak; die staan voorop, 'Andere kleur…' wijkt ervan af.
  */
-export function wishControlsHtml(wish, { size = null, palette = null, schemeName = '' } = {}) {
+export function wishControlsHtml(wish, { size = null, palette = null, schemeName = '', functions = null } = {}) {
   const w = normalizeWish(wish);
   const opt = (pairs, cur) => pairs.map(([k, n]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${escH(n)}</option>`).join('');
   const pal = palette && palette.length ? palette : Object.entries(WISH_COLORS).filter(([k]) => k !== 'blad').map(([, v]) => v.hex);
@@ -192,6 +217,8 @@ export function wishControlsHtml(wish, { size = null, palette = null, schemeName
   return `<div class="wishctl">
     <select data-wl title="Wat voor plant (laag van de beplantingspiramide)">${opt(PYRAMID.map((l) => [l.key, l.wish]), w.layer)}</select>
     <select data-wh title="Hoe hoog">${opt(LAYER_HEIGHTS[w.layer].map((h) => [h, `${HEIGHTS[h].name} (${HEIGHTS[h].range})`]), w.height)}</select>
+    <select data-wr title="Welke rol heeft de plant hier?">${opt([['', 'Rol: geen voorkeur'], ...Object.entries(WISH_ROLES).map(([k, v]) => [k, v.name])], w.role)}</select>
+    <select data-wf title="Welke functie moet de plant hier vervullen?">${opt([['', 'Functie: geen'], ...(functions?.length ? functions.map((k) => [k, `★ ${TRAITS[k].name}`]) : []), ...FUNCTIONS.filter((k) => !functions?.includes(k)).map((k) => [k, TRAITS[k].name])], w.fn)}</select>
     ${colors}
     <span class="seg" title="Wanneer moet het mooi zijn?">${Object.entries(SEASONS).map(([k, v]) => `<button type="button" data-ws="${k}" class="${w.seasons.includes(k) ? 'on' : ''}">${v.name}</button>`).join('')}</span>
     ${size != null ? `<span class="seg" title="Grootte van een nieuw vakje als je tikt (slepen = eigen vorm)">${WISH_SIZES.map((a) => `<button type="button" data-wsize="${a}" class="${size === a ? 'on' : ''}">${String(a).replace('.', ',')} m²</button>`).join('')}</span>` : ''}
@@ -204,6 +231,8 @@ export function bindWishControls(root, wish, onChange, onSize = null) {
   const set = (patch) => { w = normalizeWish({ ...w, ...patch }); onChange(w); };
   root.querySelector('[data-wl]')?.addEventListener('change', (e) => set({ layer: e.target.value, height: LAYER_HEIGHTS[e.target.value][0] }));
   root.querySelector('[data-wh]')?.addEventListener('change', (e) => set({ height: e.target.value }));
+  root.querySelector('[data-wr]')?.addEventListener('change', (e) => set({ role: e.target.value }));
+  root.querySelector('[data-wf]')?.addEventListener('change', (e) => set({ fn: e.target.value }));
   root.querySelector('[data-wc]')?.addEventListener('change', (e) => { if (e.target.value) set({ color: e.target.value }); });
   for (const b of root.querySelectorAll('[data-wcol]')) {
     b.addEventListener('click', () => {

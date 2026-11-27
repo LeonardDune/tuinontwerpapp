@@ -106,7 +106,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   await page.click('#plant-panel .proposal [data-act="use"]');
   const mix = await page.evaluate(() => window.app.store.findItem('N').item.planting.mix.length);
   assert(mix >= 4, `voorstel in het vak gezet (${mix} soorten)`);
-  assert(await page.locator('#plant-panel .bedsec > .checks li').count() >= 6, 'checklist ook bij het vak zelf');
+  assert(await page.locator('#plant-panel .bedchecks li').count() >= 6, 'controle van het vak (standplaats, 4 momenten, groene soep, structuur)');
   await page.screenshot({ path: path.join(OUT, 'samensteller.png') });
 
   assert(!errors.length, 'geen JavaScript-fouten' + (errors.length ? ': ' + errors.join(' | ') : ''));

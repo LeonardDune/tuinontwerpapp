@@ -5,6 +5,7 @@
 
 import { addPlants, PLANTS } from './plantdb.js';
 import { saveCatalog, loadCatalog, deleteCatalog } from './storage.js';
+import { resetTraits } from './traits.js';
 
 const LIGHT = { z: 'zon', h: 'half', s: 'schaduw' };
 const SOIL = { d: 'droog', n: 'normaal', v: 'vochtig' };
@@ -61,6 +62,8 @@ function fromRecord(r, date) {
   if (r.bee) p.bees = true;
   if (r.g) p.ground = r.g;
   if (r.fr) p.fruit = true;
+  // feiten voor functies en filters (zie traits.js)
+  p.facts = { src: 1, e: r.e, gr: r.gr, lf: r.lf, lz: r.lz, fc: r.fc, fm: r.fm, wi: r.wi, k: r.k, lei: r.lei, vm: r.vm, hw: r.hw };
   return p;
 }
 
@@ -93,6 +96,7 @@ export function useEsveld(data) {
   const list = data.plants.map((r) => fromRecord(r, data.date));
   linkBuiltins(list);
   addPlants(list);
+  resetTraits();
   ESVELD.loaded = true;
   ESVELD.count = list.length;
   ESVELD.date = data.date;
@@ -121,11 +125,11 @@ function linkBuiltins(list) {
   }
   for (const p of PLANTS.values()) {
     if (p.src === 'esveld') continue;
-    delete p.esv; delete p.esvSearch;
+    delete p.esv; delete p.esvSearch; delete p.facts;
     const n = nameParts(p.lat);
     const sp = synonym(n.species), g = sp.split(' ')[0];
     const e = full.get(synonym(latKey(p.lat))) || (n.cv ? byCv.get(`${g}|${n.cv}`) : bySpecies.get(sp));
-    if (e) { p.esv = e.esv; continue; }
+    if (e) { p.esv = e.esv; p.facts = e.facts; continue; }
     // geen artikel met precies deze naam: het aanbod van de soort (of het geslacht) bij Esveld
     const nSp = countSpecies.get(sp) || 0, nG = countGenus.get(g) || 0;
     if (nSp || nG) {
