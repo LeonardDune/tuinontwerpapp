@@ -35,6 +35,8 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.openDoc(d, true); a.setTool('lasso'); a.setSelection(new Set(['B'])); a.state.plantStep = 1; a.plantPanel.open();
   });
   const panel = page.locator('#plant-panel');
+  const bar = await page.textContent('#selection-bar');
+  assert(/Basis: Kattenkruid, Kattenkruid, groot/.test(bar) && await page.locator('#selection-bar [data-act="openbed"]').count() === 1 && !(await page.locator('#selection-bar [data-mix]').count()), 'balk bij een plantvak: korte samenvatting en "Plantvak openen", geen rij met alle plantcodes');
   await panel.locator('[data-req="eetbaar"]').click();
   assert((await page.evaluate(() => window.app.store.findItem('B').item.require || [])).join() === 'eetbaar', 'stap 1: eis "alleen eetbaar" voor dit vak');
   await panel.locator('.steps [data-step="3"]').click();

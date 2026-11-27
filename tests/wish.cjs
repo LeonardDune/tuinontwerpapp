@@ -75,7 +75,19 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(ws.every((w) => w.area > 0.8 && w.area < 1.25), `een tik geeft een vakje van ±1 m² (${ws.map((w) => w.area.toFixed(2)).join(', ')})`);
   await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set()); window.app.plantPanel.focusId = 'B'; window.app.plantPanel.render(); });
   assert(await page.evaluate(() => window.app.state.plantStep) === 2 && await panel.locator('.wlist li').count() === 2, 'de vakjes staan in de lijst van stap 2');
+  // bladeren door de wensvakjes bij het aanpassen (stap 2)
+  await panel.locator('.wlist li').first().click();
+  const sel = () => page.evaluate(() => [...window.app.selection][0]);
+  const w1 = await sel();
+  assert(await page.evaluate(() => window.app.state.plantStep) === 2 && await panel.locator('.wcard [data-wact="next"]').isVisible() && await panel.locator('.wcard [data-wact="prev"]').isVisible(), 'stap 2, wens aanpassen: knoppen Vorige en Volgende');
+  await panel.locator('.wcard [data-wact="next"]').click();
+  const w2 = await sel();
+  assert(w2 && w2 !== w1 && /vakje 2 van 2/.test(await panel.locator('.wnav').innerText()) && await page.evaluate(() => window.app.state.plantStep) === 2, 'Volgende gaat naar vakje 2 (en blijft in stap 2)');
+  await panel.locator('.wcard [data-wact="prev"]').click();
+  assert(await sel() === w1, 'Vorige gaat terug naar vakje 1');
   await panel.locator('.steps [data-step="3"]').click();
+  assert(await panel.locator('.wcard [data-wact="prev"]').isVisible() && await panel.locator('.wcard [data-wact="next"]').isVisible(), 'ook bij plant kiezen (stap 3): Vorige en Volgende');
+  await page.evaluate(() => { window.app.setSelection(new Set()); window.app.plantPanel.wishId = null; window.app.plantPanel.render(); });
   assert(await panel.getByText('Basis van Border').isVisible(), 'stap 3 Planten: eerst de wensvakjes, dan de basis van het vak');
   const list = await panel.locator('.wlist li').allInnerTexts();
   assert(list.length === 2 && /Heester/.test(list[0]) && /Vaste plant/.test(list[1]) && /roze/.test(list[1]), 'de lijst volgt de piramide: eerst de heester, dan de vaste plant');

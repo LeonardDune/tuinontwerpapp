@@ -2291,9 +2291,13 @@ class App {
         // past de bouwsteen bij het type vak uit de schets (hoogte)?
         const bt = isBed(it) ? it.btype : this.store.findItem(it.bedId)?.item?.btype;
         const fit = (r) => fitsBedType(r.height, bt, r.kind);
-        html += `<span class="pf">${isBed(it) ? 'Basis' : 'Mix'}</span>${roles.map((r) => `<button type="button" class="tgl ${inMix.has(r.id) ? 'on' : ''} ${fit(r) ? '' : 'unfit'}" data-mix="${r.id}" title="${escapeHtml(describeRole(r))}${fit(r) ? '' : ` – past niet bij ${escapeHtml(BED_TYPES[bt].name.toLowerCase())}`}">${escapeHtml(r.code)}</button>`).join('')}`;
-        const off = roles.filter((r) => inMix.has(r.id) && !fit(r));
-        if (off.length) html += `<span class="pinfo warn" title="Deze bouwstenen zijn hoger of lager dan het type vak uit de schets">Past niet bij ${escapeHtml(BED_TYPES[bt].label.toLowerCase())}: ${off.map((r) => escapeHtml(r.code)).join(', ')}</span>`;
+        // korte samenvatting; de planten kies en wijzig je in de zijbalk van het plantvak
+        const inIt = roles.filter((r) => inMix.has(r.id));
+        const nm = (r) => escapeHtml(r.label || r.code);
+        if (inIt.length && !(isGroup(it) && it.wish)) html += `<span class="pinfo" title="${inIt.map((r) => escapeHtml(r.label || r.code)).join(', ')}">${isBed(it) ? 'Basis' : 'Groepje'}: ${inIt.slice(0, 2).map(nm).join(', ')}${inIt.length > 2 ? ` +${inIt.length - 2}` : ''}</span>`;
+        html += `<button type="button" class="tgl" data-act="openbed" title="Dit plantvak inrichten in de zijbalk (planten, wensen, controle)">${inIt.length ? 'Plantvak openen' : 'Planten kiezen'}</button>`;
+        const off = inIt.filter((r) => !fit(r));
+        if (off.length) html += `<span class="pinfo warn" title="Deze planten zijn hoger of lager dan het type vak uit de schets">Past niet bij ${escapeHtml(BED_TYPES[bt].label.toLowerCase())}: ${off.map(nm).join(', ')}</span>`;
         const st = this.planStats(it);
         if (st) {
           const m2 = (v) => fmt(v, v < 100 ? 1 : 0);
@@ -2552,7 +2556,9 @@ class App {
     bar.querySelector('[data-act="deleteBond"]')?.addEventListener('click', () => this.deleteBondBlock());
     bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
     bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
-    for (const b of bar.querySelectorAll('[data-mix]')) b.addEventListener('click', () => this.applyProperty('mix', b.dataset.mix));
+    bar.querySelector('[data-act="openbed"]')?.addEventListener('click', () => {
+      if (this.plantPanel.el.hidden) this.plantPanel.open(); else this.plantPanel.render();
+    });
     for (const b of bar.querySelectorAll('[data-plan]')) b.addEventListener('click', () => this.planAction(b.dataset.plan));
   }
 
@@ -3149,16 +3155,6 @@ class App {
             else if (i.type === 'stencil') { if (raw) i.role = raw; else delete i.role; }
           }
           break;
-        case 'mix': {
-          const roles = rolesMap(this.store.doc);
-          for (const i of items) {
-            if (!i.planting) continue;
-            const has = i.planting.mix.some((m) => m.role === raw);
-            if (has && (i.planting.mix.length > 1 || isBed(i))) i.planting.mix = i.planting.mix.filter((m) => m.role !== raw);
-            else if (!has && roles[raw]) i.planting.mix.push({ role: raw, w: PLANT_ROLES[roles[raw].role]?.weight || 30 });
-          }
-          break;
-        }
       }
       if (['len', 'angle', 'rotby', 'diam', 'scaleby'].includes(k)) {
         // deuren en ramen blijven in hun muur

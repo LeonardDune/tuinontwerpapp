@@ -228,7 +228,7 @@ export class PlantPanel {
         ${drawing ? '<p class="hint">Tik in het plantvak voor een vakje met deze wens, of sleep een eigen vorm. Verander de wens hierboven tussendoor.</p>' : ''}
         <h3>Wensvakjes <small>${wishes.length ? `${wishes.length}, in de volgorde van de piramide` : 'nog geen'}</small></h3>
         ${wishes.length ? this.wishListHtml(wishes, active) : '<p class="hint">Nog geen wensvakjes. Je mag deze stap ook overslaan en in stap 3 meteen de basis van het vak kiezen.</p>'}
-        ${active ? `<div class="wcard"><h4>Wens van vakje ${wishes.indexOf(active) + 1} aanpassen</h4><div class="wedit">${wishControlsHtml(active.wish, this.wishColorOpts(bed))}</div></div>` : ''}
+        ${active ? `<div class="wcard">${this.wishNavHtml(active, wishes)}<h4>Wens van vakje ${wishes.indexOf(active) + 1} aanpassen</h4><div class="wedit">${wishControlsHtml(active.wish, this.wishColorOpts(bed))}</div></div>` : ''}
       </section>`;
   }
 
@@ -259,7 +259,8 @@ export class PlantPanel {
         ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
         <h5>${r ? 'Of een andere plant' : 'Passende planten'}</h5>
         <ul class="wcands"></ul>
-        <div class="row add"><button type="button" data-wact="more">Meer planten…</button><button type="button" class="primary" data-wact="next">Volgende vakje ›</button></div>
+        <div class="row add"><button type="button" data-wact="more">Meer planten…</button></div>
+        ${this.wishNavHtml(w, wishes)}
       </div>`;
   }
 
@@ -298,13 +299,14 @@ export class PlantPanel {
         if (it) it.wish = nw;
       }, 'wish'));
     }
+    el.querySelector('[data-wact="prev"]')?.addEventListener('click', () => this.stepWish(bed, id, -1));
+    el.querySelector('[data-wact="next"]')?.addEventListener('click', () => this.stepWish(bed, id, 1));
     if (!$('.wcands', el)) return;
     for (const sp of el.querySelectorAll('[data-wthumb]')) { const r = (this.doc.planting?.roles || []).find((q) => q.id === sp.dataset.wthumb); if (r) sp.appendChild(this.thumb(r, 34)); }
     el.querySelector('[data-wact="clear"]')?.addEventListener('click', () => this.app.store.mutate(() => {
       const it = this.app.store.findItem(id)?.item;
       if (it) it.planting = { mix: [] };
     }, 'wish-clear'));
-    el.querySelector('[data-wact="next"]').addEventListener('click', () => this.nextWish(bed, id));
     const ctx = this.wishCtx(bed);
     el.querySelector('[data-wact="more"]').addEventListener('click', () => {
       const nw = normalizeWish(w.wish);
@@ -358,6 +360,22 @@ export class PlantPanel {
     }, 'wish-fill');
     const bed = this.app.store.findItem(this.app.store.findItem(id)?.item?.bedId)?.item;
     this.nextWish(bed, id, pl.nl);
+  }
+
+  /** Knoppen om door de wensvakjes te bladeren (in de volgorde van de lijst). */
+  wishNavHtml(w, wishes) {
+    if (wishes.length < 2) return '';
+    const i = wishes.indexOf(w);
+    return `<div class="row wnav"><button type="button" data-wact="prev" title="Vorig wensvakje">‹ Vorige</button><span>vakje ${i + 1} van ${wishes.length}</span><button type="button" class="primary" data-wact="next" title="Volgend wensvakje">Volgende ›</button></div>`;
+  }
+
+  /** Naar het vorige (dir -1) of volgende (dir 1) wensvakje; rondom. */
+  stepWish(bed, fromId, dir) {
+    const wishes = this.wishesOf(bed);
+    if (!wishes.length) return;
+    const i = wishes.findIndex((w) => w.id === fromId);
+    const next = wishes[(i + dir + wishes.length) % wishes.length];
+    this.selectWish(next.id);
   }
 
   nextWish(bed, fromId, chosen = null) {
