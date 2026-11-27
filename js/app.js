@@ -2294,8 +2294,9 @@ class App {
         // korte samenvatting; de planten kies en wijzig je in de zijbalk van het plantvak
         const inIt = roles.filter((r) => inMix.has(r.id));
         const nm = (r) => escapeHtml(r.label || r.code);
-        if (inIt.length && !(isGroup(it) && it.wish)) html += `<span class="pinfo" title="${inIt.map((r) => escapeHtml(r.label || r.code)).join(', ')}">${isBed(it) ? 'Basis' : 'Groepje'}: ${inIt.slice(0, 2).map(nm).join(', ')}${inIt.length > 2 ? ` +${inIt.length - 2}` : ''}</span>`;
-        html += `<button type="button" class="tgl" data-act="openbed" title="Dit plantvak inrichten in de zijbalk (planten, wensen, controle)">${inIt.length ? 'Plantvak openen' : 'Planten kiezen'}</button>`;
+        if (inIt.length && !(isGroup(it) && it.wish)) html += `<span class="pmix" title="${inIt.map((r) => escapeHtml(r.label || r.code)).join(', ')}">${isBed(it) ? 'Basis' : 'Groepje'}: ${inIt.slice(0, 2).map(nm).join(', ')}${inIt.length > 2 ? ` +${inIt.length - 2}` : ''}</span>`;
+        // bij een wensvakje is er al 'Kies plant'
+        if (!(isGroup(it) && it.wish)) html += `<button type="button" class="tgl" data-act="openbed" title="Dit plantvak inrichten in de zijbalk (planten, wensen, controle)">${inIt.length ? 'Plantvak openen' : 'Planten kiezen'}</button>`;
         const off = inIt.filter((r) => !fit(r));
         if (off.length) html += `<span class="pinfo warn" title="Deze planten zijn hoger of lager dan het type vak uit de schets">Past niet bij ${escapeHtml(BED_TYPES[bt].label.toLowerCase())}: ${off.map(nm).join(', ')}</span>`;
         const st = this.planStats(it);

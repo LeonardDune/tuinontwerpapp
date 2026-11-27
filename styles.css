@@ -254,7 +254,7 @@ button.primary:disabled { opacity: 0.5; }
 }
 .props-bar input[type=color] { width: 34px; height: 30px; padding: 0; border-radius: 8px; background: none; }
 .props-bar .step { min-width: 30px; height: 32px; font-size: 17px; font-weight: 600; }
-.props-bar .pinfo { font-size: 13px; opacity: 0.9; }
+.props-bar .pinfo, .props-bar .pmix { font-size: 13px; opacity: 0.9; }
 .props-bar .sepv { width: 1px; height: 24px; background: rgba(255, 255, 255, 0.25); margin: 0 4px; padding: 0; }
 .props-bar .tgl { border: 1px solid rgba(255, 255, 255, 0.3); height: 32px; font-size: 13px; }
 .props-bar .tgl.on { background: rgba(255, 255, 255, 0.22); }

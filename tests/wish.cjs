@@ -96,6 +96,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   // vakje 1 kiezen (de heester): passende planten
   await panel.locator('.wlist li').first().click();
   assert(await page.evaluate(() => window.app.selection.size === 1 && !!window.app.store.findItem([...window.app.selection][0]).item.wish), 'het vakje is geselecteerd in de tekening');
+  assert(await page.locator('#selection-bar [data-plan="wishpick"]').count() === 1 && !(await page.locator('#selection-bar [data-act="openbed"]').count()), 'balk bij een wensvakje: alleen "Kies plant" (geen dubbele knop)');
   const cands = await panel.locator('.wcands li.role').allInnerTexts();
   assert(cands.length >= 2, `passende planten voor de heester (${cands.length})`);
   await page.screenshot({ path: path.join(OUT, 'wensvakje-kiezen.png') });
