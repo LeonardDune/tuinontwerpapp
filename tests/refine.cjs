@@ -21,7 +21,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
     a.openDoc(d, true); a.cam.zoom = 90; a.cam.rot = 0; a.cam.x = 150; a.cam.y = 200; a.cameraChanged();
     a.state.plantShape = 'boog'; // oude instelling die vroeger een halve cirkel gaf
     a.setTool('lasso'); a.setSelection(new Set(['V']));
-    a.state.plantStep = 3; a.plantPanel.open();
+    a.state.plantStep = 3; a.state.refineTab = 'groep'; a.plantPanel.open();
   });
   const box = await page.locator('#canvas').boundingBox();
   const S = (x, y) => page.evaluate(([x, y]) => window.app.cam.toScreen([x, y]), [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);

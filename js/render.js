@@ -36,7 +36,7 @@ export function renderScene(ctx, opts) {
     ctx.globalAlpha = 1;
   };
 
-  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', plantViews: opts.plantViews || null, paper: opts.paperColor || opts.background || '#fbfaf6', ...plantContext(doc) };
+  const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: opts.minLabelPx || 0, month: opts.month || null, plantView: opts.plantView || 'planten', plantViews: opts.plantViews || null, layerMax: opts.layerMax ?? null, paper: opts.paperColor || opts.background || '#fbfaf6', ...plantContext(doc) };
   const hide = opts.hideItems;
 
   for (let li = 0; li < doc.layers.length; li++) {

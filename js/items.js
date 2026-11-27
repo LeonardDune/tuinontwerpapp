@@ -10,7 +10,9 @@ import { drawStencil, STENCIL_MAP } from './stencils.js';
 import { getImage } from './assets.js';
 import {
   drawRoleSymbol, rolesMap, layoutPoints, roleDiameter, plantOutline, hitPlant, shapePolygon, monthState, plantCount, isBed, BED_TYPES,
+  roleLayer, layerIndex,
 } from './planting.js';
+import { wishHex, wishText, wishOrder, groupLayerIndex } from './wish.js';
 import { drawPlant as drawPlantImpression } from './plantdraw.js';
 import { paperToWorld } from './model.js';
 import { wallShape } from './walls.js';
@@ -37,6 +39,8 @@ function hexA(color, a) {
  * rc: { doc, scale, zoom }  — zoom = px per meter (voor schermafhankelijke details)
  */
 export function drawItem(g, item, rc) {
+  // lagen van de beplantingspiramide ('overtrekpapier'): hogere lagen even verbergen
+  if (rc.layerMax != null && aboveLayer(item, rc)) return;
   const op = item.opacity ?? 1;
   if (op < 1 && item.type !== 'stroke') {
     // doorzichtigheid per element (penseelstreken regelen dat zelf, samen met de penseeldekking)
@@ -99,6 +103,20 @@ function drawImpressions(g, pts, rc, lw) {
     const x = p.x + (f - 0.5) * d * 0.22, y = p.y + (f2 - 0.5) * d * 0.22;
     if (!drawRoleStencil(g, p.role, x, y, d, rc)) drawPlantImpression(g, p.role, x, y, d, { month: rc.month || null, lw, pxPerM });
   }
+}
+
+/** Ligt deze plant (of groep) in een laag van de piramide boven wat er nu getoond wordt? */
+function aboveLayer(item, rc) {
+  const roles = rc.roles || rolesMap(rc.doc);
+  if (item.type === 'plant' || (item.type === 'stencil' && item.role)) return !!roles[item.role] && layerIndex(roleLayer(roles[item.role])) > rc.layerMax;
+  if (item.type === 'shape' && item.group) return groupLayerIndex(item, roles) > rc.layerMax;
+  return false;
+}
+
+/** Planten van een vak of groep zonder de lagen boven wat er getoond wordt. */
+function byLayer(pts, rc) {
+  if (rc.layerMax == null) return pts;
+  return pts.filter((p) => layerIndex(roleLayer(p.role)) <= rc.layerMax);
 }
 
 const layoutCache = new WeakMap();
@@ -191,7 +209,7 @@ function drawBed(g, item, rc) {
     g.save();
     // planten groeien over de rand van het vak heen, tenzij strak binnen de rand gevraagd is
     if (item.clipPlants) g.clip();
-    const pts = cachedLayout(item, poly, rc, groups);
+    const pts = byLayer(cachedLayout(item, poly, rc, groups), rc);
     if (view === 'symbolen') for (const p of pts) drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.6 });
     else drawImpressions(g, pts, rc, lw);
     g.restore();
@@ -289,6 +307,7 @@ function drawGroup(g, item, rc) {
   const poly = shapePolygon(item);
   const view = rc.plantViews?.[item.bedId] || rc.plantView || 'planten';
   const mix = item.planting?.mix || [];
+  if (item.wish && !mix.filter((m) => roles[m.role]).length) return drawWish(g, item, rc, bed, poly);
   const color = mixColor(mix, rc);
   const lw = paperToWorld(0.15, rc.scale);
   g.save();
@@ -309,7 +328,7 @@ function drawGroup(g, item, rc) {
     const later = (rc.groupsByBed?.[item.bedId] || []);
     const idx = later.indexOf(item);
     const exclude = idx >= 0 ? later.slice(idx + 1).map((q) => shapePolygon(q)) : [];
-    const pts = cachedLayout(item, poly, rc, exclude, bedPoly);
+    const pts = byLayer(cachedLayout(item, poly, rc, exclude, bedPoly), rc);
     if (view === 'symbolen') for (const p of pts) drawRoleSymbol(g, p.role, p.x, p.y, roleDiameter(p.role) * 0.95, rc.month || null, lw, { alpha: 0.75 });
     else drawImpressions(g, pts, rc, lw);
     g.restore();
@@ -324,6 +343,33 @@ function drawGroup(g, item, rc) {
     const n = plantCount(A, mix, roles);
     drawLabel(g, `${mixCodes(mix, rc)} · ${n}`, polygonCentroid(poly), rc, false, 2.2, '#1d2b36');
   }
+}
+
+/** Wensvakje zonder plant: gestippelde rand, vlak in de gewenste kleur, nummer en wens. */
+function drawWish(g, item, rc, bed, poly) {
+  const col = wishHex(item.wish);
+  g.save();
+  g.save();
+  if (bed) { tracePath(g, bed); g.clip(); }
+  tracePath(g, item);
+  g.fillStyle = hexA(col, 0.32);
+  g.fill();
+  g.restore();
+  tracePath(g, item);
+  const lw = paperToWorld(0.3, rc.scale);
+  g.lineWidth = lw;
+  g.setLineDash([lw * 3, lw * 2]);
+  g.strokeStyle = '#6b5a32';
+  g.stroke();
+  g.restore();
+  const order = wishOrder(rc.groupsByBed?.[item.bedId] || [item]);
+  const nr = order.indexOf(item) + 1;
+  const c = polygonCentroid(poly);
+  let minX = Infinity, maxX = -Infinity;
+  for (const [x] of poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+  const wpx = (maxX - minX) * rc.zoom;
+  const full = `${nr ? nr + '. ' : ''}${wishText(item.wish, true)}`;
+  drawLabel(g, full.length * 7 < wpx * 0.9 ? full : nr ? `${nr}` : '?', c, rc, true, 2.2, '#4a3a1a');
 }
 
 /** Maandkleur van een plantstencil met bouwsteen: zachte waas over het stencil. */

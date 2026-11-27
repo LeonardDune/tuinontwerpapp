@@ -151,6 +151,45 @@ export function inScheme(color, scheme) {
   });
 }
 
+// ------------------------------------------------------------------ beplantingspiramide
+
+/**
+ * Beplantingspiramide (o.a. Elisabeth Scholt, Appeltern): eerst de grond, dan bomen, heesters, vaste planten,
+ * bollen en kruiden, en als laatste klimplanten en bodembedekkers. In die volgorde kies je ook de planten.
+ */
+export const PYRAMID = [
+  { key: 'bomen', name: 'Bomen', wish: 'Boom' },
+  { key: 'heesters', name: 'Heesters en hagen', wish: 'Heester' },
+  { key: 'vaste', name: 'Vaste planten, varens en grassen', wish: 'Vaste plant of gras' },
+  { key: 'bollen', name: 'Bollen, kruiden, een- en tweejarigen', wish: 'Bol of kruid' },
+  { key: 'klim', name: 'Klimplanten en bodembedekkers', wish: 'Bodembedekker' },
+];
+
+export const HEIGHT_ORDER = ['bodem', 'laag', 'middel', 'hoog', 'xhoog'];
+
+const KIND_LAYER = { boom: 'bomen', heester: 'heesters', haag: 'heesters', bol: 'bollen', kruid: 'bollen', klimmer: 'klim', bodem: 'klim' };
+
+/** Laag van de piramide van een plant uit de database. */
+export function plantLayer(p) {
+  return KIND_LAYER[p?.type] || 'vaste';
+}
+
+/** Laag van de piramide van een bouwsteen. */
+export function roleLayer(r) {
+  if (!r) return 'vaste';
+  const p = r.plant && PLANTS.get(r.plant);
+  if (p) return plantLayer(p);
+  if (KIND_LAYER[r.kind]) return KIND_LAYER[r.kind];
+  if (r.height === 'xhoog') return 'heesters';
+  if (r.height === 'bodem') return 'klim';
+  return 'vaste';
+}
+
+export function layerIndex(key) {
+  const i = PYRAMID.findIndex((l) => l.key === key);
+  return i < 0 ? 2 : i;
+}
+
 // ------------------------------------------------------------------ bouwstenen
 
 /** Bouwsteen maken (of de bestaande vinden) voor een plant uit de database. */

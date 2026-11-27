@@ -13,6 +13,7 @@ import { formatArea, formatLength } from './units.js';
 import { arcPolygon, arcParams } from './arc.js';
 import { brushStones, stonesOutline, SCATTER_JOINT } from './scatter.js';
 import { BOND_TYPES } from './bonds.js';
+import { normalizeWish } from './wish.js';
 
 const r4 = (v) => Math.round(v * 10000) / 10000;
 const rp = (p) => [r4(p[0]), r4(p[1])];
@@ -75,6 +76,13 @@ export function groupBlob(center, role, n, seed = 1) {
   return pts;
 }
 
+/** Vlek van een bepaald oppervlak (m²), voor een wensvakje. */
+export function areaBlob(center, area, seed = 1) {
+  // groupBlob met één 'plant' waarvan de plantafstand het gevraagde oppervlak geeft
+  const s = Math.sqrt(area / 0.95);
+  return groupBlob(center, { d: s / 0.85 }, 1, seed);
+}
+
 export class PlantTool extends Tool {
   /** Type voor de schets (bodembedekkers, laag, middel, hoog) van een nieuw plantvak. */
   btype() {
@@ -100,11 +108,11 @@ export class PlantTool extends Tool {
 
   mode() {
     const m = this.app.state.plantMode || 'vak';
-    return m === 'plant' || m === 'groep' ? m : 'vak';
+    return m === 'plant' || m === 'groep' || m === 'wens' ? m : 'vak';
   }
 
   shape() {
-    if (this.mode() === 'groep') return 'vrij'; // groepjes: tikken (of zelf een omtrek slepen), geen vaste vormen
+    if (this.mode() === 'groep' || this.mode() === 'wens') return 'vrij'; // groepjes: tikken (of zelf een omtrek slepen), geen vaste vormen
     const s = this.app.state.plantShape || 'vrij';
     if (s === 'tik' && this.mode() !== 'vak') return 'vrij';
     return s;
@@ -131,10 +139,17 @@ export class PlantTool extends Tool {
     return { bed, item: newGroup(groupBlob(w, r, this.groupCount(), Math.round(w[0] * 997 + w[1] * 131)), 'polygon', [{ role: r.id, w: 100 }], bed.id, this.app.store.doc.scale) };
   }
 
+  /** Voorbeeld van een wensvakje op plek w (of null buiten een plantvak). */
+  wishAt(w) {
+    const bed = bedAt(this.app.store.doc, w);
+    if (!bed) return null;
+    return { bed, item: newGroup(areaBlob(w, this.app.wishSize?.() || 1, Math.round(w[0] * 997 + w[1] * 131)), 'polygon', [], bed.id, this.app.store.doc.scale, { wish: normalizeWish(this.app.state.wish) }) };
+  }
+
   hover(e) {
     this.hoverW = e.w;
     this.curS = e.s;
-    if (this.mode() === 'groep' || this.mode() === 'plant') this.app.requestRender();
+    if (this.mode() !== 'vak') this.app.requestRender();
   }
 
   down(e) {
@@ -144,13 +159,13 @@ export class PlantTool extends Tool {
     this.downS = e.s;
     const mode = this.mode();
     const doc = this.app.store.doc;
-    if (mode !== 'vak' && !this.roles.length) {
+    if (mode !== 'vak' && mode !== 'wens' && !this.roles.length) {
       this.app.toast('Maak eerst een bouwsteen in het paneel Beplanting.');
       this.app.plantPanel.open();
       this.layer = null;
       return;
     }
-    if (mode === 'groep') {
+    if (mode === 'groep' || mode === 'wens') {
       this.bed = bedAt(doc, e.w);
       if (!this.bed) {
         this.app.toast(hasBeds(doc) ? 'Tik binnen een plantvak om daar een groepje te leggen.' : 'Teken eerst een plantvak; groepjes komen daarbinnen. Een losse plant mag overal.');
@@ -250,6 +265,13 @@ export class PlantTool extends Tool {
       }
     } else if (this.preview) {
       item = { ...this.preview, x: r4(this.preview.x), y: r4(this.preview.y) };
+    } else if (mode === 'wens' && this.pts && (this.pts.length < 4 || Math.max(...this.ptsS.map((q) => dist(q, this.downS))) < 10)) {
+      // tik: een wensvakje van de gekozen grootte
+      const b = this.wishAt(this.pts[0]);
+      if (b) {
+        item = b.item;
+        this.app.toast('Wensvakje gelegd. Leg er meer, of kies de planten in het paneel Beplanting (stap 3).', 2500);
+      }
     } else if (mode === 'groep' && this.pts && (this.pts.length < 4 || Math.max(...this.ptsS.map((q) => dist(q, this.downS))) < 10)) {
       // tik: een groepje van n planten op deze plek
       const b = this.blobAt(this.pts[0]);
@@ -266,11 +288,13 @@ export class PlantTool extends Tool {
         if (big) {
           const points = geo.points.map(rp);
           const extra = geo.rect ? { rect: true } : geo.arc ? { arc: true } : {};
-          if (mode === 'groep') {
+          if (mode === 'groep' || mode === 'wens') {
             const c = geo.kind === 'circle' ? geo.points[0] : polygonCentroid(poly);
             const bed = pointInPolygon(c, shapePolygon(this.bed)) ? this.bed : (bedAt(doc, c) || this.bed);
             const r = this.current();
-            item = newGroup(points, geo.kind, r ? [{ role: r.id, w: 100 }] : this.mix(), bed.id, scale, extra);
+            item = mode === 'wens'
+              ? newGroup(points, geo.kind, [], bed.id, scale, { ...extra, wish: normalizeWish(this.app.state.wish) })
+              : newGroup(points, geo.kind, r ? [{ role: r.id, w: 100 }] : this.mix(), bed.id, scale, extra);
           } else {
             item = this.makeVak(points, geo.kind, scale, extra);
           }
@@ -303,6 +327,17 @@ export class PlantTool extends Tool {
       drawItem(g, this.preview, rc);
       return;
     }
+    if (this.mode() === 'wens' && this.hoverW && !this.pts) {
+      const b = this.wishAt(this.hoverW);
+      if (b) {
+        b.item.id = 'voorbeeld';
+        g.save();
+        g.globalAlpha *= 0.75;
+        drawItem(g, b.item, { ...rc, bedsById: { ...rc.bedsById, [b.bed.id]: b.bed }, groupsByBed: {} });
+        g.restore();
+      }
+      return;
+    }
     if (this.mode() === 'groep' && this.hoverW && !this.pts) {
       // voorbeeld: hier komt het groepje als je tikt
       const b = this.blobAt(this.hoverW);
@@ -324,11 +359,13 @@ export class PlantTool extends Tool {
     if (!geo) return;
     const mode = this.mode();
     const doc = this.app.store.doc;
-    const tmp = mode === 'groep' && this.bed
+    const tmp = mode === 'wens' && this.bed
+      ? newGroup(geo.points, geo.kind, [], this.bed.id, doc.scale, { wish: normalizeWish(this.app.state.wish) })
+      : mode === 'groep' && this.bed
       ? newGroup(geo.points, geo.kind, this.current() ? [{ role: this.current().id, w: 100 }] : this.mix(), this.bed.id, doc.scale)
       : this.makeVak(geo.points, geo.kind, doc.scale, geo.rect ? { rect: true } : geo.arc ? { arc: true } : {});
     tmp.id = 'voorbeeld';
-    const ctx = mode === 'groep' && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };
+    const ctx = (mode === 'groep' || mode === 'wens') && this.bed ? { ...rc, bedsById: { ...rc.bedsById, [this.bed.id]: this.bed }, groupsByBed: {} } : { ...rc, groupsByBed: {} };
     drawItem(g, tmp, ctx);
   }
 

@@ -210,3 +210,20 @@ export function downloadBlob(blob, filename) {
 export function safeFilename(name) {
   return (name || 'tuinontwerp').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'tuinontwerp';
 }
+
+/** Op iPad/iPhone via het deelmenu (bewaren in Bestanden), elders als download. */
+export async function shareOrDownload(blob, filename) {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS && navigator.canShare) {
+    const file = new File([blob], filename, { type: blob.type });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
+  }
+  downloadBlob(blob, filename);
+}

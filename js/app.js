@@ -15,7 +15,9 @@ import { transformItem, invalidate as invalidateItem, hatchAngle, BORDERS, SOILS
 import { saveDoc, loadDoc, listDocs, deleteDoc, loadSettings, saveSettings } from './storage.js';
 import { SCALES, parseLength, formatLength, niceStep } from './units.js';
 import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
-import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox } from './export.js';
+import { openPlantList } from './plantlist.js';
+import { wishText, wishControlsHtml, bindWishControls } from './wish.js';
+import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox, shareOrDownload } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
 import {
   DrawTool, EraserTool, ShapeTool, WallTool, DimTool, TextTool, StencilTool, CalibrateTool, PanTool, snapPoint,
@@ -331,7 +333,7 @@ class App {
     const { ctx, dpr, width, height, cam } = this;
     const doc = this.store.doc;
     if (this.baseDirty) {
-      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, plantViews: this.state.plantViews, grid: this.settings.grid ? { size: doc.grid || 1, at: doc.gridAt || 0, opacity: doc.gridOpacity ?? 0.5 } : null });
+      renderScene(this.baseCtx, { doc, cam, width, height, dpr, minLabelPx: 12, month: this.plantPanel.month, plantView: this.state.plantView, plantViews: this.state.plantViews, layerMax: this.plantPanel.layerMax ?? null, grid: this.settings.grid ? { size: doc.grid || 1, at: doc.gridAt || 0, opacity: doc.gridOpacity ?? 0.5 } : null });
       this.sun.drawBase(this.baseCtx);
       this.baseDirty = false;
     }
@@ -340,7 +342,7 @@ class App {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.base, 0, 0);
 
-    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, plantView: this.state.plantView || 'planten', plantViews: this.state.plantViews, ...plantContext(doc) };
+    const rc = { doc, scale: doc.scale, zoom: cam.zoom, dpr, minPx: 12, month: this.plantPanel.month, plantView: this.state.plantView || 'planten', plantViews: this.state.plantViews, layerMax: this.plantPanel.layerMax ?? null, ...plantContext(doc) };
     ctx.save();
     cam.apply(ctx, dpr);
     this.tool.drawWorld(ctx, rc);
@@ -1574,11 +1576,11 @@ class App {
     const doc = this.store.doc;
     const roles = doc.planting?.roles || [];
     let mode = this.state.plantMode || 'vak';
-    if (mode !== 'plant' && mode !== 'groep') mode = 'vak';
+    if (mode !== 'plant' && mode !== 'groep' && mode !== 'wens') mode = 'vak';
     const beds = hasBeds(doc);
     const seg = document.createElement('div');
     seg.className = 'seg';
-    seg.innerHTML = [['vak', 'Plantvak'], ['groep', 'Groepje'], ['plant', 'Losse plant']]
+    seg.innerHTML = [['vak', 'Plantvak'], ['wens', 'Wensvakje'], ['groep', 'Groepje'], ['plant', 'Losse plant']]
       .map(([m, n]) => `<button type="button" data-m="${m}" class="${mode === m ? 'on' : ''}">${n}</button>`).join('');
     for (const b of seg.querySelectorAll('button')) b.addEventListener('click', () => { this.tool.cancel(); this.state.plantMode = b.dataset.m; this.persistSettings(); this.renderOptions(); });
     wrap.appendChild(seg);
@@ -1602,7 +1604,16 @@ class App {
       sel.addEventListener('change', () => { this.state.bedType = sel.value || null; this.persistSettings(); });
       wrap.appendChild(sel);
     }
-    if (mode === 'groep' && !beds) {
+    if (mode === 'wens' && beds) {
+      // wensvakje: alleen wat je hier wilt; de plant kies je later (grote planten eerst)
+      const box = document.createElement('div');
+      box.innerHTML = wishControlsHtml(this.state.wish, { size: this.wishSize() });
+      bindWishControls(box, this.state.wish, (w) => { this.state.wish = w; this.persistSettings(); this.renderOptions(); this.plantPanel.refresh(); this.requestRender(); }, (a) => { this.state.wishSize = a; this.persistSettings(); this.renderOptions(); this.requestRender(); });
+      wrap.appendChild(box.firstElementChild);
+      wrap.appendChild(this.hint('Tik in een plantvak voor een vakje met deze wens, of sleep een eigen vorm. De plant kies je daarna per vakje in het paneel Beplanting (stap 3), de grote planten eerst.'));
+      return wrap;
+    }
+    if ((mode === 'groep' || mode === 'wens') && !beds) {
       wrap.appendChild(this.hint('Groepen komen binnen een plantvak. Teken eerst een plantvak, of zet een solitair (die mag overal).'));
       const b = document.createElement('button');
       b.className = 'toggle';
@@ -2262,6 +2273,10 @@ class App {
       }
       if (it.type === 'plant') html += roleSelect(it.role, false);
       if (it.type === 'stencil' && (it.role || isPlantStencil(it.symbol))) html += roleSelect(it.role, true);
+      if (isGroup(it) && it.wish) {
+        html += `<span class="pinfo" title="Wensvakje: wat je hier wilt">Wens: ${escapeHtml(wishText(it.wish))}</span>`;
+        html += `<button type="button" class="tgl" data-plan="wishpick" title="Kies een plant die bij deze wens past (paneel Beplanting)">${(it.planting?.mix || []).length ? 'Andere plant kiezen' : 'Kies plant'}</button>`;
+      }
       if (isBed(it) || isGroup(it)) {
         const mix = it.planting?.mix || [];
         const inMix = new Set(mix.map((m) => m.role));
@@ -2565,13 +2580,18 @@ class App {
       this.toast('Plantvak gemaakt. Kies de basis-bouwstenen of laat groepen voorstellen.');
       return;
     }
+    if (action === 'wishpick') {
+      if (isGroup(it) && it.wish) this.plantPanel.openWish(it.id);
+      return;
+    }
     if (!isBed(it)) return;
     if (action === 'cleargroups') {
       this.store.mutate(() => {
         // de samengestelde mix weer helemaal in het vak
         const plan = bedPlan(it);
         if (plan.grouped.length) { it.planting = { ...it.planting, mix: plan.mix.map((m) => ({ ...m })) }; delete it.planting.fullMix; delete it.planting.baseSig; }
-        for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id));
+        // wensvakjes blijven staan: die zijn een ander deel van het ontwerp
+        for (const l of doc.layers) l.items = l.items.filter((i) => !(isGroup(i) && i.bedId === it.id && !i.wish));
       }, 'clear-groups');
       return;
     }
@@ -3863,6 +3883,17 @@ class App {
     };
     $('#exp-pdf').addEventListener('click', () => run('pdf'));
     $('#exp-png').addEventListener('click', () => run('png'));
+    $('#exp-plantlist').addEventListener('click', () => { dlg.close(); this.openPlantList(); });
+  }
+
+  /** Grootte (m²) van een nieuw wensvakje als je tikt. */
+  wishSize() {
+    return [0.5, 1, 1.5].includes(this.state.wishSize) ? this.state.wishSize : 1;
+  }
+
+  /** Plantenlijst (boodschappenlijst) van de hele tuin of één plantvak. */
+  openPlantList(bedId = null) {
+    openPlantList(this, bedId, { share: shareOrDownload, safeFilename });
   }
 
   registerServiceWorker() {
@@ -3995,22 +4026,6 @@ async function renderPdfFile(file) {
     dataUrl: c.toDataURL('image/jpeg', 0.9),
     pageMm: [(vp1.width / 72) * 25.4, (vp1.height / 72) * 25.4],
   };
-}
-
-async function shareOrDownload(blob, filename) {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (isIOS && navigator.canShare) {
-    const file = new File([blob], filename, { type: blob.type });
-    if (navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: filename });
-        return;
-      } catch (err) {
-        if (err?.name === 'AbortError') return;
-      }
-    }
-  }
-  downloadBlob(blob, filename);
 }
 
 window.app = new App();

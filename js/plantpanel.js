@@ -3,8 +3,11 @@
 import {
   HEIGHTS, HABITS, FORMS, ROLES, FOLIAGE, AUTUMN, WINTER, SCHEMES, MONTHS, MONTH_NAMES,
   schemePalette, inScheme, newRole, describeRole, drawRoleSymbol, roleDiameter, yearRound, hexToHsl, monthState,
-  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan,
+  plantCounts, isBed, isGroup, BED_TYPES, shapePolygon, roleForPlant, bedPlan, PYRAMID, plantCount, rolesMap,
 } from './planting.js';
+import {
+  wishOrder, wishText, wishHex, wishCandidates, normalizeWish, wishControlsHtml, bindWishControls, isWish,
+} from './wish.js';
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant } from './plantdb.js';
 import { combosFor } from './combos.js';
 import { drawPlant } from './plantdraw.js';
@@ -51,6 +54,7 @@ export class PlantPanel {
 
   close() {
     this.el.hidden = true;
+    if (this.layerMax != null) this.setLayerMax(null);
     $('#btn-planting').classList.remove('on');
     document.body.classList.remove('side-open');
     if (this.month) this.setMonth(null);
@@ -119,6 +123,199 @@ export class PlantPanel {
       </section>`;
   }
 
+  // ---------------------------------------------------------------- wensvakjes
+
+  refineTab() {
+    return this.app.state.refineTab === 'groep' ? 'groep' : 'wens';
+  }
+
+  /** Stap 3 in twee delen: wensvakjes (eerst wensen, dan planten) en groepjes/losse planten. */
+  refineTabsHtml(bed) {
+    const tab = this.refineTab();
+    return `<nav class="rtabs seg"><button type="button" data-rtab="wens" class="${tab === 'wens' ? 'on' : ''}">Wensvakjes</button><button type="button" data-rtab="groep" class="${tab === 'groep' ? 'on' : ''}">Groepjes en losse planten</button></nav>
+      ${tab === 'wens' ? this.wishHtml(bed) : this.refineHtml(bed)}`;
+  }
+
+  /** Het geselecteerde wensvakje (alleen als dat het enige geselecteerde is). */
+  selectedWish() {
+    const sel = [...this.app.selection];
+    if (sel.length !== 1) return null;
+    const it = this.app.store.findItem(sel[0])?.item;
+    return isWish(it) ? it : null;
+  }
+
+  /** Het wensvakje waar het paneel over gaat: geselecteerd, of het laatst gekozen in dit vak. */
+  scopeWish(bed) {
+    const sel = this.selectedWish();
+    if (sel) return sel;
+    const it = this.wishId && this.app.store.findItem(this.wishId)?.item;
+    return isWish(it) && (!bed || it.bedId === bed.id) ? it : null;
+  }
+
+  wishesOf(bed) {
+    if (!bed) return [];
+    const groups = this.doc.layers.filter((l) => l.visible).flatMap((l) => l.items).filter((i) => isGroup(i) && i.bedId === bed.id);
+    return wishOrder(groups);
+  }
+
+  /** Paneel openen op het kiezen van een plant voor dit wensvakje. */
+  openWish(id) {
+    this.app.state.plantStep = 3;
+    this.app.state.refineTab = 'wens';
+    this.wishId = id;
+    if (this.el.hidden) this.open(); else this.render();
+  }
+
+  selectWish(id) {
+    this.wishId = id;
+    if (this.app.state.tool !== 'lasso') this.app.setTool('lasso');
+    this.app.setSelection(new Set([id]));
+    this.render();
+  }
+
+  setLayerMax(v) {
+    this.layerMax = v;
+    this.app.baseDirty = true;
+    this.app.requestRender();
+  }
+
+  wishHtml(bed) {
+    const st = this.app.state;
+    const drawing = st.tool === 'plant' && st.plantMode === 'wens';
+    const wishes = this.wishesOf(bed);
+    const active = this.scopeWish(bed);
+    const open = wishes.filter((w) => !(w.planting?.mix || []).length).length;
+    return `<section class="wishes">
+        <p class="hint">Teken in het vak eerst kleine <b>wensvakjes</b> (0,5–1,5 m²) met alleen wat je daar wílt: soort, hoogte, kleur en seizoen. Kies daarna per vakje een plant, <b>de grote planten eerst</b>: bomen en heesters, dan vaste planten, bollen en bodembedekkers.</p>
+        ${bed ? '' : '<p class="hint"><b>Tik eerst op een plantvak</b> in de tekening of kies er een in de lijst.</p>'}
+        <h4>1. Wat wil je hier?</h4>
+        <div class="wnew">${wishControlsHtml(st.wish, { size: this.app.wishSize() })}</div>
+        <div class="row add"><button type="button" class="${drawing ? 'on' : 'primary'}" data-wact="draw">${drawing ? 'Bezig: tik in het vak' : 'Wensvakjes tekenen'}</button></div>
+        ${drawing ? '<p class="hint">Tik in het plantvak voor een vakje met deze wens, of sleep een eigen vorm. Verander de wens hierboven tussendoor.</p>' : ''}
+        ${bed ? `<h4>2. Kies per vakje een plant <small>${wishes.length ? `${wishes.length} vakje${wishes.length > 1 ? 's' : ''}${open ? `, nog ${open} open` : ', alles gekozen'}` : 'nog geen vakjes'}</small></h4>
+        <ol class="wlist">${wishes.map((w, i) => {
+          const r = (this.doc.planting?.roles || []).find((x) => x.id === w.planting?.mix?.[0]?.role);
+          return `<li data-wid="${w.id}" class="${active?.id === w.id ? 'on' : ''} ${r ? 'done' : ''}"><b>${i + 1}</b><i style="background:${wishHex(w.wish)}"></i><span>${esc(wishText(w.wish))}<small>${r ? `✓ ${esc(r.label || r.code)}` : 'nog kiezen'}</small></span></li>`;
+        }).join('')}</ol>
+        ${active ? this.wishCardHtml(active, wishes) : wishes.length ? '<p class="hint">Tik op een vakje in de lijst of in de tekening om er een plant voor te kiezen.</p>' : ''}` : ''}
+        <h4>Lagen <small>zoals overtrekpapier</small></h4>
+        <div class="seg layers" title="Toon alleen de lagen van de beplantingspiramide tot en met …">${[[null, 'Alles'], ...PYRAMID.slice(0, 4).map((l, i) => [i, `t/m ${l.wish.toLowerCase()}`])].map(([v, n]) => `<button type="button" data-layer="${v ?? ''}" class="${(this.layerMax ?? null) === v ? 'on' : ''}">${n}</button>`).join('')}</div>
+      </section>`;
+  }
+
+  wishCardHtml(w, wishes) {
+    const nr = wishes.indexOf(w) + 1;
+    const roles = rolesMap(this.doc);
+    const mix = (w.planting?.mix || []).filter((m) => roles[m.role]);
+    const area = Math.abs(polygonArea(shapePolygon(w)));
+    const n = mix.length ? plantCount(area, mix, roles) : 0;
+    const r = mix.length ? roles[mix[0].role] : null;
+    return `<div class="wcard">
+        <h4>Vakje ${nr} <small>${area.toFixed(1).replace('.', ',')} m²${n ? ` · ±${n} plant${n > 1 ? 'en' : ''}` : ''}</small></h4>
+        <div class="wedit">${wishControlsHtml(w.wish)}</div>
+        ${r ? `<div class="wcur"><span class="th" data-wthumb="${r.id}"></span><span><b>${esc(r.label || r.code)}</b><small>gekozen</small></span><button type="button" data-wact="clear" title="Plant uit dit vakje halen (de wens blijft)">Weghalen</button></div>` : ''}
+        <h5>${r ? 'Of een andere plant' : 'Passende planten'}</h5>
+        <ul class="wcands"></ul>
+        <div class="row add"><button type="button" data-wact="more">Meer planten…</button><button type="button" class="primary" data-wact="next">Volgende vakje ›</button></div>
+      </div>`;
+  }
+
+  /** Gebeurtenissen van het deel 'Wensvakjes'. */
+  bindWish(el, bed) {
+    const box = $('.wnew', el);
+    if (box) {
+      bindWishControls(box, this.app.state.wish, (w) => { this.app.state.wish = w; this.app.persistSettings(); this.app.renderOptions(); this.render(); this.app.requestRender(); },
+        (a) => { this.app.state.wishSize = a; this.app.persistSettings(); this.app.renderOptions(); this.render(); });
+    }
+    el.querySelector('[data-wact="draw"]')?.addEventListener('click', () => {
+      this.app.state.plantMode = 'wens';
+      this.app.persistSettings();
+      if (this.app.state.tool !== 'plant') this.app.setTool('plant'); else this.app.renderOptions();
+      this.render();
+    });
+    for (const li of el.querySelectorAll('[data-wid]')) li.addEventListener('click', () => this.selectWish(li.dataset.wid));
+    for (const b of el.querySelectorAll('[data-layer]')) b.addEventListener('click', () => { this.setLayerMax(b.dataset.layer === '' ? null : Number(b.dataset.layer)); this.render(); });
+    const w = bed && this.scopeWish(bed);
+    if (!w) return;
+    const id = w.id;
+    const edit = $('.wedit', el);
+    bindWishControls(edit, w.wish, (nw) => this.app.store.mutate(() => {
+      const it = this.app.store.findItem(id)?.item;
+      if (it) it.wish = nw;
+    }, 'wish'));
+    for (const sp of el.querySelectorAll('[data-wthumb]')) { const r = (this.doc.planting?.roles || []).find((q) => q.id === sp.dataset.wthumb); if (r) sp.appendChild(this.thumb(r, 34)); }
+    el.querySelector('[data-wact="clear"]')?.addEventListener('click', () => this.app.store.mutate(() => {
+      const it = this.app.store.findItem(id)?.item;
+      if (it) it.planting = { mix: [] };
+    }, 'wish-clear'));
+    el.querySelector('[data-wact="next"]').addEventListener('click', () => this.nextWish(bed, id));
+    const ctx = this.wishCtx(bed);
+    el.querySelector('[data-wact="more"]').addEventListener('click', () => {
+      const nw = normalizeWish(w.wish);
+      this.openPicker({
+        title: `Plant voor vakje: ${wishText(nw)}`,
+        btype: null, light: ctx.light, moisture: ctx.moisture, height: nw.height, color: nw.color === 'blad' ? '' : nw.color,
+        onPick: (pl) => this.fillWish(id, pl),
+      });
+    });
+    const { list, excluded } = wishCandidates(w.wish, ctx);
+    const ul = $('.wcands', el);
+    const top = list.slice(0, 8);
+    if (!top.length) ul.innerHTML = `<li class="hint">Geen planten gevonden die hierbij passen${excluded.light || excluded.moisture ? ' (met de zon en grond van dit vak)' : ''}. Pas de wens aan of kies via Meer planten.</li>`;
+    for (const c of top) {
+      const li = document.createElement('li');
+      li.className = 'role';
+      li.appendChild(this.thumb(c.p, 34));
+      const t = document.createElement('div');
+      t.className = 'rtxt';
+      t.innerHTML = `<b>${esc(c.p.nl)}</b> <i>${esc(c.p.lat)}</i><small>${c.p.h >= 300 ? `${Math.round(c.p.h / 100)} m` : `${c.p.h} cm`} · bloei ${bloomText(c.p)}${c.good.length ? ` · <span class="good">${esc(c.good.join(', '))}</span>` : ''}${c.bad.length ? ` · <em>${esc(c.bad.join(', '))}</em>` : ''}</small>`;
+      li.appendChild(t);
+      const sw = document.createElement('i');
+      sw.className = 'pcolor'; sw.style.background = c.p.bloom.length ? c.p.color : 'transparent';
+      li.appendChild(sw);
+      li.addEventListener('click', () => this.fillWish(id, c.p));
+      ul.appendChild(li);
+    }
+    if (!bed.light || !bed.moisture) {
+      const li = document.createElement('li');
+      li.className = 'hint';
+      li.innerHTML = 'Tip: vul in stap 2 de <b>zon</b> en <b>grond</b> van dit vak in, dan vallen planten die daar niet groeien af.';
+      ul.appendChild(li);
+    }
+  }
+
+  wishCtx(bed) {
+    const used = new Set((this.doc.planting?.roles || []).map((r) => r.plant).filter(Boolean));
+    return { light: bed?.light || null, moisture: bed?.moisture || null, scheme: this.ensure().scheme, used };
+  }
+
+  /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
+  fillWish(id, pl) {
+    const roles = this.ensure().roles;
+    const { role, created } = roleForPlant(roles, pl);
+    this.app.store.mutate((doc) => {
+      if (created) doc.planting.roles.push(role);
+      const it = this.app.store.findItem(id)?.item;
+      if (it) it.planting = { mix: [{ role: role.id, w: 100 }] };
+    }, 'wish-fill');
+    const bed = this.app.store.findItem(this.app.store.findItem(id)?.item?.bedId)?.item;
+    this.nextWish(bed, id, pl.nl);
+  }
+
+  nextWish(bed, fromId, chosen = null) {
+    const wishes = this.wishesOf(bed);
+    const i = wishes.findIndex((w) => w.id === fromId);
+    const order = [...wishes.slice(i + 1), ...wishes.slice(0, Math.max(0, i))];
+    const next = order.find((w) => !(w.planting?.mix || []).length) || (chosen ? null : order[0]);
+    if (next) {
+      this.selectWish(next.id);
+      if (chosen) this.app.toast(`${chosen} gekozen. Nu vakje ${wishes.indexOf(next) + 1}: ${wishText(next.wish)}.`, 3000);
+    } else {
+      this.render();
+      this.app.toast(chosen ? `${chosen} gekozen. Alle wensvakjes in dit vak hebben een plant. Bekijk de Plantenlijst.` : 'Er zijn geen andere vakjes.', 3500);
+    }
+  }
+
   /** Plant uit de database kiezen om als groepje of losse plant te zetten. */
   pickForPlacing() {
     this.openPicker({
@@ -181,6 +378,14 @@ export class PlantPanel {
 
   render() {
     const p = this.ensure();
+    // een wensvakje geselecteerd: meteen naar 'plant kiezen' voor dat vakje
+    const selWish = this.selectedWish();
+    if (selWish && selWish.id !== this.lastSelWish) {
+      this.app.state.plantStep = 3;
+      this.app.state.refineTab = 'wens';
+      this.wishId = selWish.id;
+    }
+    this.lastSelWish = selWish?.id || null;
     const bed = this.scopeBed();
     const yr = yearRound(this.doc, bed?.id || null);
     const counts = plantCounts(this.doc, bed?.id || null);
@@ -203,7 +408,7 @@ export class PlantPanel {
         '',
         '<p><b>Schets de beplanting.</b> Teken plantvakken en geef elk vak een <b>type</b>: hoe hoog wordt het ongeveer? Welke planten erin komen, kies je in stap 2.</p>',
         '<p><b>Vul de vakken.</b> Selecteer een vak en kies planten uit de database of een kant-en-klare combinatie. Wat bij het type past, staat bovenaan.</p>',
-        '<p><b>Maak het af.</b> Leg groepjes en losse planten in het vak, en kijk onderaan hoe het er het hele jaar uitziet.</p>',
+        '<p><b>Maak het af.</b> Teken <b>wensvakjes</b> en kies per vakje een plant (de grote eerst), of leg <b>groepjes</b> en losse planten. Onderaan zie je hoe het er het hele jaar uitziet.</p>',
       ][step]}</section>
       ${step === 1 ? `<section>
         <h3>${bed ? `Type van ${esc(bed.name || 'dit vak')}` : 'Type voor nieuwe vakken'}</h3>
@@ -250,7 +455,7 @@ export class PlantPanel {
         <div class="proposal" hidden></div>
         <div class="combos" hidden></div>
       </section>` : `<section class="bedsec"><p class="hint">Tik op een plantvak in de tekening of in de lijst hierboven om het te vullen.</p></section>`}
-      ${step === 3 ? this.refineHtml(bed) : ''}
+      ${step === 3 ? this.refineTabsHtml(bed) : ''}
       <section data-in="1">
         <h3>Schets: soorten plantvak</h3>
         <div class="sketch"></div>
@@ -280,6 +485,7 @@ export class PlantPanel {
         <canvas class="wheel" width="300" height="300"></canvas>
         <div class="advice"></div>
       </section>
+      <div class="row add plist"><button type="button" data-act="plantlist" title="Alle planten met aantallen, standplaats, bloei, leverancier en prijs; als PDF of voor Excel">Plantenlijst${bed ? ` van ${esc(bed.name || 'dit vak')}` : ''}</button></div>
       ${step < 3 ? `<div class="row next"><button type="button" class="primary" data-step="${step + 1}">Verder: ${step === 1 ? '2 Invullen' : '3 Verfijnen'} ›</button></div>` : ''}`;
     // onderdelen die alleen bij één stap horen
     for (const sec of el.querySelectorAll('[data-in]')) if (Number(sec.dataset.in) !== step) sec.hidden = true;
@@ -400,6 +606,9 @@ export class PlantPanel {
         this.app.toast({ vak: 'Teken een plantvak in de tekening (vorm kiezen onderin).', groep: 'Teken een groep binnen een plantvak.', plant: 'Tik in de tekening om een solitair te zetten; kies de plant onderin of bij de bouwstenen.' }[b.dataset.tool], 3000);
       });
     }
+    el.querySelector('[data-act="plantlist"]')?.addEventListener('click', () => this.app.openPlantList(bed?.id || null));
+    for (const b of el.querySelectorAll('[data-rtab]')) b.addEventListener('click', () => { this.app.state.refineTab = b.dataset.rtab; this.app.persistSettings(); this.render(); });
+    if (step === 3 && this.refineTab() === 'wens') this.bindWish(el, bed);
     el.querySelector('[data-plan="suggest"]')?.addEventListener('click', () => this.app.planAction('suggest'));
     el.querySelector('[data-plan="cleargroups"]')?.addEventListener('click', () => this.app.planAction('cleargroups'));
     const place = (mode) => {
@@ -727,21 +936,21 @@ export class PlantPanel {
   // ---------------------------------------------------------------- plant kiezen
 
   /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
-  openPicker({ title, btype = null, light = null, moisture = null, onPick }) {
+  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', onPick }) {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
-    const f = { q: '', type: '', height: '', light: light || '', soil: moisture || '', color: '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
+    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype };
     dlg.innerHTML = `
       <form method="dialog" class="dlg wide picker">
         <header><h2>${esc(title)}</h2><button class="x" value="close">${icon('close')}</button></header>
         <input type="search" data-f="q" placeholder="Zoek op Nederlandse of Latijnse naam" autocomplete="off">
         <div class="filters">
           <select data-f="type">${opt(PLANT_TYPES, '', 'Alle soorten')}</select>
-          <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), '', 'Elke hoogte')}</select>
+          <select data-f="height">${opt(Object.fromEntries(Object.entries(HEIGHTS).map(([k, v]) => [k, `${v.name} (${v.range})`])), f.height, 'Elke hoogte')}</select>
           <select data-f="light">${opt({ zon: 'Zon', half: 'Halfschaduw', schaduw: 'Schaduw' }, f.light, 'Elke standplaats')}</select>
           <select data-f="soil">${opt({ droog: 'Droog', normaal: 'Normaal', vochtig: 'Vochtig' }, f.soil, 'Elke grond')}</select>
-          <select data-f="color">${opt({ wit: 'Wit', geel: 'Geel', oranje: 'Oranje', rood: 'Rood', roze: 'Roze', paars: 'Paars', blauw: 'Blauw', groen: 'Groen' }, '', 'Elke bloeikleur')}</select>
+          <select data-f="color">${opt({ wit: 'Wit', geel: 'Geel', oranje: 'Oranje', rood: 'Rood', roze: 'Roze', paars: 'Paars', blauw: 'Blauw', groen: 'Groen' }, f.color, 'Elke bloeikleur')}</select>
           <select data-f="month">${opt(Object.fromEntries(MONTH_NAMES.map((m, i) => [String(i + 1), `Bloeit in ${m}`])), '', 'Elke bloeitijd')}</select>
           <label class="check"><input type="checkbox" data-f="native"> Inheems</label>
           <label class="check"><input type="checkbox" data-f="bees"> Bijen en vlinders</label>

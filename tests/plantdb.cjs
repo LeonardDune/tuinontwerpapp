@@ -81,7 +81,9 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(await page.evaluate(() => window.app.state.tool === 'plant' && window.app.state.plantMode === 'vak'), '"Plantvak tekenen" kiest het juiste gereedschap');
   await page.evaluate(() => { window.app.setTool('lasso'); window.app.setSelection(new Set(['B'])); });
   await page.click('#plant-panel .steps [data-step="3"]');
-  assert(await page.isVisible('#plant-panel [data-plan="suggest"]') && await page.isVisible('#plant-panel .year'), 'stap 3: groepen voorstellen, solitairen en het hele jaar');
+  assert(await page.isVisible('#plant-panel [data-rtab="wens"]') && await page.isVisible('#plant-panel [data-wact="draw"]') && await page.isVisible('#plant-panel .year'), 'stap 3: wensvakjes en het hele jaar');
+  await page.click('#plant-panel [data-rtab="groep"]');
+  assert(await page.isVisible('#plant-panel [data-plan="suggest"]'), 'stap 3, tweede tab: groepen voorstellen en solitairen');
   await page.click('#plant-panel [data-plan="suggest"]');
   assert(await page.evaluate(() => window.app.store.doc.layers[0].items.some((i) => i.group && i.bedId === 'B')), 'groepen voorgesteld in het vak');
   await page.screenshot({ path: path.join(OUT, 'plantdb-stap3.png') });
