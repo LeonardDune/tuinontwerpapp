@@ -87,6 +87,12 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   assert(/Actieve filters/.test(af) && /Hoog/.test(af) && /Halfschaduw/.test(af) && /Wit/.test(af) && await page.locator('#dlg-plants select.active').count() >= 4, `de filters van de wens staan zichtbaar bovenaan (${af.replace(/\s+/g, ' ')})`);
   await page.click('#dlg-plants [data-clear="all"]');
   const after = await page.locator('#dlg-plants .plant').count();
+  const total = await page.evaluate(async () => (await import('./js/plantdb.js')).searchPlants({}).length);
+  // de hele lijst: doorscrollen laadt de volgende 150
+  await page.locator('#dlg-plants .plantlist').evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.waitForFunction((n) => document.querySelectorAll('#dlg-plants .plant').length > 150 || document.querySelectorAll('#dlg-plants .plant').length === n, total);
+  const more = await page.locator('#dlg-plants .plant').count();
+  assert(total > 150 && more > 150, `doorscrollen laadt meer planten (${more} van ${total} getoond, niet meer vast op 150)`);
   assert(/Geen filters/.test(await page.locator('#dlg-plants .activef').innerText()) && after > before && !(await page.locator('#dlg-plants select.active').count()), `"Alle filters wissen": ${before} → ${after} planten`);
   await page.keyboard.press('Escape');
   // samenstellen houdt de eis aan

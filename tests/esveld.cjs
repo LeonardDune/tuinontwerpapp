@@ -32,7 +32,8 @@ const FAKE = {
   assert(/Nog geen Esveld-catalogus/.test(await page.textContent('#set-source-info')), 'Instellingen zegt dat er nog geen catalogus is');
   await page.setInputFiles('#set-esveld-file', { name: 'esveld.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(FAKE)) });
   await page.waitForFunction(async () => (await import('./js/esveld.js')).ESVELD.loaded);
-  assert(/7 cultivars/.test(await page.textContent('#set-source-info')) && await page.isVisible('#set-esveld-remove'), 'importeren: catalogus geladen (7 cultivars), met knop Verwijderen');
+  await page.waitForFunction(() => /7 cultivars/.test(document.querySelector('#set-source-info').textContent), null, { timeout: 5000 });
+  assert(await page.isVisible('#set-esveld-remove'), 'importeren: catalogus geladen (7 cultivars), met knop Verwijderen');
   await page.keyboard.press('Escape');
   // een verkeerd bestand wordt geweigerd
   await page.setInputFiles('#set-esveld-file', { name: 'iets.json', mimeType: 'application/json', buffer: Buffer.from('{"hallo":1}') });

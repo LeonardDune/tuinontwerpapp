@@ -1038,7 +1038,8 @@ export class PlantPanel {
         for (const b of cnt.querySelectorAll('[data-loose]')) b.addEventListener('click', () => clear(b.dataset.loose));
       }
       list.innerHTML = '';
-      for (const { p, fits } of res.slice(0, 150)) {
+      // in porties van 150 (elke plant krijgt een eigen tekeningetje); onderaan laden de volgende vanzelf
+      const addItem = (p, fits) => {
         const li = document.createElement('li');
         li.className = 'plant' + (fits ? '' : ' unfit');
         li.appendChild(this.thumb(p, 48));
@@ -1057,7 +1058,26 @@ export class PlantPanel {
         li.appendChild(sw);
         li.addEventListener('click', () => { dlg.close(); onPick(p); });
         list.appendChild(li);
-      }
+      };
+      let shown = 0;
+      const more = document.createElement('li');
+      more.className = 'more';
+      const batch = () => {
+        more.remove();
+        for (const { p, fits } of res.slice(shown, shown + 150)) addItem(p, fits);
+        shown = Math.min(res.length, shown + 150);
+        if (shown < res.length) {
+          more.innerHTML = `<button type="button">Toon meer (${Math.min(150, res.length - shown)} van de ${res.length - shown} die nog volgen)</button>`;
+          more.firstChild.addEventListener('click', batch);
+          list.appendChild(more);
+        }
+        cnt.dataset.shown = String(shown);
+        if (res.length) cnt.textContent = `${res.length} planten${shown < res.length ? `, ${shown} getoond (scroll door voor meer)` : ''}. Tik op een plant om hem te kiezen.`;
+      };
+      this.pickerObserver?.disconnect();
+      this.pickerObserver = new window.IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting) && more.isConnected) batch(); }, { root: list, rootMargin: '300px' });
+      this.pickerObserver.observe(more);
+      batch();
     };
     for (const b of dlg.querySelectorAll('[data-tf]')) {
       b.addEventListener('click', () => {
