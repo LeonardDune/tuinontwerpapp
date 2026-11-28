@@ -28,13 +28,13 @@ const SYNONYMS = {
   bistorta: 'persicaria', 'salvia rosmarinus': 'rosmarinus officinalis', 'stachys monieri': 'betonica officinalis', anemanthele: 'stipa', hyacinthoides: 'endymion',
 };
 
-function synonym(key) {
+export function synonym(key) {
   for (const [a, b] of Object.entries(SYNONYMS)) if (key === a || key.startsWith(a + ' ')) return b + key.slice(a.length);
   return key;
 }
 
 /** Delen van een naam: geslacht, soort (zonder cultivar) en cultivar. */
-function nameParts(lat) {
+export function nameParts(lat) {
   const m = /[‘'](.+)[’']/.exec(lat);
   const cv = m ? latKey(m[1]) : '';
   const base = latKey(m ? lat.slice(0, m.index) : lat);

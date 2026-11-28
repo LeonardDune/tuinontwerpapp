@@ -11,13 +11,13 @@ import {
   wishOrder, wishText, wishHex, wishCandidates, wishScore, normalizeWish, wishControlsHtml, bindWishControls, isWish,
 } from './wish.js';
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant, colorFamily, heightClass } from './plantdb.js';
-import { combosFor } from './combos.js';
+import { rankBorders, BORDER_ROLES } from './borders.js';
 import { ESVELD, esveldLinkHtml, roleEsveldLinkHtml } from './esveld.js';
 import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits, meetsAll } from './traits.js';
 import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE, rolePlant } from './checks.js';
 import { drawPlant } from './plantdraw.js';
 import { drawStencil, STENCIL_MAP } from './stencils.js';
-import { checkPlanting, compose, adaptItems, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
+import { checkPlanting, compose, lightFromHours, LIGHTS, MOISTURES } from './composer.js';
 import { SOIL_TYPES, PH, EXPOSURE, siteProblems, lightFits } from './site.js';
 import { drawElevation } from './elevation.js';
 import { collectCasters, computeSunHours } from './shadows.js';
@@ -640,10 +640,9 @@ export class PlantPanel {
           <button type="button" class="primary" data-act="compose" title="Laat de app planten kiezen die passen bij hoogte, zon, grond en kleurenschema, met bloei door het jaar en afwisseling in vorm">Stel een basis samen</button>
           <button type="button" data-act="addplant" title="Kies een plant uit de plantendatabase; hij komt in de basis van dit vak">+ Plant toevoegen</button>
           <button type="button" data-act="chosen" title="Alle planten die al in het ontwerp staan, de best passende bovenaan">Al gekozen planten</button>
-          <button type="button" data-act="combos" title="Vul de basis met een kant-en-klare plantcombinatie (aangepast aan dit vak)">Combinatie</button>
+          <button type="button" data-act="combos" title="Erkende beplantingsschema's uit tuinbladen en van ontwerpers, geschaald naar dit vak en aangepast aan de plek">Voorbeeldschema's</button>
         </div>
         <div class="proposal" hidden></div>
-        <div class="combos" hidden></div>
       </section>
       <details class="refine-more" ${this.app.state.refineOpen ? 'open' : ''}><summary>Groepjes en losse planten</summary>${this.refineHtml(bed)}</details>
       <section class="elev">
@@ -870,7 +869,6 @@ export class PlantPanel {
       li.appendChild(del);
       ul.appendChild(li);
     }
-    const ctx = this.bedCtx(bed);
     // de controle staat onderaan in stap 3 (alle planten van het vak samen)
     el.querySelector('[data-act="compose"]').addEventListener('click', () => this.showProposal(el, bed, 1));
     el.querySelector('[data-act="addplant"]').addEventListener('click', () => this.openPicker({
@@ -891,27 +889,7 @@ export class PlantPanel {
         if (!bed.planting.mix.some((m) => m.role === r.id)) bed.planting.mix.push({ role: r.id, w: ROLES[r.role]?.weight || 30 });
       }, 'mix'),
     }));
-    const cbox = $('.combos', el);
-    el.querySelector('[data-act="combos"]').addEventListener('click', () => {
-      cbox.hidden = !cbox.hidden;
-      if (cbox.hidden) return;
-      // passend bij de standplaats eerst; bij elke combinatie wat er voor dit vak aan aangepast wordt
-      const list = combosFor(bed.btype).map((c) => ({ c, a: adaptItems(c.items, ctx) })).sort((x, y) => x.a.swaps.length - y.a.swaps.length || (y.c.light === ctx.light) - (x.c.light === ctx.light));
-      cbox.innerHTML = list.length ? '' : '<p class="hint">Nog geen combinaties voor dit type.</p>';
-      for (const { c, a } of list) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'combo';
-        const thumbs = document.createElement('span'); thumbs.className = 'thumbs';
-        for (const [id] of c.items.slice(0, 5)) { const pl = plantById(id); if (pl) thumbs.appendChild(this.thumb(pl, 26)); }
-        b.appendChild(thumbs);
-        const t = document.createElement('span');
-        t.innerHTML = `<b>${esc(c.name)}</b><small>${c.items.map(([id]) => esc(plantById(id)?.nl || id)).join(', ')}</small>${a.swaps.length ? `<small class="swap">Voor dit vak: ${a.swaps.map(([x, y]) => `${esc(x)} → ${esc(y)}`).join(', ')}</small>` : ''}`;
-        b.appendChild(t);
-        b.addEventListener('click', () => this.applyCombo(bed, { ...c, items: a.items }, a.swaps));
-        cbox.appendChild(b);
-      }
-    });
+    el.querySelector('[data-act="combos"]').addEventListener('click', () => this.openBorders(bed));
   }
 
   /** Type, zon en grond van het vak (stap 1). */
@@ -1059,9 +1037,65 @@ export class PlantPanel {
         mix.push({ role: role.id, w });
       }
       bed.planting = { ...(bed.planting || {}), mix };
-      if (!bed.btype) bed.btype = combo.btype;
+      if (!bed.btype && combo.btype) bed.btype = combo.btype;
     }, 'combo');
     this.app.toast(`Vak gevuld met "${combo.name}"${swaps.length ? `, aangepast aan dit vak (${swaps.map(([x, y]) => `${x} → ${y}`).join(', ')})` : ''}.`, 4500);
+  }
+
+  /**
+   * Bibliotheek met voorbeeldschema's: erkende beplantingen, geschaald naar de maat van dit vak en aangepast
+   * aan zon, grond, ligging en winterhardheid; het best passende bovenaan.
+   */
+  openBorders(bed) {
+    let dlg = document.getElementById('dlg-borders');
+    if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-borders'; document.body.appendChild(dlg); }
+    const area = Math.abs(polygonArea(shapePolygon(bed)));
+    const ctx = { ...this.bedCtx(bed), area, btype: bed.btype || null };
+    const all = rankBorders(ctx);
+    const how = { exact: '', cultivar: '', soort: 'andere cultivar', geslacht: 'vervangen' };
+    const sources = [...new Set(all.map((x) => x.border.source.split(',')[0]))];
+    const areaTxt = area < 10 ? area.toFixed(1).replace('.', ',') : Math.round(area);
+    dlg.innerHTML = `
+      <form method="dialog" class="dlg wide picker borders">
+        <header><h2>Voorbeeldschema's voor ${esc(bed.name || 'dit vak')}</h2><button class="x" value="close">${icon('close')}</button></header>
+        <p class="hint">Erkende beplantingen van ${esc(sources.filter((x) => x !== 'Tuinontwerp-app').slice(0, 6).join(', '))}. Elk schema is geschaald naar dit vak (${areaTxt} m²): kleiner vak, minder soorten. Wat hier niet past (zon, grond, ligging, winterhardheid) of niet te koop is${ESVELD.loaded ? ' bij Esveld' : ''}, is vervangen door een plant die erop lijkt. Het best passende staat bovenaan.</p>
+        <div class="searchrow"><input type="search" data-f="bq" placeholder="Zoek op naam, kleur, plant of bron"><select data-f="blight"><option value="">Alle standplaatsen</option><option value="fit" selected>Past bij dit vak</option></select></div>
+        <ul class="borderlist"></ul>
+        <footer><span class="spacer"></span><button value="close">Annuleren</button></footer>
+      </form>`;
+    const ul = $('.borderlist', dlg);
+    const draw = () => {
+      const q = $('[data-f="bq"]', dlg).value.trim().toLowerCase();
+      const onlyFit = $('[data-f="blight"]', dlg).value === 'fit';
+      ul.innerHTML = '';
+      const list = all.filter((x) => (!onlyFit || x.score >= 4) && (!q || `${x.border.name} ${x.border.source} ${x.border.colours || ''} ${x.rows.map((r) => `${r.name} ${r.final?.nl || ''}`).join(' ')}`.toLowerCase().includes(q)));
+      if (!list.length) ul.innerHTML = `<li class="hint">Geen schema's gevonden${onlyFit ? '. Kies "Alle standplaatsen" om ook minder passende te zien.' : '.'}</li>`;
+      for (const x of list) {
+        const b = x.border;
+        const li = document.createElement('li');
+        li.className = 'border' + (x.score < 4 ? ' unfit' : '');
+        const thumbs = document.createElement('span'); thumbs.className = 'thumbs';
+        for (const [id] of x.items.slice(0, 6)) { const pl = plantById(id); if (pl) thumbs.appendChild(this.thumb(pl, 26)); }
+        const nb = x.rows.filter((r) => r.role === 'bol' && r.final).length;
+        const tags = [b.light && LIGHTS[b.light]?.split(' (')[0], b.soil && b.soil !== 'normaal' ? `${b.soil}e grond` : '', b.colours].filter(Boolean);
+        const t = document.createElement('div');
+        t.className = 'btxt';
+        t.innerHTML = `<b>${esc(b.name)}</b><small class="src">${b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.source)} ↗</a>` : esc(b.source)}${tags.length ? ` · ${esc(tags.join(' · '))}` : ''}</small>
+          <small>Voor dit vak: <b>${x.items.length - nb} soort${x.items.length - nb === 1 ? '' : 'en'}</b>${nb ? ` + ${nb} bol${nb > 1 ? 'len' : ''}` : ''}${x.dropped.length ? ` (${x.dropped.length} weggelaten voor deze maat)` : ''}${ESVELD.loaded ? ` · bij Esveld: ${x.atEsveld} van ${x.items.length}` : ''}${x.notes.length ? ` · <em>${esc(x.notes.join(', '))}</em>` : ''}</small>
+          ${x.swaps.length ? `<small class="swap">Aangepast: ${x.swaps.map(([a, c, why]) => `${esc(a)} → ${esc(c)} <span>(${esc(why)})</span>`).join('; ')}</small>` : ''}
+          <details><summary>Planten${b.rules?.length ? ' en tips van de bron' : ''}</summary><ul class="brows">${x.rows.filter((r) => r.final).map((r) => `<li><span class="brole">${esc(BORDER_ROLES[r.role].name)}</span> ${esc(r.final.nl)} <i>${esc(r.final.lat || '')}</i>${how[r.how] && r.final === r.p ? ` <small>(${how[r.how]})</small>` : ''}${esveldLinkHtml(r.final) ? ` ${esveldLinkHtml(r.final)}` : ''}</li>`).join('')}</ul>${b.rules?.length ? `<ul class="brules">${b.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</details>`;
+        const use = document.createElement('button');
+        use.type = 'button'; use.className = 'useborder primary'; use.textContent = 'Gebruik';
+        use.addEventListener('click', () => { dlg.close(); this.applyCombo(bed, { name: b.name, items: x.items, btype: b.btype }, x.swaps); });
+        li.append(thumbs, t, use);
+        ul.appendChild(li);
+      }
+    };
+    $('[data-f="bq"]', dlg).addEventListener('input', draw);
+    $('[data-f="blight"]', dlg).addEventListener('change', draw);
+    dlg.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) e.preventDefault(); });
+    draw();
+    dlg.showModal();
   }
 
   // ---------------------------------------------------------------- plant kiezen

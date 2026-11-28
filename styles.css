@@ -667,11 +667,6 @@ body.side-open .north-btn { right: 364px; }
 .role.unfit, .plant.unfit { opacity: 0.6; }
 .role.unfit em, .plant.unfit em { color: #b0392b; font-style: normal; }
 .combos { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.combos .combo { display: flex; align-items: center; gap: 8px; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; background: #fff; }
-.combos .combo .thumbs { display: flex; flex-shrink: 0; }
-.combos .combo .thumbs canvas { margin-right: -6px; }
-.combos .combo b { display: block; font-size: 13px; }
-.combos .combo small { display: block; font-size: 11px; color: var(--muted); }
 .picker .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .picker .filters select { flex: 1 1 150px; width: auto; font-size: 14px; padding: 6px 8px; }
 .picker .filters label.check { font-size: 13px; }
@@ -832,3 +827,20 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .plantlist li.more button { width: 100%; }
 .plantlist li.unfit { opacity: .55; }
 .plantlist li.sep { list-style: none; padding: 8px 4px 2px; font-size: 12px; font-weight: 600; color: var(--muted, #777); text-transform: uppercase; letter-spacing: .04em; cursor: default; }
+/* voorbeeldschema's */
+.borderlist { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.borderlist li.border { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 12px; align-items: start; padding: 10px 12px; border: 1px solid var(--line, #ddd); border-radius: 10px; background: var(--panel, #fff); }
+.borderlist li.border.unfit { opacity: .6; }
+.borderlist .thumbs { display: grid; grid-template-columns: repeat(3, 26px); gap: 2px; }
+.borderlist .btxt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.borderlist .btxt small { color: var(--muted, #666); line-height: 1.35; }
+.borderlist .btxt small.src a { color: inherit; }
+.borderlist .btxt small.swap { color: #8a5a00; }
+.borderlist .btxt small.swap span { opacity: .75; }
+.borderlist details { margin-top: 4px; font-size: 13px; }
+.borderlist details summary { cursor: pointer; color: var(--accent, #2e5d34); }
+.borderlist .brows, .borderlist .brules { margin: 4px 0; padding-left: 18px; }
+.borderlist .brole { display: inline-block; min-width: 92px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted, #777); }
+.borderlist .brules li { color: var(--muted, #555); }
+@media (max-width: 560px) { .borderlist li.border { grid-template-columns: 1fr; } .borderlist .thumbs { grid-template-columns: repeat(6, 26px); } }
+.picker.borders .searchrow select { flex: 0 0 auto; width: auto; max-width: 45%; }

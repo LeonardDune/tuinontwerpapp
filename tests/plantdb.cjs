@@ -60,7 +60,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
   let st = await page.evaluate(() => { const a = window.app; const bed = a.store.findItem('B').item; const roles = a.store.doc.planting.roles; return { mix: bed.planting.mix.map((m) => roles.find((r) => r.id === m.role)?.label), role: roles[0] }; });
   assert(st.mix.length === 1 && /Kattenkruid/.test(st.mix[0]) && st.role.plant === 'kattenkruid' && st.role.form === 'aar' && st.role.height === 'laag', `kattenkruid als bouwsteen in het vak (vorm ${st.role.form}, hoogte ${st.role.height})`);
   await page.click('#plant-panel [data-act="combos"]');
-  await page.click('#plant-panel .combo >> nth=0');
+  await page.click('#dlg-borders .useborder >> nth=0');
   st = await page.evaluate(() => { const a = window.app; const bed = a.store.findItem('B').item; const roles = a.store.doc.planting.roles; return bed.planting.mix.map((m) => roles.find((r) => r.id === m.role)); });
   assert(st.length >= 4 && st.every((r) => r.plant), `combinatie toegepast: ${st.map((r) => r.label).join(', ')}`);
   await page.screenshot({ path: path.join(OUT, 'plantdb-vak.png') });
