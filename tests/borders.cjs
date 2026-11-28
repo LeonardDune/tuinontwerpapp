@@ -37,7 +37,7 @@ function assert(c, m) { if (!c) throw new Error('ASSERT: ' + m); console.log('  
       ranked: B.rankBorders({ area: 3, light: 'zon', moisture: 'droog' }).slice(0, 3).map((x) => x.border.name),
     };
   });
-  assert(lib.n >= 60 && lib.sources.includes('RHS') && lib.sources.includes('Studio FERM') && lib.sources.some((s) => /Arbeitskreis/.test(s)), `${lib.n} schema's van ${lib.sources.length} bronnen`);
+  assert(lib.n >= 60 && lib.sources.includes('RHS') && lib.sources.includes('Studio FERM') && lib.sources.some((s) => /BdS/.test(s)) && lib.sources.some((s) => /Veitshöchheim/.test(s)), `${lib.n} schema's van ${lib.sources.length} bronnen`);
   assert(lib.kat === 'kattenkruid' && ['exact', 'cultivar'].includes(lib.katHow), 'planten worden op Latijnse naam gevonden (Nepeta \'Walker\'s Low\' = kattenkruid)');
   assert(lib.fermN === 9 && lib.fermStruct === 3, `Studio FERM 1 × 3 m blijft heel in een vak van 3 m² (${lib.fermN} soorten, 3 structuurplanten)`);
   assert(lib.small < lib.big && lib.smallDrop > 0, `kleiner vak, minder soorten (Silbersommer: ${lib.small} bij 2,5 m², ${lib.big} bij 40 m²)`);

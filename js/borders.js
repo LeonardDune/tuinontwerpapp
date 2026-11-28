@@ -173,7 +173,7 @@ export function borderPlan(border, ctx = {}) {
   for (const e of entries) {
     let p = null, how = null;
     if (e.id) { p = plantById(e.id); how = p ? 'exact' : null; } else ({ p, how } = findByLat(e.lat, ctx));
-    const role = e.role || (p ? borderRole(p) : 'begeleider');
+    const role = BORDER_ROLES[e.role] ? e.role : (p ? borderRole(p) : 'begeleider');
     let share = e.share ?? (e.count && role !== 'bol' && counted ? (100 * e.count) / counted : null);
     rows.push({ name: e.lat || p?.lat || e.id, p, how, role, share, tender: !!e.tender || (e.lat && isTender(e.lat)) });
   }
