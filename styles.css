@@ -844,3 +844,8 @@ dialog:has(.dlg.shoplist) { max-width: min(1200px, calc(100vw - 16px)); width: 1
 .borderlist .brules li { color: var(--muted, #555); }
 @media (max-width: 560px) { .borderlist li.border { grid-template-columns: 1fr; } .borderlist .thumbs { grid-template-columns: repeat(6, 26px); } }
 .picker.borders .searchrow select { flex: 0 0 auto; width: auto; max-width: 45%; }
+/* planten van een los element */
+.elplants .ellist li.plant { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; cursor: default; }
+.elplants .elnl { display: inline-flex !important; flex-direction: row !important; white-space: nowrap; align-items: center; gap: 4px; font-size: 13px; color: var(--muted, #666); }
+.elplants .eln { width: 64px; }
+.elplants .total { margin-top: 6px; }

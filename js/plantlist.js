@@ -2,6 +2,7 @@
 // leverancier en prijs. Naar de werkwijze van Elisabeth Scholt (Bloemenpark Appeltern): de lijst is
 // boodschappenlijst, checklist en naslagwerk tegelijk. Exporteren als CSV (Excel) of PDF.
 
+import { elementCounts } from './elplants.js';
 import {
   rolesMap, bedStats, roleSpacing, HEIGHTS, MONTHS, PYRAMID, roleLayer, layerIndex, describeRole, isBed,
 } from './planting.js';
@@ -52,7 +53,7 @@ export function plantList(doc, bedId = null) {
     for (const layer of doc.layers) {
       if (!layer.visible) continue;
       for (const it of layer.items) {
-        if ((it.type === 'plant' || it.type === 'stencil') && roles[it.role]) add(it.role, 1, 'los');
+        if (it.type === 'stencil' && it.plants?.length) { for (const c of elementCounts(it, roles)) if (roles[c.role]) add(c.role, c.n, 'los'); } else if ((it.type === 'plant' || it.type === 'stencil') && roles[it.role]) add(it.role, 1, 'los');
       }
     }
   }

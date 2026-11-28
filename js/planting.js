@@ -571,7 +571,7 @@ export function plantCounts(doc, bedId = null) {
     for (const layer of doc.layers) {
       if (!layer.visible) continue;
       for (const it of layer.items) {
-        if ((it.type === 'plant' || it.type === 'stencil') && roles[it.role]) counts[it.role] = (counts[it.role] || 0) + 1;
+        if (it.type === 'stencil' && Array.isArray(it.plants) && it.plants.length) { for (const x of it.plants) if (roles[x.role]) counts[x.role] = (counts[x.role] || 0) + (x.n || 1); } else if ((it.type === 'plant' || it.type === 'stencil') && roles[it.role]) counts[it.role] = (counts[it.role] || 0) + 1;
       }
     }
   }

@@ -12,6 +12,7 @@ import {
 } from './wish.js';
 import { PLANT_TYPES, searchPlants, plantById, fitsBedType, roleFromPlant, colorFamily, heightClass } from './plantdb.js';
 import { rankBorders, BORDER_ROLES } from './borders.js';
+import { ELEMENT_KINDS, elementKind, elementCounts, climbLookFor } from './elplants.js';
 import { ESVELD, esveldLinkHtml, roleEsveldLinkHtml } from './esveld.js';
 import { TRAITS, REQUIREMENTS, BED_FUNCTIONS, plantTraits, meetsAll } from './traits.js';
 import { bedChecks, STRUCTURE_LEVELS, MAINTENANCE, rolePlant } from './checks.js';
@@ -363,6 +364,7 @@ export class PlantPanel {
       for (const it of l.items) {
         if (isBed(it)) for (const m of bedPlan(it).mix) add(m.role, nameOf(it));
         else if (isGroup(it)) for (const m of it.planting?.mix || []) add(m.role, nameOf(byId[it.bedId]));
+        else if (it.type === 'stencil' && it.plants?.length) for (const x of it.plants) add(x.role, STENCIL_MAP[it.symbol]?.name?.toLowerCase() || 'los');
         else if ((it.type === 'plant' || it.type === 'stencil') && it.role) add(it.role, 'los');
       }
     }
@@ -381,6 +383,107 @@ export class PlantPanel {
   }
 
   /** Plant in een wensvakje zetten en door naar het volgende open vakje. */
+  /**
+   * Planten van een los element (pot, haag, pergola, boog, leifruit, boom): één of meer soorten uit de database,
+   * met het aantal (leeg = de app rekent het uit). Opslag: item.plants = [{ role, n }], item.role = de eerste.
+   */
+  openElementPlants(id) {
+    const item = this.app.store.findItem(id)?.item;
+    const kind = item && elementKind(item.symbol);
+    if (!kind) return;
+    const K = ELEMENT_KINDS[kind];
+    let dlg = document.getElementById('dlg-elplants');
+    if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-elplants'; document.body.appendChild(dlg); }
+    const name = STENCIL_MAP[item.symbol]?.name || K.name;
+    const save = (fn) => {
+      this.app.store.mutate((doc) => {
+        const it = this.app.store.findItem(id)?.item;
+        if (!it) return;
+        if (!Array.isArray(it.plants)) it.plants = it.role ? [{ role: it.role }] : [];
+        fn(it, doc);
+        it.plants = it.plants.filter((x) => x.role);
+        if (it.plants.length) it.role = it.plants[0].role; else { delete it.role; delete it.plants; it.noRole = true; }
+        // een klimelement krijgt de begroeiing van de eerste klimplant (kleur in tekening en 3D)
+        if (kind === 'klim' && it.plants?.length) {
+          const p = plantById(rolesMap(doc)[it.plants[0].role]?.plant);
+          const look = climbLookFor(p);
+          if (look) { it.growKind = look; if (!it.grow || it.grow === 'geen') it.grow = 'vol'; }
+        }
+      }, 'el-plants');
+      draw();
+    };
+    const add = (pl) => {
+      this.ensure();
+      save((it, doc) => {
+        const { role, created } = roleForPlant(doc.planting.roles, pl, 'structuur');
+        if (created) doc.planting.roles.push(role);
+        // de algemene bouwsteen van het stencil (bijv. "leifruit" zonder soort) maakt plaats voor echte planten
+        const R = rolesMap(doc);
+        it.plants = it.plants.filter((x) => !(R[x.role]?.fromStencil && !R[x.role]?.plant));
+        if (!K.multi) it.plants = [];
+        if (!it.plants.some((x) => x.role === role.id)) it.plants.push({ role: role.id });
+        delete it.noRole;
+      });
+    };
+    const draw = () => {
+      const it = this.app.store.findItem(id)?.item;
+      if (!it) { dlg.close(); return; }
+      const roles = rolesMap(this.doc);
+      const counts = elementCounts(it, roles);
+      const total = counts.reduce((a, c) => a + c.n, 0);
+      dlg.innerHTML = `
+        <form method="dialog" class="dlg wide picker elplants">
+          <header><h2>Planten: ${esc(name)}</h2><button class="x" value="close">${icon('close')}</button></header>
+          ${K.hint ? `<p class="hint">${esc(K.hint)}</p>` : ''}
+          <ul class="plantlist ellist"></ul>
+          <p class="hint total">${counts.length ? `Samen ${total} plant${total === 1 ? '' : 'en'}${counts.some((c) => c.auto) && kind !== 'pot' ? ` (automatisch berekend voor ${String(Math.round(Math.max(it.w || 0, it.h || 0) * 10) / 10).replace('.', ',')} m; vul een aantal in om het zelf te bepalen)` : ''}.` : `Nog geen ${esc(K.what)} gekozen.`}</p>
+          <div class="row add">
+            <button type="button" class="primary" data-act="eladd">${counts.length && K.multi ? '+ Nog een soort' : counts.length ? 'Andere plant kiezen' : `+ ${esc(K.what.charAt(0).toUpperCase() + K.what.slice(1))} kiezen`}</button>
+            ${this.usedRoles().size ? '<button type="button" data-act="elchosen">Al gekozen planten</button>' : ''}
+          </div>
+          <footer><span class="spacer"></span><button value="close">Klaar</button></footer>
+        </form>`;
+      const ul = $('.ellist', dlg);
+      counts.forEach((c, i) => {
+        const r = roles[c.role];
+        if (!r) return;
+        const li = document.createElement('li');
+        li.className = 'plant';
+        li.appendChild(this.thumb(r, 40));
+        const t = document.createElement('div');
+        t.className = 'ptxt';
+        const p = rolePlant(r);
+        const link = roleEsveldLinkHtml(r);
+        t.innerHTML = `<b>${esc(r.label || r.code)}</b> ${p.lat ? `<i>${esc(p.lat)}</i>` : ''}<small>${HEIGHTS[r.height]?.range || ''}${r.bloom?.length ? ` · bloei ${bloomText(r)}` : ''}${link ? ` · ${link}` : ''}</small>`;
+        li.appendChild(t);
+        const n = document.createElement('input');
+        n.type = 'number'; n.min = '1'; n.step = '1'; n.className = 'eln';
+        n.value = c.auto ? '' : String(c.n); n.placeholder = String(c.n);
+        n.title = 'Aantal (leeg = automatisch)';
+        n.addEventListener('change', () => save((it2) => { const x = it2.plants[i]; if (!x) return; const v = parseInt(n.value, 10); if (v > 0) x.n = v; else delete x.n; }));
+        const lab = document.createElement('label'); lab.className = 'elnl'; lab.append(n, document.createTextNode(' st.'));
+        li.appendChild(lab);
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'icon'; del.title = 'Weghalen'; del.innerHTML = icon('trash', 16);
+        del.addEventListener('click', () => save((it2) => { it2.plants.splice(i, 1); }));
+        li.appendChild(del);
+        ul.appendChild(li);
+      });
+      $('[data-act="eladd"]', dlg).addEventListener('click', () => this.openPicker({
+        title: `${K.what.charAt(0).toUpperCase() + K.what.slice(1)} voor ${name.toLowerCase()}`,
+        types: K.types, typesName: K.what, traits: K.traits || [],
+        onPick: (pl) => { add(pl); if (!dlg.open) dlg.showModal(); },
+      }));
+      dlg.querySelector('[data-act="elchosen"]')?.addEventListener('click', () => this.openChosen({
+        title: `Al gekozen planten voor ${name.toLowerCase()}`,
+        rank: (p) => (K.types.includes(p.type) && (!K.traits || meetsAll(p, K.traits)) ? { ok: true, score: 1 } : { ok: false, why: `geen ${K.what}` }),
+        onPick: (r) => { const pl = plantById(r.plant); if (pl) add(pl); else save((it2) => { if (!K.multi) it2.plants = []; if (!it2.plants.some((x) => x.role === r.id)) it2.plants.push({ role: r.id }); }); if (!dlg.open) dlg.showModal(); },
+      }));
+    };
+    draw();
+    dlg.showModal();
+  }
+
   /** Een bouwsteen die al in het ontwerp staat in een wensvakje zetten. */
   fillWishRole(id, r) {
     this.app.store.mutate(() => {
@@ -1101,11 +1204,11 @@ export class PlantPanel {
   // ---------------------------------------------------------------- plant kiezen
 
   /** Venster met de plantendatabase: zoeken en filteren, met wat past bij het vak bovenaan. */
-  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], site = null, prefer = null, onPick }) {
+  openPicker({ title, btype = null, light = null, moisture = null, height = '', color = '', traits = [], site = null, prefer = null, types = null, typesName = '', onPick }) {
     let dlg = document.getElementById('dlg-plants');
     if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'dlg-plants'; document.body.appendChild(dlg); }
     const opt = (o, cur, empty) => `<option value="">${empty}</option>` + Object.entries(o).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
-    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '', traits: [...traits], prefer: prefer || this.usedPlantIds() };
+    const f = { q: '', type: '', height: height || '', light: light || '', soil: moisture || '', color: color || '', month: '', native: false, bees: false, evergreen: false, onlyFit: !!btype, btype, source: this.app.plantSource() || '', traits: [...traits], prefer: prefer || this.usedPlantIds(), types: types ? [...types] : null };
     // een precieze kleur (uit een kleurencombinatie) zoeken als kleurnaam
     if (/^#[0-9a-f]{6}$/i.test(f.color)) f.color = colorFamily(f.color) || '';
     const esvOn = ESVELD.loaded;
@@ -1143,6 +1246,7 @@ export class PlantPanel {
       const label = (key) => { const sel = dlg.querySelector(`select[data-f="${key}"]`); return sel ? sel.options[sel.selectedIndex]?.text : f[key]; };
       const chips = [];
       if (f.q) chips.push(['q', `“${f.q}”`]);
+      if (f.types) chips.push(['types', `alleen ${typesName || 'passende soorten'}`]);
       for (const key of ['type', 'height', 'light', 'soil', 'color', 'month']) if (f[key]) chips.push([key, label(key)]);
       if (f.onlyFit && btype) chips.push(['onlyFit', `past bij ${BED_TYPES[btype].label.toLowerCase()}`]);
       for (const k of f.traits) chips.push([`t:${k}`, TRAITS[k].name]);
@@ -1153,7 +1257,8 @@ export class PlantPanel {
       for (const b of af.querySelectorAll('[data-clear]')) b.addEventListener('click', () => clear(b.dataset.clear));
     };
     const clear = (k) => {
-      if (k === 'all') { f.q = ''; for (const x of ['type', 'height', 'light', 'soil', 'color', 'month']) f[x] = ''; f.traits = []; f.onlyFit = false; }
+      if (k === 'types') f.types = null;
+      else if (k === 'all') { f.q = ''; f.types = null; for (const x of ['type', 'height', 'light', 'soil', 'color', 'month']) f[x] = ''; f.traits = []; f.onlyFit = false; }
       else if (k.startsWith('t:')) f.traits = f.traits.filter((x) => x !== k.slice(2));
       else f[k] = k === 'onlyFit' ? false : '';
       show();
@@ -1345,13 +1450,16 @@ export class PlantPanel {
           },
         });
       } else if (b.dataset.act === 'delete') {
-        const used = this.doc.layers.some((l) => l.items.some((i) => i.role === id || i.planting?.mix?.some((m) => m.role === id)));
+        const used = this.doc.layers.some((l) => l.items.some((i) => i.role === id || i.plants?.some((x) => x.role === id) || i.planting?.mix?.some((m) => m.role === id)));
         if (used && !confirm(`${r.code} staat in de tekening. Verwijderen haalt ook die planten weg. Doorgaan?`)) return;
         this.app.store.mutate((doc) => {
           doc.planting.roles = doc.planting.roles.filter((x) => x.id !== id);
           for (const l of doc.layers) {
             l.items = l.items.filter((i) => i.type !== 'plant' || i.role !== id);
-            for (const i of l.items) if (i.type === 'stencil' && i.role === id) delete i.role;
+            for (const i of l.items) {
+              if (i.type === 'stencil' && i.plants) { i.plants = i.plants.filter((x) => x.role !== id); if (i.plants.length) i.role = i.plants[0].role; else delete i.plants; }
+              if (i.type === 'stencil' && i.role === id) delete i.role;
+            }
             for (const i of l.items) if (i.planting?.mix) i.planting.mix = i.planting.mix.filter((m) => m.role !== id);
           }
         }, 'role-delete');

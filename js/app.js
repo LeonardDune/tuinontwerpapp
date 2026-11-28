@@ -18,6 +18,7 @@ import { MAP_SOURCES, searchAddress, parseLatLon, buildMap } from './map.js';
 import { openPlantList } from './plantlist.js';
 import { loadEsveld, importEsveld, removeEsveld, ESVELD } from './esveld.js';
 import { wishText, wishControlsHtml, bindWishControls } from './wish.js';
+import { ELEMENT_KINDS, elementKind, elementCounts } from './elplants.js';
 import { planExport, exportPdf, exportPng, downloadBlob, safeFilename, contentBox, shareOrDownload } from './export.js';
 import { hydrateIcons, icon } from './icons.js';
 import {
@@ -2280,7 +2281,14 @@ class App {
         html += `<button type="button" class="tgl" data-act="edittext" title="Tekst wijzigen (of dubbeltik op de tekst)">Tekst wijzigen</button>`;
       }
       if (it.type === 'plant') html += roleSelect(it.role, false);
-      if (it.type === 'stencil' && (it.role || isPlantStencil(it.symbol))) html += roleSelect(it.role, true);
+      const elKind = it.type === 'stencil' && items.length === 1 ? elementKind(it.symbol) : null;
+      if (elKind) {
+        // planten in of bij een los element: één of meer soorten uit de database
+        const rm = Object.fromEntries(roles.map((r) => [r.id, r]));
+        const cs = elementCounts(it, rm).filter((c) => rm[c.role]);
+        const nm = (c) => escapeHtml(rm[c.role].label || rm[c.role].code);
+        html += `<button type="button" class="tgl${cs.length ? ' on' : ''}" data-act="elplants" title="Kies welke planten hier staan (${escapeHtml(ELEMENT_KINDS[elKind].what)}); meerdere soorten kan">${cs.length ? `Planten: ${cs.slice(0, 2).map(nm).join(', ')}${cs.length > 2 ? ` +${cs.length - 2}` : ''}` : `${ELEMENT_KINDS[elKind].what.charAt(0).toUpperCase() + ELEMENT_KINDS[elKind].what.slice(1)} kiezen…`}</button>`;
+      } else if (it.type === 'stencil' && (it.role || isPlantStencil(it.symbol))) html += roleSelect(it.role, true);
       if (isGroup(it) && it.wish) {
         html += `<span class="pinfo" title="Wensvakje: wat je hier wilt">Wens: ${escapeHtml(wishText(it.wish))}</span>`;
         html += `<button type="button" class="tgl" data-plan="wishpick" title="Kies een plant die bij deze wens past (paneel Beplanting)">${(it.planting?.mix || []).length ? 'Andere plant kiezen' : 'Kies plant'}</button>`;
@@ -2394,7 +2402,7 @@ class App {
       const c0 = { ...STENCIL_MAP[climbs[0].symbol].defaults, ...climbs[0] };
       const opts = (o, cur) => Object.entries(o).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${typeof v === 'string' ? v : v.name}</option>`).join('');
       if (climbs.some((i) => STENCIL_MAP[i.symbol].climb)) html += `<select data-k="grow" title="Begroeiing met klimplanten">${opts(GROW, c0.grow || 'geen')}</select>`;
-      if ((c0.grow || 'geen') !== 'geen' || STENCIL_MAP[climbs[0].symbol].climbPlant) html += `<select data-k="growKind" title="Soort klimplant">${opts(CLIMBERS, c0.growKind || 'blauweregen')}</select>`;
+      if (!(climbs[0].plants?.length) && ((c0.grow || 'geen') !== 'geen' || STENCIL_MAP[climbs[0].symbol].climbPlant)) html += `<select data-k="growKind" title="Soort klimplant">${opts(CLIMBERS, c0.growKind || 'blauweregen')}</select>`;
     }
     const closed = items.filter((i) => i.type === 'shape' && !i.wall && (i.kind === 'polygon' || i.kind === 'circle'));
     if (closed.length) {
@@ -2557,6 +2565,7 @@ class App {
     bar.querySelector('[data-act="deleteBond"]')?.addEventListener('click', () => this.deleteBondBlock());
     bar.querySelector('[data-act="reshape"]')?.addEventListener('click', () => this.applyProperty('reshape'));
     bar.querySelector('[data-act="clipPlants"]')?.addEventListener('click', () => this.applyProperty('clipPlants'));
+    bar.querySelector('[data-act="elplants"]')?.addEventListener('click', () => this.plantPanel.openElementPlants([...this.selection][0]));
     bar.querySelector('[data-act="openbed"]')?.addEventListener('click', () => {
       if (this.plantPanel.el.hidden) this.plantPanel.open(); else this.plantPanel.render();
     });

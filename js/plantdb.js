@@ -435,6 +435,7 @@ export function searchPlants(f = {}) {
   for (const p of PLANTS.values()) {
     if (q && !q.split(/\s+/).every((w) => `${p.nl} ${p.lat}`.toLowerCase().replace(/[‘’]/g, "'").includes(w))) continue;
     if (f.type && p.type !== f.type) continue;
+    if (f.types?.length && !f.types.includes(p.type)) continue;
     if (f.height && heightClass(p) !== f.height) continue;
     if (f.light && !lightFits(p.light, f.light)) continue;
     if (f.soil && !p.soil.includes(f.soil)) continue;
