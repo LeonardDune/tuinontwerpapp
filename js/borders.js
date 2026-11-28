@@ -74,7 +74,7 @@ export function siteMisfits(p, ctx, lat = '') {
   const out = [];
   if (ctx.light && p.light && !lightFits(p.light, ctx.light)) out.push('andere standplaats');
   // gewone grond (vochthoudend) gaat voor bijna alles; alleen droge en vochtige plekken zijn streng
-  if (ctx.moisture && ctx.moisture !== 'normaal' && p.soil && !p.soil.includes(ctx.moisture)) out.push(`wil geen ${SOIL_ADJ[ctx.moisture] || ctx.moisture} grond`);
+  if (ctx.moisture && ctx.moisture !== 'normaal' && p.soil && !p.soil.includes(ctx.moisture) && !(p.type === 'bol' && ctx.moisture === 'droog')) out.push(`wil geen ${SOIL_ADJ[ctx.moisture] || ctx.moisture} grond`);
   if (ctx.require?.length && !meetsAll(p, ctx.require)) out.push('voldoet niet aan de eisen van het vak');
   if (ctx.site) out.push(...siteProblems(p, ctx.site));
   if (!p.esv?.hard && lat && isTender(lat)) out.push('niet overal winterhard');
@@ -83,14 +83,26 @@ export function siteMisfits(p, ctx, lat = '') {
 
 /** Vervanger voor een plant: zelfde soort plant en rol, past op de plek, lijkt in hoogte, kleur en bloei. */
 function substitute(orig, brole, ctx, used) {
+  // eerst binnen hetzelfde geslacht (een andere krokus voor een krokus), dan breder
+  const genus = orig?.lat?.split(' ')[0];
+  if (genus) {
+    const g = pickSubstitute(orig, brole, ctx, used, (q) => q.lat?.split(' ')[0] === genus);
+    if (g) return g;
+  }
+  return pickSubstitute(orig, brole, ctx, used, () => true);
+}
+
+function pickSubstitute(orig, brole, ctx, used, keep) {
   const fam = orig?.bloom?.length ? colorFamily(orig.color) : null;
   const hc = orig ? heightClass(orig) : null;
   let bestP = null, bestS = -Infinity;
   for (const q of PLANTS.values()) {
-    if (used.has(q.id) || ['boom', 'haag', 'klimmer'].includes(q.type)) continue;
-    if (ctx.source === 'esveld' && !q.esv) continue;
+    if (used.has(q.id) || ['boom', 'haag', 'klimmer'].includes(q.type) || !keep(q)) continue;
+    // bollen koop je vaak elders: daar geldt de leverancier niet; een bol wordt altijd door een bol vervangen
+    if (ctx.source === 'esveld' && !q.esv && brole !== 'bol') continue;
+    if (brole === 'bol' ? q.type !== 'bol' : q.type === 'bol') continue;
     if (siteMisfits(q, ctx).length) continue;
-    if (orig && q.type !== orig.type && !(orig.type === 'vaste' && q.type === 'gras') && !(orig.type === 'gras' && q.type === 'vaste')) continue;
+    if (orig && brole !== 'bol' && q.type !== orig.type && !(orig.type === 'vaste' && q.type === 'gras') && !(orig.type === 'gras' && q.type === 'vaste')) continue;
     if (!orig && boleOf(q) !== (brole === 'bol')) continue;
     let s = 0;
     if (orig) {
@@ -217,9 +229,9 @@ export function borderPlan(border, ctx = {}) {
   }
   // 4. hoe goed past het schema hier?
   const total = chosen.length + bulbs.length;
-  let score = total ? (kept / total) * 6 : 0;
+  let score = total ? (kept / total) * 4 : 0;
   // rijker schema (zoveel soorten als bij deze maat past) telt mee
-  score += Math.min(1, (items.length - bulbs.length) / Math.min(maxN, 8)) * 5;
+  score += Math.min(1, (items.length - bulbs.length) / Math.min(maxN, 8)) * 7;
   if (ctx.light && border.light && Math.abs(LIGHT_ORDER.indexOf(border.light) - LIGHT_ORDER.indexOf(ctx.light)) > 1) { score -= 4; notes.push(`bedoeld voor ${border.light === 'half' ? 'halfschaduw' : border.light}`); }
   if (ctx.moisture && border.soil && border.soil !== 'normaal' && border.soil !== ctx.moisture) { score -= 3; notes.push(`bedoeld voor ${SOIL_ADJ[border.soil]} grond`); }
   if (border.minArea && area && area < border.minArea) { score -= 3; notes.push(`bedoeld voor borders vanaf ${border.minArea} m²`); }
